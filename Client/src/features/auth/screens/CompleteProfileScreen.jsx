@@ -140,7 +140,9 @@ export default function CompleteProfileScreen({ navigation }) {
       }
       throw new Error(res?.error?.message || 'Profile update failed');
     } catch (err) {
-      Alert.alert('Save Failed', err.message || 'Unable to save profile details. Please try again.');
+      console.error('[CompleteProfile Error]:', err);
+      const msg = err.data?.error?.message || err.data?.message || err.error || err.message || 'Unable to save profile details. Please try again.';
+      Alert.alert('Save Failed', msg);
     }
   };
 
