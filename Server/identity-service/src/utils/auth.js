@@ -15,7 +15,8 @@ export const authenticate = (req, res, next) => {
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'onemedical_jwt_access_secret_production_2026';
+    const decoded = jwt.verify(token, accessSecret);
     req.user = decoded; // { userId, role }
     req.headers['x-user-id'] = decoded.userId;
     req.headers['x-user-role'] = decoded.role;

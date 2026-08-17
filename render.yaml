@@ -12,7 +12,7 @@ services:
       - key: MONGO_URI
         sync: false
       - key: JWT_ACCESS_SECRET
-        sync: false
+        generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: INTERNAL_API_KEY
