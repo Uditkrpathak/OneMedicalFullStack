@@ -29,6 +29,20 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: FIREBASE_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        value: onemedical-otp
 
   - type: web
     name: onemedical-v2-clinical
@@ -44,6 +58,8 @@ services:
         sync: false
       - key: RABBITMQ_URL
         sync: false
+      - key: REDIS_URL
+        sync: false
       - key: INTERNAL_API_KEY
         sync: false
       - key: JWT_ACCESS_SECRET
@@ -57,6 +73,16 @@ services:
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
         sync: false
 
   - type: web
