@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@utility max-w-9xl {
+  max-width: 96rem; /* 1536px - ultra wide desktop support */
+}
+
+@utility max-w-8xl {
+  max-width: 88rem; /* 1408px */
+}
+
 @layer base {
   :root {
     --primary: #003D9B;

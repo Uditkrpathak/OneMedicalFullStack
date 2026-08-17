@@ -52,7 +52,7 @@ export default function Navbar({ onOpenBooking }: NavbarProps) {
         : 'bg-white/95 backdrop-blur-md border-b border-slate-100 py-3 sm:py-3.5'
         }`}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Brand Logo */}
           <Link href="/" className="flex items-center group">
