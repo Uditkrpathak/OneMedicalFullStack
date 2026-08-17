@@ -1,0 +1,33 @@
+import express from 'express';
+import {
+  createOrder,
+  verifyPayment,
+  getMyTransactions,
+  getInvoices,
+  getInvoiceById
+} from '../controllers/paymentController.js';
+import { razorpayWebhook } from '../controllers/webhookController.js';
+
+const router = express.Router();
+
+// Webhook (raw body verification)
+router.post('/webhook/razorpay', express.raw({ type: 'application/json' }), razorpayWebhook);
+router.post('/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
+
+// Authenticated Payment Orders & Verification
+router.post('/orders',              createOrder);
+router.post('/payments/orders',     createOrder);
+
+router.post('/verify',              verifyPayment);
+router.post('/payments/verify',     verifyPayment);
+
+// Authenticated History & Invoices
+router.get('/transactions/my',      getMyTransactions);
+router.get('/history',              getMyTransactions);
+router.get('/payments/history',     getMyTransactions);
+router.get('/',                     getMyTransactions);
+
+router.get('/invoices',             getInvoices);
+router.get('/invoices/:id',         getInvoiceById);
+
+export default router;

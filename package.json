@@ -1,0 +1,30 @@
+{
+  "name": "one-medical-monorepo",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.2.4"
+  },
+  "type": "module",
+  "description": "One Medical Physiotherapy & Rehabilitation Platform Monorepo",
+  "private": true,
+  "workspaces": [
+    "Admin",
+    "Client",
+    "Server/gateway",
+    "Server/identity-service",
+    "Server/clinical-service"
+  ],
+  "scripts": {
+    "dev:gateway": "npm run dev --workspace=Server/gateway",
+    "dev:identity": "npm run dev --workspace=Server/identity-service",
+    "dev:clinical": "npm run dev --workspace=Server/clinical-service",
+    "dev:admin": "npm run dev --workspace=Admin",
+    "dev:client": "npm run dev --workspace=Client",
+    "dev:backend": "concurrently \"npm run dev:gateway\" \"npm run dev:identity\" \"npm run dev:clinical\"",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:admin\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

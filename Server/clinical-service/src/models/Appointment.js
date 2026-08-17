@@ -1,0 +1,143 @@
+import mongoose from 'mongoose';
+
+const AppointmentSchema = new mongoose.Schema({
+  // ─── Participants ──────────────────────────────────────────────────────────
+  patientId:   { type: String, required: true, index: true },
+  therapistId: { type: String, required: true, index: true },
+
+  // Denormalized for read performance — avoids cross-service joins on list queries
+  therapistName: { type: String },
+  patientName:   { type: String },
+
+  // ─── Scheduling (UTC Date objects) ────────────────────────────────────────
+  // Stored as UTC; display layer converts to Asia/Kolkata for rendering
+  startTime:   { type: Date, required: true },
+  endTime:     { type: Date, required: true },
+  durationMin: { type: Number, default: 30 },
+
+  // ─── Service Classification ───────────────────────────────────────────────
+  serviceType: {
+    type: String,
+    enum: [
+      'INITIAL_ASSESSMENT',
+      'FOLLOW_UP',
+      'PHYSIOTHERAPY_SESSION',
+      'VIDEO_CONSULTATION',
+      'HOME_VISIT',
+      'BACK_PAIN',
+      'NECK_PAIN',
+      'SPORTS_INJURY',
+      'POST_SURGERY',
+      'KNEE_PAIN',
+      'GENERAL_CONSULTATION',
+    ],
+    required: true,
+  },
+  appointmentPlace: {
+    type: String,
+    enum: ['CLINIC', 'HOME', 'VIDEO'],
+    default: 'CLINIC',
+  },
+
+  // ─── Lifecycle Status ─────────────────────────────────────────────────────
+  // HELD                  → slot reserved, payment pending (10-min window)
+  // CONFIRMED             → payment received / confirmed appointment
+  // RESCHEDULE_REQUESTED  → doctor/clinic proposed new slot; awaiting patient approval
+  // RESCHEDULED           → prior slot transitioned
+  // CHECKED_IN            → patient arrived / checked in for session
+  // IN_PROGRESS           → active consultation underway
+  // COMPLETED             → appointment concluded with clinical notes
+  // CANCELLED_BY_PATIENT  → cancelled by patient
+  // CANCELLED_BY_DOCTOR   → emergency doctor cancellation
+  // CANCELLED_BY_CLINIC   → operational clinic cancellation
+  // CANCELLED             → generic legacy cancelled
+  // EXPIRED               → hold timed out
+  // NO_SHOW               → patient did not attend confirmed appointment
+  status: {
+    type: String,
+    enum: [
+      'HELD',
+      'CONFIRMED',
+      'RESCHEDULE_REQUESTED',
+      'RESCHEDULED',
+      'CHECKED_IN',
+      'IN_PROGRESS',
+      'COMPLETED',
+      'CANCELLED_BY_PATIENT',
+      'CANCELLED_BY_DOCTOR',
+      'CANCELLED_BY_CLINIC',
+      'CANCELLED',
+      'EXPIRED',
+      'NO_SHOW',
+      'DOCUMENTATION_PENDING',
+      'DOCUMENTED',
+    ],
+    default: 'HELD',
+    index: true,
+  },
+
+  // ─── Reschedule Tracking ──────────────────────────────────────────────────
+  rescheduleCount:     { type: Number, default: 0 },
+  rescheduledAt:       { type: Date },
+  rescheduledBy:       { type: String },
+  proposedReschedule: {
+    newTherapistId:   { type: String },
+    newTherapistName: { type: String },
+    newStartTime:     { type: Date },
+    newEndTime:       { type: Date },
+    proposedBy:       { type: String },
+    reason:           { type: String },
+    proposedAt:       { type: Date },
+  },
+
+  // ─── Hold Management ─────────────────────────────────────────────────────
+  holdExpiresAt: { type: Date },  // cleared (set to null) once CONFIRMED/CANCELLED/EXPIRED
+
+  // ─── Payment Fields (ALL set by backend only — client values are ignored) ──
+  // amount is in paise: ₹499 = 49900 paise
+  amount:        { type: Number },   // fetched from TherapistProfile.consultationFee at hold-time
+  currency:      { type: String, default: 'INR' },
+  paymentStatus: {
+    type: String,
+    enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'NOT_APPLICABLE'],
+    default: 'PENDING',
+  },
+  paymentOrderId: { type: String },   // Razorpay order ID
+  paymentId:      { type: String },   // Razorpay payment ID
+
+  // ─── Cancellation ─────────────────────────────────────────────────────────
+  cancellationReason: { type: String },
+  cancellationPolicy: {
+    type: String,
+    enum: ['REFUND_ELIGIBLE', 'NO_REFUND', 'NOT_APPLICABLE'],
+  },
+
+  // ─── Lifecycle Timestamps ────────────────────────────────────────────────
+  confirmedAt: { type: Date },
+  startedAt:   { type: Date },
+  completedAt: { type: Date },
+  cancelledAt: { type: Date },
+
+  // ─── Session ──────────────────────────────────────────────────────────────
+  sessionSummary: { type: String },
+
+  // ─── Audit ────────────────────────────────────────────────────────────────
+  createdBy: {
+    type: String,
+    enum: ['patient', 'therapist', 'clinic_admin', 'super_admin'],
+    default: 'patient',
+  },
+  isDeleted: { type: Boolean, default: false },
+
+}, { timestamps: true });
+
+// ─── Indexes ──────────────────────────────────────────────────────────────────
+// IMPORTANT: These are QUERY PERFORMANCE indexes only.
+// Double-booking prevention is enforced by: (1) Redis distributed lock per slot,
+// (2) atomic MongoDB findOne conflict check before create. Both required.
+AppointmentSchema.index({ therapistId: 1, startTime: 1 });
+AppointmentSchema.index({ patientId: 1, startTime: -1 });
+AppointmentSchema.index({ status: 1, holdExpiresAt: 1 });  // used by expiry cron
+
+const Appointment = mongoose.model('Appointment', AppointmentSchema);
+export default Appointment;

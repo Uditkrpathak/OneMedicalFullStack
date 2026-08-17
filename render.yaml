@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: onemedical-identity
+    env: node
+    rootDir: Server/identity-service
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5001
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CLINICAL_SERVICE_URL
+        value: https://onemedical-clinical.onrender.com
+
+  - type: web
+    name: onemedical-clinical
+    env: node
+    rootDir: Server/clinical-service
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5003
+      - key: MONGO_URI
+        sync: false
+      - key: RABBITMQ_URL
+        sync: false
+      - key: INTERNAL_API_KEY
+        generateValue: true
+      - key: IDENTITY_SERVICE_URL
+        value: https://onemedical-identity.onrender.com
+
+  - type: web
+    name: onemedical-gateway
+    env: node
+    rootDir: Server/gateway
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: IDENTITY_SERVICE_URL
+        value: https://onemedical-identity.onrender.com
+      - key: CLINICAL_SERVICE_URL
+        value: https://onemedical-clinical.onrender.com
+      - key: INTERNAL_API_KEY
+        fromService:
+          type: web
+          name: onemedical-clinical
+          envVarKey: INTERNAL_API_KEY
+      - key: JWT_ACCESS_SECRET
+        fromService:
+          type: web
+          name: onemedical-identity
+          envVarKey: JWT_ACCESS_SECRET

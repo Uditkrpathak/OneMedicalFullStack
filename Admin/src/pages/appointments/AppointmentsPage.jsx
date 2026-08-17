@@ -1,0 +1,674 @@
+import { useEffect, useState, useCallback } from 'react';
+import { useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import {
+  Calendar, User, Plus, Search, Filter,
+  Check, Bell, Upload, Download, List, Grid,
+  ChevronDown, Send, Clock, Printer, FileText,
+  X, AlertCircle, CheckCircle2, ChevronRight, PlusCircle, RefreshCw
+} from 'lucide-react';
+import { api } from '../../api/api.js';
+import { UserAvatar, Spinner, EmptyState } from '../../components/ui.jsx';
+
+export default function AppointmentsPage() {
+  const token = useSelector(s => s.auth?.accessToken);
+  const navigate = useNavigate();
+
+  // Authoritative State from Backend Single Source of Truth
+  const [dashboardData, setDashboardData] = useState({
+    summary: { activeConfirmed: 0, completed: 0, holdsExpired: 0, cancelled: 0, allRecords: 0 },
+    appointments: [],
+    timeline: [],
+    pendingConfirmations: [],
+    meta: { page: 1, limit: 50, total: 0 }
+  });
+
+  const [therapistsList, setTherapistsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Search & Filter state
+  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE', 'COMPLETED', 'HOLDS_EXPIRED', 'CANCELLED', 'ALL'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTherapist, setSelectedTherapist] = useState('All');
+  const [selectedType, setSelectedType] = useState('All');
+  const [selectedStatus, setSelectedStatus] = useState('All');
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+
+  // Dropdown toggles
+  const [showTherapistDropdown, setShowTherapistDropdown] = useState(false);
+
+  // Active Modals & Toast
+  const [activeModal, setActiveModal] = useState(null); // 'reminder', 'reschedule', 'print'
+  const [toastMessage, setToastMessage] = useState(null);
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [reminderMethods, setReminderMethods] = useState({ sms: true, email: true });
+  const [selectedApptForAction, setSelectedApptForAction] = useState(null);
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [dashRes, therRes] = await Promise.allSettled([
+        api.getAppointmentsDashboard(token, {
+          tab: activeTab,
+          search: searchQuery,
+          therapistId: selectedTherapist,
+          type: selectedType,
+          status: selectedStatus,
+        }),
+        api.listTherapists(token),
+      ]);
+
+      if (dashRes.status === 'rejected' || !dashRes.value?.data) {
+        throw new Error(dashRes.reason?.message || 'Failed to load appointments from server.');
+      }
+
+      setDashboardData(dashRes.value.data);
+
+      if (therRes.status === 'fulfilled' && Array.isArray(therRes.value?.data)) {
+        setTherapistsList(therRes.value.data);
+      }
+    } catch (err) {
+      console.error('[AppointmentsPage] Error loading dashboard:', err);
+      setError(err.message || 'Failed to load appointments.');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, activeTab, searchQuery, selectedTherapist, selectedType, selectedStatus]);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const { summary, appointments, timeline, pendingConfirmations } = dashboardData;
+
+  const getStatusBadge = (status) => {
+    const s = (status || '').toUpperCase();
+    if (s === 'COMPLETED') {
+      return { label: '● COMPLETED', style: 'bg-emerald-50 text-emerald-700 border-emerald-200/80' };
+    }
+    if (s === 'DOCUMENTED') {
+      return { label: '● DOCUMENTED', style: 'bg-indigo-50 text-indigo-700 border-indigo-200/80' };
+    }
+    if (s === 'DOCUMENTATION_PENDING') {
+      return { label: '● DOCS PENDING', style: 'bg-amber-50 text-amber-800 border-amber-300' };
+    }
+    if (s === 'IN_PROGRESS') {
+      return { label: '● IN PROGRESS', style: 'bg-cyan-50 text-cyan-700 border-cyan-300 font-extrabold' };
+    }
+    if (s === 'CONFIRMED') {
+      return { label: '● CONFIRMED', style: 'bg-blue-50 text-blue-700 border-blue-200/80' };
+    }
+    if (s === 'HELD' || s === 'PENDING') {
+      return { label: '● HELD', style: 'bg-amber-50 text-amber-700 border-amber-200/60' };
+    }
+    if (s === 'RESCHEDULE_REQUESTED') {
+      return { label: '● RESCHEDULE REQ', style: 'bg-purple-50 text-purple-700 border-purple-200' };
+    }
+    if (s.includes('CANCELLED')) {
+      return { label: '● CANCELLED', style: 'bg-rose-50 text-rose-700 border-rose-200' };
+    }
+    if (s === 'NO_SHOW') {
+      return { label: '● NO SHOW', style: 'bg-slate-100 text-slate-600 border-slate-300' };
+    }
+    return { label: `● ${s}`, style: 'bg-slate-100 text-slate-500 border-slate-200' };
+  };
+
+  const handleExportSchedule = () => {
+    try {
+      const headers = ['Appointment ID', 'Patient Name', 'Patient Details', 'Therapist', 'Type', 'Date', 'Time', 'Status'];
+      const rows = appointments.map(a => {
+        const d = new Date(a.startTime);
+        return [
+          a.id || a._id,
+          `"${a.patientName}"`,
+          `"${a.patientSubtitle || ''}"`,
+          `"${a.therapistName}"`,
+          `"${a.type}"`,
+          `"${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}"`,
+          `"${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}"`,
+          `"${a.status}"`
+        ];
+      });
+
+      const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `appointments-schedule-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast('Schedule exported as CSV successfully!');
+    } catch {
+      showToast('Failed to export schedule.');
+    }
+  };
+
+  const handleConfirmAppointment = async (apptId) => {
+    try {
+      await api.updateAppointmentStatus(token, apptId, { status: 'CONFIRMED' });
+      showToast('Appointment confirmed successfully!');
+      loadDashboard();
+    } catch (err) {
+      alert(err.message || 'Failed to confirm appointment.');
+    }
+  };
+
+  const handleSendReminder = async () => {
+    const targetId = selectedApptForAction?._id || appointments[0]?._id;
+    if (!targetId) return;
+    setReminderLoading(true);
+    try {
+      await api.sendReminder(token, targetId, { methods: reminderMethods });
+      showToast(`Reminder sent via ${[reminderMethods.sms && 'SMS', reminderMethods.email && 'Email'].filter(Boolean).join(' & ')}!`);
+    } catch (err) {
+      alert(err.message || 'Failed to send reminder notification.');
+    } finally {
+      setReminderLoading(false);
+      setActiveModal(null);
+    }
+  };
+
+  const handlePrintLedger = () => {
+    const rows = appointments.map(a => {
+      const d = new Date(a.startTime);
+      return `<tr>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${a.id}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${a.patientName}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${a.therapistName}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${a.type}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })} ${d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
+        <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0">${a.status}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<html><head><title>OneMedical - Appointment Ledger</title>
+      <style>body{font-family:sans-serif;padding:32px;color:#1e293b}h1{font-size:18px;font-weight:700;margin-bottom:4px}p{font-size:12px;color:#64748b;margin-bottom:24px}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f8fafc;padding:8px 10px;text-align:left;font-weight:700;border-bottom:2px solid #e2e8f0;color:#64748b;text-transform:uppercase;letter-spacing:.05em}@media print{button{display:none}}</style></head><body>
+      <h1>Appointment Ledger</h1>
+      <p>Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Total: ${appointments.length} appointments</p>
+      <table><thead><tr><th>ID</th><th>Patient</th><th>Therapist</th><th>Type</th><th>Date & Time</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>
+      <br><button onclick="window.print()">🖨 Print / Save PDF</button></body></html>`;
+    const win = window.open('', '_blank', 'width=900,height=700');
+    win.document.write(html);
+    win.document.close();
+    setActiveModal(null);
+    showToast('Ledger generated! Open in print preview.');
+  };
+
+  return (
+    <div className="space-y-6 text-slate-800 relative">
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 text-xs">
+          <CheckCircle2 size={16} className="text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* ─── PAGE HEADER ─── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Appointments</h1>
+          <p className="text-xs text-slate-500 mt-1 font-normal">Manage bookings, real clinician schedules and treatment sessions.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleExportSchedule}
+            className="px-4 py-2 bg-white hover:bg-slate-50 text-[#003882] hover:text-[#002b66] text-xs font-bold rounded-full border border-blue-200/80 shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Upload size={14} className="text-[#003882]" />
+            <span>Export Schedule</span>
+          </button>
+          <button
+            onClick={() => navigate('/appointments/create')}
+            className="px-4 py-2 bg-[#003882] hover:bg-[#002b66] text-white text-xs font-semibold rounded-xl shadow-sm transition-all flex items-center gap-2"
+          >
+            <Plus size={15} />
+            <span>Create Appointment</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ─── 4 STAT CARDS (Authoritative Server Counts) ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active & Confirmed</span>
+            <span className="bg-blue-100/70 text-blue-700 text-[11px] font-bold px-2 py-0.5 rounded-full">Live</span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900 tracking-tight">{summary.activeConfirmed}</div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">Active upcoming sessions</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pending Holds</span>
+            <span className="bg-amber-100/70 text-amber-700 text-[11px] font-bold px-2 py-0.5 rounded-full">Action Needed</span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900 tracking-tight">{summary.holdsExpired}</div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">Payment or hold pending</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed Sessions</span>
+            <span className="bg-emerald-100/70 text-emerald-700 text-[11px] font-bold px-2 py-0.5 rounded-full">Delivered</span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900 tracking-tight">{summary.completed}</div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">Completed consultations</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-start justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cancelled Sessions</span>
+            <span className="bg-slate-100 text-slate-600 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">Tracked</span>
+          </div>
+          <div className="mt-3">
+            <div className="text-3xl font-black text-slate-900 tracking-tight">{summary.cancelled}</div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">Cancelled bookings</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── MAIN CONTENT CONTAINER ─── */}
+      {loading && appointments.length === 0 ? (
+        <Spinner />
+      ) : error ? (
+        <div className="card p-8 text-center space-y-3 border-red-200 bg-red-50/50">
+          <AlertCircle size={32} className="text-red-500 mx-auto" />
+          <h3 className="text-sm font-bold text-red-800">Failed to Load Appointments</h3>
+          <p className="text-xs text-red-600">{error}</p>
+          <button onClick={loadDashboard} className="btn btn-secondary text-xs inline-flex items-center gap-1.5">
+            <RefreshCw size={13} /> Retry
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* LEFT COLUMN: TABLE & FILTER BAR (8 COLS) */}
+          <div className="lg:col-span-8 space-y-4">
+            {/* STATUS FILTER TABS */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {[
+                { id: 'ACTIVE', label: 'Active & Confirmed', count: summary.activeConfirmed },
+                { id: 'COMPLETED', label: 'Completed', count: summary.completed },
+                { id: 'HOLDS_EXPIRED', label: 'Holds & Expired', count: summary.holdsExpired },
+                { id: 'CANCELLED', label: 'Cancelled', count: summary.cancelled },
+                { id: 'ALL', label: 'All Records', count: summary.allRecords },
+              ].map(tab => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                      isActive
+                        ? 'bg-[#003882] text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* FILTER CONTROLS BAR */}
+            <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-2xs flex items-center justify-between flex-wrap gap-3">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Filter appointments..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Therapist Filter Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowTherapistDropdown(!showTherapistDropdown)}
+                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors"
+                  >
+                    <User size={13} className="text-slate-500" />
+                    <span>{selectedTherapist === 'All' ? 'Therapist' : selectedTherapist}</span>
+                    <ChevronDown size={12} className="text-slate-400" />
+                  </button>
+                  {showTherapistDropdown && (
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
+                      <button
+                        onClick={() => { setSelectedTherapist('All'); setShowTherapistDropdown(false); }}
+                        className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium"
+                      >
+                        All Therapists
+                      </button>
+                      {therapistsList.map(t => (
+                        <button
+                          key={t._id}
+                          onClick={() => { setSelectedTherapist(t.name || t.user?.name); setShowTherapistDropdown(false); }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium truncate"
+                        >
+                          {t.name || t.user?.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* View Mode Toggle Icons */}
+                <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                    title="List View"
+                  >
+                    <List size={14} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-1 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                    title="Grid View"
+                  >
+                    <Grid size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* TABLE / GRID DISPLAY */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+              {appointments.length === 0 ? (
+                <EmptyState
+                  title="No appointments found"
+                  subtitle={searchQuery ? 'No appointments match the search filters.' : 'There are currently no appointments in this category.'}
+                  actionLabel="Schedule Appointment"
+                  onAction={() => navigate('/appointments/create')}
+                />
+              ) : viewMode === 'list' ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[650px]">
+                    <thead>
+                      <tr className="bg-slate-50/70 border-b border-slate-200/80">
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Patient</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Therapist</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Type</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Date & Time</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {appointments.map(apt => {
+                        const d = new Date(apt.startTime);
+                        const dateFormatted = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const timeFormatted = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                        const badge = getStatusBadge(apt.status);
+                        const typeStyle = apt.appointmentPlace === 'VIDEO' ? 'bg-purple-50 text-purple-700 border-purple-200/60' : apt.appointmentPlace === 'HOME' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' : 'bg-cyan-50 text-cyan-700 border-cyan-200/60';
+
+                        return (
+                          <tr
+                            key={apt._id}
+                            onClick={() => navigate(`/appointments/${apt._id}`)}
+                            className="hover:bg-slate-50/80 cursor-pointer transition-colors"
+                          >
+                            <td className="py-3.5 px-5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs shrink-0">
+                                  {apt.patientName?.[0] || 'P'}
+                                </div>
+                                <div>
+                                  <div className="text-xs font-bold text-slate-900 leading-snug">{apt.patientName}</div>
+                                  <div className="text-[11px] text-slate-400 font-normal">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-5">
+                              <div className="text-xs font-bold text-slate-800 leading-snug">{apt.therapistName}</div>
+                              <div className="text-[11px] text-slate-400 font-normal">{apt.therapistSubtitle}</div>
+                            </td>
+
+                            <td className="py-3.5 px-5">
+                              <span className={`inline-block px-3 py-0.5 text-[11px] font-bold rounded-full border ${typeStyle}`}>
+                                {apt.type}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-5">
+                              <div className="text-xs font-bold text-slate-800 leading-snug">{dateFormatted}</div>
+                              <div className="text-[11px] text-slate-400 font-normal">{timeFormatted}</div>
+                            </td>
+
+                            <td className="py-3.5 px-5">
+                              <span className={`inline-block px-3 py-0.5 text-[11px] font-bold rounded-full border ${badge.style}`}>
+                                {badge.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {appointments.map(apt => {
+                    const d = new Date(apt.startTime);
+                    const badge = getStatusBadge(apt.status);
+                    const typeStyle = apt.appointmentPlace === 'VIDEO' ? 'bg-purple-50 text-purple-700 border-purple-200/60' : apt.appointmentPlace === 'HOME' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' : 'bg-cyan-50 text-cyan-700 border-cyan-200/60';
+
+                    return (
+                      <div
+                        key={apt._id}
+                        onClick={() => navigate(`/appointments/${apt._id}`)}
+                        className="p-4 bg-white border border-slate-200 rounded-2xl hover:shadow-md transition-all cursor-pointer space-y-3"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
+                              {apt.patientName?.[0] || 'P'}
+                            </div>
+                            <div>
+                              <div className="text-xs font-bold text-slate-900">{apt.patientName}</div>
+                              <div className="text-[11px] text-slate-400">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
+                            </div>
+                          </div>
+                          <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${badge.style}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <span className="font-medium text-slate-700">{apt.therapistName}</span>
+                          <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border ${typeStyle}`}>
+                            {apt.type}
+                          </span>
+                        </div>
+
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
+                          <Clock size={12} /> {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} · {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: SIDEBAR WIDGETS (4 COLS) */}
+          <div className="lg:col-span-4 space-y-5">
+            {/* WIDGET 1: TODAY'S TIMELINE */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Today's Timeline</h3>
+                <span className="text-[11px] font-bold text-blue-600">{timeline.length} Scheduled</span>
+              </div>
+
+              <div className="space-y-4 relative pl-1">
+                {timeline.length > 0 ? (
+                  timeline.map((item, idx) => {
+                    const badge = getStatusBadge(item.status);
+                    return (
+                      <div key={item.id} className="flex items-start justify-between relative">
+                        <div className="flex items-start gap-3">
+                          <div className="relative mt-0.5">
+                            <div className={`w-3 h-3 rounded-full border-2 bg-white ${idx === 0 ? 'border-blue-600 ring-4 ring-blue-50' : 'border-slate-300'}`} />
+                            {idx < timeline.length - 1 && (
+                              <div className="absolute top-3 left-1.5 -translate-x-1/2 w-0.5 h-7 bg-slate-100" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 leading-snug">{item.name}</div>
+                            <div className="text-[11px] text-slate-400 font-normal">{item.detail}</div>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${badge.style}`}>
+                          {item.status}
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2">No appointments scheduled for today.</p>
+                )}
+              </div>
+            </div>
+
+            {/* WIDGET 2: PENDING CONFIRMATIONS */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">Pending Confirmations</h3>
+
+              <div className="space-y-3">
+                {pendingConfirmations.length > 0 ? (
+                  pendingConfirmations.map(p => {
+                    const d = new Date(p.startTime);
+                    return (
+                      <div key={p._id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 shrink-0">
+                            <Bell size={15} />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 leading-tight">{p.patientName}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">
+                              {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} • {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleConfirmAppointment(p._id)}
+                          className="btn btn-secondary btn-xs text-emerald-600 hover:bg-emerald-50 border-emerald-200"
+                          title="Confirm appointment"
+                        >
+                          <Check size={13} /> Confirm
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-400 italic py-2">All bookings are confirmed.</p>
+                )}
+              </div>
+            </div>
+
+            {/* WIDGET 3: QUICK ACTIONS */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
+              <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3">Quick Actions</h3>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setActiveModal('reminder')}
+                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs"
+                >
+                  <Send size={18} className="text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-bold text-slate-800">Send Reminder</span>
+                </button>
+
+                <button
+                  onClick={handlePrintLedger}
+                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs"
+                >
+                  <Printer size={18} className="text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-bold text-slate-800">Print Ledger</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SEND REMINDER MODAL ── */}
+      {activeModal === 'reminder' && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-fade-up">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-slate-900">Send Appointment Reminder</h3>
+              <button onClick={() => setActiveModal(null)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">Choose notification channels to send session reminder to patient:</p>
+
+            <div className="space-y-2 text-xs">
+              <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={reminderMethods.sms}
+                  onChange={e => setReminderMethods(p => ({ ...p, sms: e.target.checked }))}
+                  className="accent-blue-600"
+                />
+                <span className="font-bold text-slate-800">SMS Notification (+91)</span>
+              </label>
+
+              <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={reminderMethods.email}
+                  onChange={e => setReminderMethods(p => ({ ...p, email: e.target.checked }))}
+                  className="accent-blue-600"
+                />
+                <span className="font-bold text-slate-800">Email Notification</span>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <button onClick={() => setActiveModal(null)} className="btn btn-secondary text-xs">
+                Cancel
+              </button>
+              <button
+                onClick={handleSendReminder}
+                disabled={reminderLoading || (!reminderMethods.sms && !reminderMethods.email)}
+                className="btn btn-primary text-xs flex items-center gap-1.5"
+              >
+                <Send size={13} /> {reminderLoading ? 'Sending...' : 'Send Reminder'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
