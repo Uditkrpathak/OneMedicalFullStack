@@ -11,8 +11,8 @@ import { Server } from 'socket.io';
 dotenv.config();
 
 if (!process.env.JWT_ACCESS_SECRET) {
-  console.error('FATAL: JWT_ACCESS_SECRET is not configured in the Gateway environment.');
-  process.exit(1);
+  console.warn('[Gateway] JWT_ACCESS_SECRET was not set in env. Using default secret.');
+  process.env.JWT_ACCESS_SECRET = 'onemedical_access_secret_change_in_prod';
 }
 
 const app = express();

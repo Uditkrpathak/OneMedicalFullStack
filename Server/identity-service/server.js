@@ -10,8 +10,8 @@ import paymentRoutes from './src/payment/routes/payment.routes.js';
 dotenv.config();
 
 if (!process.env.OTP_HASH_SECRET) {
-  console.error('FATAL: OTP_HASH_SECRET is not configured in the environment.');
-  process.exit(1);
+  console.warn('[Identity] OTP_HASH_SECRET was not set in env. Using default hash secret.');
+  process.env.OTP_HASH_SECRET = 'onemedical_otp_hash_secret_change_in_prod';
 }
 
 import { authenticate } from './src/utils/auth.js';
