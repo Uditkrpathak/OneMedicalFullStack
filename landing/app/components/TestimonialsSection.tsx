@@ -61,7 +61,7 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
 
   return (
     <section id="stories" className="pt-4 pb-8 sm:pt-6 sm:pb-10 bg-white relative overflow-hidden">
-      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Header with Minimal Spacing */}
         <div className="max-w-2xl mx-auto space-y-1 mb-6">
           <div className="text-[10.5px] font-extrabold uppercase tracking-widest text-[#003D9B]">

@@ -69,7 +69,7 @@ export default function PerformanceSection() {
   ];
 
   return (
-    <section className="pt-20 pb-6 sm:pt-36 sm:pb-8 bg-white">
+    <section className="pt-2 pb-6 sm:pt-4 sm:pb-8 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Section Header with Minimal Spacing */}
         <div className="max-w-2xl mx-auto space-y-1 mb-5 sm:mb-6">
@@ -85,8 +85,8 @@ export default function PerformanceSection() {
           </p>
         </div>
 
-        {/* 4 Stat Cards - Exact 278px x 274px Hug ratio, 32px radius, and clean glass padding */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 max-w-6xl mx-auto">
+        {/* 4 Stat Cards - 32px radius, and clean glass padding */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 max-w-7xl mx-auto">
           {stats.map((item) => {
             const Icon = item.icon;
             return (

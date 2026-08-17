@@ -12,7 +12,7 @@ dotenv.config();
 
 if (!process.env.JWT_ACCESS_SECRET) {
   console.warn('[Gateway] JWT_ACCESS_SECRET was not set in env. Using default secret.');
-  process.env.JWT_ACCESS_SECRET = 'onemedical_access_secret_change_in_prod';
+  process.env.JWT_ACCESS_SECRET = 'onemedical_jwt_access_secret_production_2026';
 }
 
 const app = express();
@@ -104,7 +104,8 @@ const authenticate = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'dev_secret');
+    const accessSecret = process.env.JWT_ACCESS_SECRET || 'onemedical_jwt_access_secret_production_2026';
+    const decoded = jwt.verify(token, accessSecret);
     req.user = decoded; // { userId, role, phone/email }
 
     // RBAC check
@@ -337,7 +338,8 @@ io.use((socket, next) => {
     return next(new Error('Authentication error: Token missing'));
   }
   try {
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'dev_secret');
+    const accessSecret = process.env.JWT_ACCESS_SECRET || 'onemedical_jwt_access_secret_production_2026';
+    const decoded = jwt.verify(token, accessSecret);
     socket.user = decoded;
     next();
   } catch (err) {

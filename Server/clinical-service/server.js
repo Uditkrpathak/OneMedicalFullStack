@@ -22,7 +22,7 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config();
 
 if (!process.env.JWT_ACCESS_SECRET) {
-  process.env.JWT_ACCESS_SECRET = 'onemedical_access_secret_change_in_prod';
+  process.env.JWT_ACCESS_SECRET = 'onemedical_jwt_access_secret_production_2026';
 }
 
 const app = express();

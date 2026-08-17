@@ -52,7 +52,7 @@ export default function Navbar({ onOpenBooking }: NavbarProps) {
         : 'bg-white/95 backdrop-blur-md border-b border-slate-100 py-3 sm:py-3.5'
         }`}
     >
-      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Brand Logo */}
           <Link href="/" className="flex items-center group">
@@ -137,14 +137,6 @@ export default function Navbar({ onOpenBooking }: NavbarProps) {
           </div>
 
           <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
-            <a
-              href="http://localhost:5173/login"
-              target="_blank"
-              rel="noreferrer"
-              className="w-full py-1.5 text-center text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg"
-            >
-              Doctor / Admin Login
-            </a>
             <button
               onClick={() => {
                 setMobileMenuOpen(false);
