@@ -41,17 +41,33 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
       quote:
         'I had forgotten what it felt like to live without pain. One Medical changed my perspective on recovery.',
     },
+    {
+      id: 'rahul',
+      name: 'Rahul, 36',
+      condition: 'Shoulder Impingement',
+      duration: '6 Weeks',
+      improvement: '92%',
+      avatar:
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=160',
+      milestones: [
+        { label: 'Diagnosis', icon: '1' },
+        { label: 'Rotator Cuff', icon: '2' },
+        { label: 'Full Motion', icon: '3' },
+      ],
+      quote:
+        'Exceptional care and biometric tracking made every session count. Highly recommended for athletes.',
+    },
   ];
 
   return (
-    <section id="stories" className="py-8 sm:py-12 bg-white relative overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        {/* Header */}
-        <div className="max-w-2xl mx-auto space-y-1.5 mb-8">
-          <div className="text-[10.5px] font-bold uppercase tracking-widest text-[#003D9B]">
+    <section id="stories" className="pt-4 pb-8 sm:pt-6 sm:pb-10 bg-white relative overflow-hidden">
+      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        {/* Header with Minimal Spacing */}
+        <div className="max-w-2xl mx-auto space-y-1 mb-6">
+          <div className="text-[10.5px] font-extrabold uppercase tracking-widest text-[#003D9B]">
             Success Stories
           </div>
-          <h2 className="text-2xl sm:text-[32px] font-bold text-[#051A3E] tracking-tight">
+          <h2 className="text-2xl sm:text-[30px] font-bold text-[#051A3E] tracking-tight">
             Stories of Resilience
           </h2>
           <p className="text-xs sm:text-[13px] text-slate-500 leading-relaxed font-normal">
@@ -59,22 +75,23 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
           </p>
         </div>
 
-        {/* 2 Stories Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-left max-w-4xl mx-auto mb-6">
+        {/* 3 Large Stories Cards Filling the Screen Width Naturally */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-left max-w-7xl mx-auto mb-6">
           {stories.map((story) => (
             <div
               key={story.id}
-              className="bg-slate-50/70 rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-100 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between"
+              className="bg-slate-50/70 rounded-[32px] p-6 sm:p-7 border border-slate-100/90 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between"
             >
               <div>
+                {/* Header Profile */}
                 <div className="flex items-center gap-3 mb-4">
                   <img
                     src={story.avatar}
                     alt={story.name}
-                    className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-2xs"
+                    className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-2xs"
                   />
                   <div>
-                    <h3 className="text-sm sm:text-[15px] font-bold text-[#051A3E]">
+                    <h3 className="text-[15px] font-bold text-[#051A3E]">
                       {story.name}
                     </h3>
                     <div className="flex items-center gap-1 text-[11px] font-semibold text-[#003D9B]">
@@ -84,27 +101,29 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
                   </div>
                 </div>
 
+                {/* Duration & Improvement */}
                 <div className="grid grid-cols-2 gap-3 pb-3 border-b border-slate-200/70 mb-4">
                   <div>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">
                       Duration
                     </div>
-                    <div className="text-base font-bold text-[#003D9B] mt-0.5">
+                    <div className="text-lg font-bold text-[#003D9B] mt-0.5">
                       {story.duration}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">
                       Improvement
                     </div>
-                    <div className="text-base font-bold text-teal-600 mt-0.5">
+                    <div className="text-lg font-bold text-teal-600 mt-0.5">
                       {story.improvement}
                     </div>
                   </div>
                 </div>
 
+                {/* Milestones Stepper */}
                 <div className="mb-4">
-                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                  <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
                     Recovery Milestones
                   </div>
                   <div className="relative flex items-center justify-between">
@@ -115,7 +134,7 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
                         <div className="w-6 h-6 rounded-full bg-[#003D9B] text-white text-[10px] font-bold flex items-center justify-center shadow-2xs">
                           {m.icon}
                         </div>
-                        <span className="text-[9.5px] font-medium text-slate-600 mt-1 text-center whitespace-nowrap">
+                        <span className="text-[10px] font-medium text-slate-600 mt-1 text-center whitespace-nowrap">
                           {m.label}
                         </span>
                       </div>
@@ -123,7 +142,8 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
                   </div>
                 </div>
 
-                <div className="relative pl-3.5 italic text-xs text-slate-600 leading-relaxed border-l-2 border-[#003D9B]">
+                {/* Quote */}
+                <div className="relative pl-3.5 italic text-[12px] text-slate-600 leading-relaxed border-l-2 border-[#003D9B]">
                   &ldquo;{story.quote}&rdquo;
                 </div>
               </div>
@@ -135,12 +155,12 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
         <div className="space-y-1">
           <button
             onClick={onOpenBooking}
-            className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-5 py-2 rounded-full text-xs font-bold shadow-2xs hover:shadow-xs transition-all inline-flex items-center gap-1.5"
+            className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-md shadow-blue-900/15 hover:shadow-lg transition-all inline-flex items-center gap-1.5"
           >
             <span>Start Your Story</span>
             <ArrowRight size={13} />
           </button>
-          <div className="text-[11px] text-slate-500 font-normal">
+          <div className="text-[11.5px] text-slate-500 font-normal">
             Join 10,000+ patients who found their mobility again.
           </div>
         </div>

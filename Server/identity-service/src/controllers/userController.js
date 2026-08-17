@@ -28,7 +28,24 @@ export const getMyProfile = async (req, res) => {
 // ─── UPDATE PATIENT PROFILE ───────────────────────────────────────────────────
 export const updatePatientProfile = async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'];
+    let userId = req.headers['x-user-id'] || req.user?.userId;
+
+    // Fallback: extract from Authorization Bearer token if not already parsed
+    if (!userId && req.headers['authorization']) {
+      try {
+        const token = req.headers['authorization'].split(' ')[1];
+        const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'onemedical_jwt_access_secret_production_2026';
+        const decoded = jwt.verify(token, secret);
+        userId = decoded?.userId;
+      } catch (err) {
+        // invalid token fallback
+      }
+    }
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'User ID is required to update profile.' } });
+    }
+
     const allowed = ['dob', 'gender', 'height', 'weight', 'bloodGroup', 'primaryConcern', 'medicalConditions', 'allergies', 'emergencyContact', 'address', 'consultationPreferences'];
     const updates = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
@@ -37,9 +54,26 @@ export const updatePatientProfile = async (req, res) => {
     if (req.body.heightCm !== undefined && updates.height === undefined) updates.height = req.body.heightCm;
     if (req.body.weightKg !== undefined && updates.weight === undefined) updates.weight = req.body.weightKg;
 
+    // Normalize gender to lowercase
+    if (updates.gender) {
+      const g = String(updates.gender).toLowerCase().trim();
+      updates.gender = ['male', 'female', 'other', 'prefer_not_to_say'].includes(g) ? g : 'other';
+    }
+
+    // Normalize Date of Birth
+    if (updates.dob) {
+      const parsedDate = new Date(updates.dob);
+      if (!isNaN(parsedDate.getTime())) {
+        updates.dob = parsedDate;
+      } else {
+        delete updates.dob;
+      }
+    }
+
     // Update base user details including isProfileCompleted
     const userUpdates = { isProfileCompleted: true };
     if (req.body.name) userUpdates.name = req.body.name;
+    if (req.body.fullName) userUpdates.name = req.body.fullName;
     if (req.body.email) userUpdates.email = req.body.email;
     if (req.body.avatarUrl) userUpdates.avatarUrl = req.body.avatarUrl;
     const updatedUser = await User.findByIdAndUpdate(userId, userUpdates, { new: true });
@@ -47,6 +81,7 @@ export const updatePatientProfile = async (req, res) => {
     const profile = await PatientProfile.findOneAndUpdate({ userId }, updates, { new: true, upsert: true, runValidators: true });
     res.json({ success: true, data: { user: updatedUser ? updatedUser.toSafeObject() : null, profile } });
   } catch (err) {
+    console.error('[Update Patient Profile Error]:', err.message);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };

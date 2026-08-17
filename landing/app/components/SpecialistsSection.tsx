@@ -39,7 +39,7 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
       languages: 'English & Tamil',
       availability: 'Next Available: Tomorrow',
       image:
-        'https://images.unsplash.com/photo-1594824813576-a192bc5c6d5a?auto=format&fit=crop&q=80&w=500',
+        'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
     },
     {
       id: 3,

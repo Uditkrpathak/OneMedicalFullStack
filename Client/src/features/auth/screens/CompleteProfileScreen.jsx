@@ -124,7 +124,7 @@ export default function CompleteProfileScreen({ navigation }) {
     const profilePayload = {
       name: data.fullName.trim(),
       dob: data.dob || null,
-      gender: data.gender,
+      gender: (data.gender || 'male').toLowerCase(),
       height: heightNum,
       weight: weightNum,
       primaryConcern: data.primaryConcern,
