@@ -1,140 +1,217 @@
-# One Medical — Physiotherapy Recovery Platform
+# OneMedical — Comprehensive Physiotherapy & Clinical Recovery Ecosystem
 
-One Medical is a comprehensive, production-grade rehabilitation and physiotherapy ecosystem. It consists of a role-based mobile application (supporting patients and therapists), a public marketing landing page, and a clinic management web console for admins, all backed by a distributed microservices backend.
-
-This repository is organized as a monorepo containing all services, web clients, and mobile clients in one place for ease of orchestration and development.
+OneMedical is a production-grade, distributed clinical recovery and physiotherapy ecosystem. It empowers patients with guided rehabilitation programs, real-time telehealth consultations, and exercise tracking while giving clinicians and administrators powerful tools for schedule management, telehealth sessions, medical records vaulting, and automated multi-channel patient notifications.
 
 ---
 
 ## Architecture Overview
 
-The system follows a microservices architecture with a single API Gateway routing requests to downstream, independent database-per-service microservices:
+The backend uses a distributed microservices pattern fronted by a reverse-proxy API Gateway with JWT verification, rate-limiting, and resilient routing:
 
 ```mermaid
 graph TD
     subgraph Clients
-        Mobile[Mobile App - Expo / Patients & Therapists]
-        Console[Admin Console - React / Clinic Admins]
-        Marketing[Marketing Website - Next.js]
+        Mobile["📱 Mobile App (Expo / React Native 57)"]
+        AdminWeb["💻 Admin Dashboard (React + Vite)"]
     end
 
-    subgraph Backend
-        Gateway[API Gateway]
-        Identity[Identity & User Service]
-        Scheduling[Scheduling & Appointment Service]
-        Clinical[Clinical & Recovery Service]
-        Payment[Payment & Billing Service]
-        Worker[Notification Worker]
+    subgraph API Gateway
+        Gateway["⚡ API Gateway (Port 5000)"]
     end
 
-    subgraph Data Stores
-        MongoDB1[(identity_db)]
-        MongoDB2[(scheduling_db)]
-        MongoDB3[(clinical_db)]
-        MongoDB4[(payments_db)]
-        Redis[(Redis Cache/Locks)]
-        RabbitMQ[[RabbitMQ Event Bus]]
+    subgraph Microservices
+        IdentitySvc["🔐 Identity & Payment Service (Port 5001)"]
+        ClinicalSvc["🩺 Clinical & Recovery Service (Port 5003)"]
+    end
+
+    subgraph Data Stores & Event Bus
+        IdentityDB[("🍃 MongoDB: identity_db")]
+        ClinicalDB[("🍃 MongoDB: clinical_db")]
+        RedisCache[("⚡ Redis (Cache & Locks)")]
+        RabbitMQBus[["📬 RabbitMQ Event Bus"]]
+    end
+
+    subgraph Storage & External Providers
+        StorageProviders["☁️ Cloudinary / AWS S3 / Cloudflare R2 / Supabase"]
+        NotificationProviders["🔔 FCM / Expo Push / Brevo Email / SMS"]
+        RazorpayGateway["💳 Razorpay Payment Gateway"]
     end
 
     Mobile --> Gateway
-    Console --> Gateway
-    Marketing --> Gateway
+    AdminWeb --> Gateway
 
-    Gateway --> Identity
-    Gateway --> Scheduling
-    Gateway --> Clinical
-    Gateway --> Payment
+    Gateway -->|Auth, Users, Payments| IdentitySvc
+    Gateway -->|Clinical, Telehealth, Vault| ClinicalSvc
 
-    Identity --> MongoDB1
-    Scheduling --> MongoDB2
-    Clinical --> MongoDB3
-    Payment --> MongoDB4
+    IdentitySvc --> IdentityDB
+    IdentitySvc --> RazorpayGateway
+    IdentitySvc -.-> RabbitMQBus
 
-    Scheduling -.-> Redis
-    Scheduling -.-> RabbitMQ
-    Payment -.-> RabbitMQ
-    Clinical -.-> RabbitMQ
-    
-    RabbitMQ -.-> Worker
-    Worker --> SendGrid[Email/SMS API]
+    ClinicalSvc --> ClinicalDB
+    ClinicalSvc --> RedisCache
+    ClinicalSvc -.-> RabbitMQBus
+    ClinicalSvc --> StorageProviders
+    ClinicalSvc --> NotificationProviders
 ```
 
 ---
 
-## Directory Structure
+## Monorepo Project Structure
 
 ```text
-├── apps/
-│   ├── marketing-website/     # Next.js SSR Web App
-│   ├── admin-console/         # Vite + React.js SPA Dashboard (Clinic Admins)
-│   └── mobile-app/            # Expo (React Native) App (Patients & Therapists)
-├── services/
-│   ├── api-gateway/           # Central Routing, Rate Limiting & Auth Gateway
-│   ├── identity-service/      # User management, OTP & Profile DB
-│   ├── scheduling-service/    # Booking engine, slot generator, Redis locks
-│   ├── clinical-service/      # Recovery exercises & session logger
-│   ├── payment-service/       # Orders, webhook signature logic, invoices
-│   └── notification-worker/   # RabbitMQ consumer for email/SMS/push notifications
-├── package.json               # Monorepo Workspace configuration
-└── docker-compose.yml         # Local environment setup (Mongo, Redis, RabbitMQ)
+OneMedical/
+├── Client/                             # Cross-platform Mobile Application (Expo / React Native)
+│   ├── src/
+│   │   ├── features/
+│   │   │   ├── auth/                  # Authentication, OTP, Complete Profile, Patient/Therapist Overviews
+│   │   │   ├── clinical/              # Recovery Programs, Daily Exercises, Pain Tracker, Vault, Telehealth
+│   │   │   └── telehealth/            # WebRTC video consultation & real-time chat
+│   │   ├── navigation/                # Bottom Tabs & Native Stack Navigation
+│   │   └── shared/                    # Redux Toolkit store, offline sync engine & resilient API client
+│   ├── app.json                       # Expo configuration & deep linking
+│   ├── eas.json                       # EAS Build profile for Standalone Android APK
+│   └── package.json
+│
+├── Admin/                              # Hospital / Clinic Administration Portal
+│   ├── src/                           # Vite + React.js web dashboard
+│   └── package.json
+│
+├── Server/                             # Distributed Backend Microservices
+│   ├── gateway/                       # Central Reverse Proxy & Auth Gateway (Port 5000)
+│   ├── identity-service/              # Auth, RBAC, User Profiles, Razorpay Billing (Port 5001)
+│   ├── clinical-service/              # Consultations, Exercises, Records Vault, Notifications (Port 5003)
+│   └── docker-compose.yml             # Local infrastructure (MongoDB, Redis, RabbitMQ)
+│
+├── render.yaml                        # Infrastructure-as-Code for Render Cloud Deployment
+├── package.json                       # Root orchestration & scripts
+└── README.md
 ```
 
 ---
 
-## Free-Tier Tech Stack & Setup
+## Core Features & Modules
 
-To ensure zero hosting and operational costs during development and initial production, the stack is configured to leverage the following free tiers:
+### 1. 📱 Mobile Client (`Client/`)
+- **Modern UI/UX**: Custom glassmorphism styling (`expo-glass-effect`), smooth gradient cards, Lucide icons, dynamic themes, and haptic feedback.
+- **Role-Based Workflows**: Dedicated views and navigation flows for **Patients** and **Therapists**.
+- **Clinical Recovery Engine**:
+  - Daily assigned routine & session overview (`TodaysSessionScreen`).
+  - Active interactive exercise timer with voice countdown & rest intervals (`ExerciseTimerActiveScreen`).
+  - Interactive visual pain assessment logger & VAS pain scale tracking (`PainAssessmentScreen`).
+  - Recovery progress analytics with adherence statistics & milestones (`RecoveryProgressAnalyticsScreen`).
+- **Medical Records Vault**: Secure encrypted storage viewer for lab reports, clinical notes, and X-ray/MRI scans (`MedicalRecordsVaultScreen`).
+- **Telehealth & Real-Time Chat**: Live WebRTC-enabled consultations and instant messaging (`TelehealthConsultationScreen`).
+- **Resilient Offline Mode**: Local queueing of write mutations via `offlineSyncService` with auto-sync upon network reconnection.
 
-| Service Type | Recommended Free Tier Option | Limitations / Capacity |
-| :--- | :--- | :--- |
-| **Database** | MongoDB Atlas (M0 Shared Cluster) | 512 MB storage |
-| **Cache/Locks** | Upstash Redis | 10,000 requests/day |
-| **Broker** | CloudAMQP (RabbitMQ) | 1M messages/month |
-| **Emails** | Brevo (formerly Sendinblue) / Mailersend | 300 emails/day / 12,000 emails/month |
-| **File Storage** | Supabase Storage | 50 GB storage, 50 GB bandwidth |
-| **Hosting (Web)** | Vercel / Netlify / Cloudflare Pages | Unlimited static & serverless projects |
-| **Hosting (API)** | Render / Railway / Oracle Cloud Free Tier | Free instance hours / Free compute instances |
+### 2. ⚡ API Gateway (`Server/gateway`)
+- Dynamic service routing and proxying to `identity-service` and `clinical-service`.
+- Centralized JWT verification and role extraction.
+- Strict CORS configuration and standardized JSON error responses.
+
+### 3. 🔐 Identity & Billing Service (`Server/identity-service`)
+- **Authentication**: Passwordless OTP, email/password login, JWT access token rotation, and refresh token theft prevention.
+- **Profiles**: Dedicated Schemas for `PatientProfile`, `TherapistProfile`, and `User`.
+- **Payment & Billing**: Integrated **Razorpay** checkout, automatic invoice generation, and idempotent cryptographic webhook verification.
+
+### 4. 🩺 Clinical & Recovery Service (`Server/clinical-service`)
+- **Treatment Plans**: CRUD for physiotherapy exercises, treatment programs, and clinical consultations.
+- **Multi-Storage Vault**: Pluggable storage adapter supporting Cloudinary, AWS S3, Cloudflare R2, Supabase Storage, and local fallback.
+- **Multi-Channel Notification Worker**: Asynchronous RabbitMQ worker delivering real-time alerts via Expo Push, Firebase Cloud Messaging (FCM), Brevo (Email), and SMS.
 
 ---
 
-## Local Development Quickstart
+## Quickstart & Local Setup
 
 ### Prerequisites
-- Node.js 20 LTS or later
-- Docker & Docker Compose
-- Expo Go App (optional, for testing the mobile app on a physical device)
+- **Node.js**: >= 20.11.0
+- **Docker & Docker Compose** (for local databases and message brokers)
+- **Expo CLI / EAS CLI** (for mobile development and APK builds)
 
 ### 1. Clone & Install Dependencies
-From the repository root:
 ```bash
+# Clone the repository
+git clone <YOUR_REPO_URL>
+cd OneMedical
+
+# Install root & workspace dependencies
 npm install
 ```
 
-### 2. Boot Local Infrastructure (Databases, Cache, Queue)
-Use Docker Compose to run local MongoDB instances, Redis cache, and RabbitMQ:
+### 2. Start Local Databases (Docker)
 ```bash
+cd Server
 docker-compose up -d
 ```
 
 ### 3. Configure Environment Variables
-Create `.env` files in each service directory according to their `.env.example` templates (these will be generated during the execution phases).
+Copy `.env.example` in each service to `.env` and fill in your keys:
+- `Server/gateway/.env`
+- `Server/identity-service/.env`
+- `Server/clinical-service/.env`
 
-### 5. Start Development Servers
-Run the complete application suite locally using hot-reload:
+### 4. Start the Microservices
 ```bash
-npm run dev
+# In separate terminals or using root script:
+cd Server/identity-service && npm run dev
+cd Server/clinical-service && npm run dev
+cd Server/gateway && npm run dev
+```
+
+### 5. Launch the Mobile Client
+```bash
+cd Client
+npx expo start
 ```
 
 ---
 
-## Production Security & Resiliency Features
+## 🚀 Deployment (Render Blueprint)
 
-1. **Security**:
-   - Short-lived JWT Access Tokens (15 min) + Rotating Refresh Tokens (30 days) with automatic reuse-theft detection.
-   - Centralized RBAC checks at the API Gateway.
-   - Parameterized queries to prevent SQL/NoSQL Injection (Mongoose ODM).
-   - Server-side validation (Zod) on all ingress endpoints.
-2. **Double Booking Prevention**:
-   - Redis distributed locking (`Redlock` pattern) to handle high concurrency slot-reservation requests.
-3. **Idempotent Webhooks**:
-   - Verifies cryptographically signed webhooks from payment gateways with automatic deduplication.
+The repository includes a ready-to-use [`render.yaml`](render.yaml) blueprint that deploys all 3 backend services simultaneously:
+
+1. Push your repository to **GitHub**.
+2. Go to [Render Dashboard](https://dashboard.render.com/) → Click **New +** → **Blueprint**.
+3. Select your repository. Render will automatically provision:
+   - `onemedical-gateway`
+   - `onemedical-identity`
+   - `onemedical-clinical`
+4. Set your `MONGO_URI`, `RABBITMQ_URL`, and third-party API keys in Render's environment settings.
+
+---
+
+## 📦 Building the Android APK
+
+### Option 1: EAS Cloud Build (Recommended)
+`Client/eas.json` is pre-configured with the `preview` APK profile:
+```bash
+cd Client
+# Log into your Expo account
+npx eas-cli login
+
+# Start Android APK build
+npx eas-cli build -p android --profile preview
+```
+Once the build completes on EAS servers, a download link and QR code for the `.apk` file will be provided.
+
+### Option 2: Local Android Build
+```bash
+cd Client/android
+./gradlew assembleRelease
+```
+The output standalone APK will be generated at:
+`Client/android/app/build/outputs/apk/release/app-release.apk`
+
+---
+
+## 🛡️ Security & Resiliency Highlights
+
+- **JWT + Refresh Token Rotation**: Automatic token expiration with secure refresh handling.
+- **Idempotent Webhooks**: Protected against replay attacks with cryptographic signature validation.
+- **Resilient Offline Architecture**: Automatic caching and background synchronization for uninterrupted clinical usage in poor network environments.
+- **Configurable Multi-Storage**: Secure handling of sensitive medical artifacts and patient records.
+
+---
+
+## License
+
+This project is licensed under the MIT License.
