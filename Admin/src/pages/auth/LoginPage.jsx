@@ -76,12 +76,14 @@ export default function LoginPage() {
   };
 
   // 1. Submit Login (Requests OTP / Logs In)
-  const handleLoginSubmit = async e => {
-    e.preventDefault();
+  const handleLoginSubmit = async (e, overrideIdentifier = null) => {
+    if (e?.preventDefault) e.preventDefault();
     setErrorMessage(null);
     setServerOtpNotice(null);
 
-    if (!identifier.trim()) {
+    const targetId = (overrideIdentifier || identifier || '').trim();
+
+    if (!targetId) {
       setErrorMessage('Please enter your email or mobile number.');
       return;
     }
@@ -90,8 +92,8 @@ export default function LoginPage() {
     dispatch(loginStart());
 
     try {
-      const isEmail = identifier.includes('@');
-      const payload = isEmail ? { email: identifier.trim() } : { phoneNumber: identifier.trim() };
+      const isEmail = targetId.includes('@');
+      const payload = isEmail ? { email: targetId } : { phoneNumber: targetId };
 
       const res = await api.requestOtp(payload);
       if (res?.data?.otp) {
@@ -338,7 +340,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setIdentifier('9999999999');
-                    handleLoginSubmit({ preventDefault: () => {} });
+                    handleLoginSubmit(null, '9999999999');
                   }}
                   className="w-full py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-2xs"
                 >
