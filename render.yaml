@@ -16,6 +16,8 @@ services:
         generateValue: true
       - key: INTERNAL_API_KEY
         generateValue: true
+      - key: OTP_HASH_SECRET
+        generateValue: true
       - key: CLINICAL_SERVICE_URL
         value: https://onemedical-clinical.onrender.com
       - key: RABBITMQ_URL
