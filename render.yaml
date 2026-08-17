@@ -2,6 +2,7 @@ services:
   - type: web
     name: onemedical-identity
     env: node
+    plan: free
     rootDir: Server/identity-service
     buildCommand: npm install
     startCommand: node server.js
@@ -11,11 +12,11 @@ services:
       - key: MONGO_URI
         sync: false
       - key: JWT_ACCESS_SECRET
-        generateValue: true
+        sync: false
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: INTERNAL_API_KEY
-        generateValue: true
+        sync: false
       - key: OTP_HASH_SECRET
         generateValue: true
       - key: CLINICAL_SERVICE_URL
@@ -32,6 +33,7 @@ services:
   - type: web
     name: onemedical-clinical
     env: node
+    plan: free
     rootDir: Server/clinical-service
     buildCommand: npm install
     startCommand: node server.js
@@ -43,15 +45,9 @@ services:
       - key: RABBITMQ_URL
         sync: false
       - key: INTERNAL_API_KEY
-        fromService:
-          type: web
-          name: onemedical-identity
-          envVarKey: INTERNAL_API_KEY
+        sync: false
       - key: JWT_ACCESS_SECRET
-        fromService:
-          type: web
-          name: onemedical-identity
-          envVarKey: JWT_ACCESS_SECRET
+        sync: false
       - key: IDENTITY_SERVICE_URL
         value: https://onemedical-identity.onrender.com
       - key: STORAGE_PROVIDER
@@ -66,6 +62,7 @@ services:
   - type: web
     name: onemedical-gateway
     env: node
+    plan: free
     rootDir: Server/gateway
     buildCommand: npm install
     startCommand: node server.js
@@ -77,12 +74,6 @@ services:
       - key: CLINICAL_SERVICE_URL
         value: https://onemedical-clinical.onrender.com
       - key: INTERNAL_API_KEY
-        fromService:
-          type: web
-          name: onemedical-identity
-          envVarKey: INTERNAL_API_KEY
+        sync: false
       - key: JWT_ACCESS_SECRET
-        fromService:
-          type: web
-          name: onemedical-identity
-          envVarKey: JWT_ACCESS_SECRET
+        sync: false
