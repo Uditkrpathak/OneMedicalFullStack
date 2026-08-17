@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: onemedical-identity
+    name: onemedical-v2-identity
     env: node
     plan: free
     rootDir: Server/identity-service
@@ -20,7 +20,7 @@ services:
       - key: OTP_HASH_SECRET
         generateValue: true
       - key: CLINICAL_SERVICE_URL
-        value: https://onemedical-clinical.onrender.com
+        value: https://onemedical-v2-clinical.onrender.com
       - key: RABBITMQ_URL
         sync: false
       - key: RAZORPAY_KEY_ID
@@ -31,7 +31,7 @@ services:
         sync: false
 
   - type: web
-    name: onemedical-clinical
+    name: onemedical-v2-clinical
     env: node
     plan: free
     rootDir: Server/clinical-service
@@ -49,7 +49,7 @@ services:
       - key: JWT_ACCESS_SECRET
         sync: false
       - key: IDENTITY_SERVICE_URL
-        value: https://onemedical-identity.onrender.com
+        value: https://onemedical-v2-identity.onrender.com
       - key: STORAGE_PROVIDER
         value: cloudinary
       - key: CLOUDINARY_CLOUD_NAME
@@ -60,7 +60,7 @@ services:
         sync: false
 
   - type: web
-    name: onemedical-gateway
+    name: onemedical-v2-gateway
     env: node
     plan: free
     rootDir: Server/gateway
@@ -70,9 +70,9 @@ services:
       - key: PORT
         value: 5000
       - key: IDENTITY_SERVICE_URL
-        value: https://onemedical-identity.onrender.com
+        value: https://onemedical-v2-identity.onrender.com
       - key: CLINICAL_SERVICE_URL
-        value: https://onemedical-clinical.onrender.com
+        value: https://onemedical-v2-clinical.onrender.com
       - key: INTERNAL_API_KEY
         sync: false
       - key: JWT_ACCESS_SECRET
