@@ -45,7 +45,12 @@ export const SocketProvider = ({ children }) => {
     });
 
     socketInstance.on('connect_error', (err) => {
-      console.warn('[Client Socket] Connection error:', err.message);
+      if (err.message?.includes('Authentication error') || err.message?.includes('Invalid token')) {
+        console.log('[Client Socket] Waiting for fresh auth token before connecting.');
+        socketInstance.disconnect();
+      } else {
+        console.warn('[Client Socket] Connection error:', err.message);
+      }
     });
 
     setTimeout(() => setSocket(socketInstance), 0);
