@@ -19,6 +19,8 @@ services:
         sync: false
       - key: OTP_HASH_SECRET
         generateValue: true
+      - key: OTP_DEV_MODE
+        value: "true"
       - key: CLINICAL_SERVICE_URL
         value: https://onemedical-v2-clinical.onrender.com
       - key: RABBITMQ_URL

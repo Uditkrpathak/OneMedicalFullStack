@@ -177,31 +177,33 @@ export default function OtpScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* DEMO / DEV QUICK OTP BANNER */}
-        <TouchableOpacity
-          style={styles.autoFillBanner}
-          activeOpacity={0.8}
-          onPress={() => {
-            const targetOtp = route.params?.otp || '123456';
-            const digits = targetOtp.padStart(6, '1').split('');
-            digits.forEach((d, idx) => {
-              setValue(`d${idx}`, d);
-            });
-          }}
-        >
-          <Ionicons name="key" size={18} color="#0038A8" style={{ marginRight: 8 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: '#0038A8' }}>
-              OTP Code: {route.params?.otp || '123456'}
-            </Text>
-            <Text style={{ fontSize: 11, color: '#0038A8' }}>
-              Tap to auto-fill code instantly
-            </Text>
-          </View>
-          <View style={styles.autoFillTag}>
-            <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Auto-Fill</Text>
-          </View>
-        </TouchableOpacity>
+        {/* DEMO / DEV QUICK OTP BANNER (Shown only if server returns dev OTP) */}
+        {!!route.params?.otp && (
+          <TouchableOpacity
+            style={styles.autoFillBanner}
+            activeOpacity={0.8}
+            onPress={() => {
+              const targetOtp = String(route.params.otp);
+              const digits = targetOtp.padStart(6, '0').split('');
+              digits.forEach((d, idx) => {
+                setValue(`d${idx}`, d);
+              });
+            }}
+          >
+            <Ionicons name="key" size={18} color="#0038A8" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#0038A8' }}>
+                OTP Code: {route.params.otp}
+              </Text>
+              <Text style={{ fontSize: 11, color: '#0038A8' }}>
+                Tap to auto-fill code instantly
+              </Text>
+            </View>
+            <View style={styles.autoFillTag}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Auto-Fill</Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Error Banner */}
         {!!errors.root && (

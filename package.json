@@ -11,6 +11,7 @@
   "workspaces": [
     "Admin",
     "Client",
+    "landing",
     "Server/gateway",
     "Server/identity-service",
     "Server/clinical-service"
@@ -21,8 +22,9 @@
     "dev:clinical": "npm run dev --workspace=Server/clinical-service",
     "dev:admin": "npm run dev --workspace=Admin",
     "dev:client": "npm run dev --workspace=Client",
+    "dev:landing": "npm run dev --workspace=landing",
     "dev:backend": "concurrently \"npm run dev:gateway\" \"npm run dev:identity\" \"npm run dev:clinical\"",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:admin\""
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:admin\" \"npm run dev:landing\""
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
