@@ -59,7 +59,8 @@ export default function SupportPage() {
   });
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/v1/health')
+    const healthUrl = (import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://onemedical-v2-gateway.onrender.com')) + '/api/v1/health';
+    fetch(healthUrl)
       .then((r) => r.json())
       .then(() => setHealthStatus((h) => ({ ...h, gateway: 'Operational' })))
       .catch(() => setHealthStatus((h) => ({ ...h, gateway: 'Operational' })));

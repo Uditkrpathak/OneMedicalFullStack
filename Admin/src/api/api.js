@@ -1,4 +1,5 @@
-const BASE_URL = '/api/v1';
+const API_GATEWAY = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://onemedical-v2-gateway.onrender.com');
+const BASE_URL = `${API_GATEWAY}/api/v1`;
 
 /**
  * Standardized API client for Admin Dashboard.

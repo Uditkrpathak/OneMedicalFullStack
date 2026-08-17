@@ -74,7 +74,7 @@ export function UserAvatar({ name = '', src = '', className = 'w-9 h-9', alt = '
 
   let fullSrc = src;
   if (src && src.startsWith('/') && !src.startsWith('//')) {
-    fullSrc = `${window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://onemedical-gateway.onrender.com'}${src}`;
+    fullSrc = `${window.location.origin.includes('localhost') ? 'http://localhost:5000' : 'https://onemedical-v2-gateway.onrender.com'}${src}`;
   }
 
   if (!src || failed) {
