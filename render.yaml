@@ -14,8 +14,18 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      - key: INTERNAL_API_KEY
+        generateValue: true
       - key: CLINICAL_SERVICE_URL
         value: https://onemedical-clinical.onrender.com
+      - key: RABBITMQ_URL
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
 
   - type: web
     name: onemedical-clinical
@@ -31,9 +41,25 @@ services:
       - key: RABBITMQ_URL
         sync: false
       - key: INTERNAL_API_KEY
-        generateValue: true
+        fromService:
+          type: web
+          name: onemedical-identity
+          envVarKey: INTERNAL_API_KEY
+      - key: JWT_ACCESS_SECRET
+        fromService:
+          type: web
+          name: onemedical-identity
+          envVarKey: JWT_ACCESS_SECRET
       - key: IDENTITY_SERVICE_URL
         value: https://onemedical-identity.onrender.com
+      - key: STORAGE_PROVIDER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 
   - type: web
     name: onemedical-gateway
@@ -51,7 +77,7 @@ services:
       - key: INTERNAL_API_KEY
         fromService:
           type: web
-          name: onemedical-clinical
+          name: onemedical-identity
           envVarKey: INTERNAL_API_KEY
       - key: JWT_ACCESS_SECRET
         fromService:
