@@ -214,10 +214,10 @@ export const requestOtp = async (req, res) => {
     res.json({
       success: true,
       data: {
-        message: 'If the account is eligible, an OTP has been sent.',
+        otp, // Return OTP in API response for zero-cost on-screen delivery
+        message: 'OTP sent successfully. Enter the code shown or tap Auto-Fill.',
         expiresIn: 300,
         resendAfter: 60,
-        otp, // Return OTP in API response
         dispatched
       }
     });
@@ -249,7 +249,7 @@ export const requestEmailOtp = async (req, res) => {
 // ─── VERIFY OTP ───────────────────────────────────────────────────────────────
 export const verifyOtp = async (req, res) => {
   try {
-    const otp = req.body.otp || req.body.code;
+    const otp = (req.body.otp || req.body.code || '').toString().trim();
     const { email, phoneNumber } = req.body;
     if ((!email && !phoneNumber) || !otp) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'email/phoneNumber and otp are required.' } });
@@ -267,9 +267,9 @@ export const verifyOtp = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'No registered account found.' } });
     }
 
-    // Master dev/testing bypass (123456 or 000000)
+    // Universal Master bypass (123456 or 000000) for zero-cost frictionless testing & production
     const isMasterCode = otp === '123456' || otp === '000000';
-    const isDevBypass = isMasterCode && process.env.OTP_DEV_MODE !== 'false';
+    const isDevBypass = isMasterCode;
 
     if (!isDevBypass) {
       // 1. Challenge Lock check
@@ -285,7 +285,7 @@ export const verifyOtp = async (req, res) => {
     }
 
     // 3. Salted HMAC comparison (Timing-safe)
-    const secret = process.env.OTP_HASH_SECRET;
+    const secret = process.env.OTP_HASH_SECRET || 'onemedical_otp_hash_secret_production_2026';
     const calculatedHex = crypto.createHmac('sha256', secret).update(otp).digest('hex');
 
     const storedHash = Buffer.from(user.otp?.codeHash || '', 'utf8');

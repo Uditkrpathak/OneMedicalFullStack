@@ -24,11 +24,12 @@ export default function OtpScreen({ route, navigation }) {
   const email = route.params?.email || route.params?.phoneNumber || '+91 98765 43210';
   const role = route.params?.role || 'patient';
 
+  const [currentOtp, setCurrentOtp] = useState(route.params?.otp || '123456');
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(35);
   const [infoMessage, setInfoMessage] = useState('');
 
-  const { control, handleSubmit, setValue, watch, setError, formState: { errors } } = useForm({
+  const { control, handleSubmit, setValue, watch, setError, clearErrors, formState: { errors } } = useForm({
     defaultValues: {
       d0: '', d1: '', d2: '', d3: '', d4: '', d5: '',
     },
@@ -42,12 +43,28 @@ export default function OtpScreen({ route, navigation }) {
   ];
 
   useEffect(() => {
+    if (route.params?.otp) {
+      setCurrentOtp(String(route.params.otp));
+    }
+  }, [route.params?.otp]);
+
+  useEffect(() => {
     let interval;
     if (timer > 0) {
       interval = setInterval(() => setTimer((t) => t - 1), 1000);
     }
     return () => clearInterval(interval);
   }, [timer]);
+
+  const autoFillOtp = (codeToFill) => {
+    const targetOtp = String(codeToFill || currentOtp || '123456');
+    const digits = targetOtp.padStart(6, '0').slice(0, 6).split('');
+    digits.forEach((d, idx) => {
+      setValue(`d${idx}`, d);
+    });
+    clearErrors('root');
+    inputRefs[5].current?.focus();
+  };
 
   const handleDigitInput = (txt, index) => {
     const clean = txt.replace(/[^0-9]/g, '');
@@ -127,7 +144,11 @@ export default function OtpScreen({ route, navigation }) {
     setInfoMessage('');
     try {
       const res = await authApi.requestOtp(email);
-      if (res?.data?.message) {
+      if (res?.data?.otp) {
+        const newCode = String(res.data.otp);
+        setCurrentOtp(newCode);
+        setInfoMessage(`New OTP: ${newCode}`);
+      } else if (res?.data?.message) {
         setInfoMessage(res.data.message);
       }
     } catch (err) {
@@ -177,32 +198,34 @@ export default function OtpScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* DEMO / DEV QUICK OTP BANNER (Shown only if server returns dev OTP) */}
-        {!!route.params?.otp && (
+        {/* ZERO-COST SMART ON-SCREEN OTP NOTIFICATION BANNER */}
+        {!!currentOtp && (
           <TouchableOpacity
             style={styles.autoFillBanner}
             activeOpacity={0.8}
-            onPress={() => {
-              const targetOtp = String(route.params.otp);
-              const digits = targetOtp.padStart(6, '0').split('');
-              digits.forEach((d, idx) => {
-                setValue(`d${idx}`, d);
-              });
-            }}
+            onPress={() => autoFillOtp(currentOtp)}
           >
-            <Ionicons name="key" size={18} color="#0038A8" style={{ marginRight: 8 }} />
+            <Ionicons name="key" size={20} color="#0038A8" style={{ marginRight: 10 }} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: '#0038A8' }}>
-                OTP Code: {route.params.otp}
+              <Text style={{ fontSize: 13, fontWeight: '800', color: '#0038A8' }}>
+                🔑 OTP Code: {currentOtp}
               </Text>
-              <Text style={{ fontSize: 11, color: '#0038A8' }}>
+              <Text style={{ fontSize: 11, color: '#475569', marginTop: 1 }}>
                 Tap to auto-fill code instantly
               </Text>
             </View>
             <View style={styles.autoFillTag}>
-              <Text style={{ fontSize: 10, fontWeight: '800', color: '#ffffff' }}>Auto-Fill</Text>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#ffffff' }}>Auto-Fill</Text>
             </View>
           </TouchableOpacity>
+        )}
+
+        {/* Info Message (e.g. after resend) */}
+        {!!infoMessage && (
+          <View style={[styles.errorBanner, { backgroundColor: '#f0fdf4', borderColor: '#86efac' }]}>
+            <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" style={{ marginRight: 6 }} />
+            <Text style={[styles.errorBannerText, { color: '#166534' }]}>{infoMessage}</Text>
+          </View>
         )}
 
         {/* Error Banner */}

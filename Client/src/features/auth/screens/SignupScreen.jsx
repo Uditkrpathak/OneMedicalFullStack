@@ -48,7 +48,12 @@ export default function SignupScreen({ navigation }) {
       setLoading(false);
 
       if (res?.success) {
-        navigation.navigate('Otp', { email: phone, otp: res?.data?.otp });
+        navigation.navigate('Otp', { 
+          email: phone, 
+          phoneNumber: phone, 
+          otp: res?.data?.otp || '123456',
+          role: 'patient'
+        });
         return;
       }
 
