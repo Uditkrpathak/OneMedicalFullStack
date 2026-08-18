@@ -36,7 +36,7 @@ export default function HowItWorksSection({ onOpenBooking }: HowItWorksSectionPr
   ];
 
   return (
-    <section className="py-8 sm:py-12 bg-slate-50/50 relative overflow-hidden">
+    <section className="py-8 sm:py-12 bg-white relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Header */}
         <div className="max-w-2xl mx-auto space-y-1.5 mb-8">

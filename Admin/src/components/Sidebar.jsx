@@ -157,21 +157,22 @@ export default function Sidebar({ mobileOpen = false, onClose }) {
         }`}
       >
         {/* ── LOGO ── */}
-        <div style={{ padding: '20px 18px 16px', borderBottom: '1px solid #f1f5f9' }} className="flex items-center justify-between">
+        <div style={{ padding: '18px 16px 14px', borderBottom: '1px solid #f1f5f9' }} className="flex items-center justify-between">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 8px rgba(37,99,235,0.3)',
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-              </svg>
-            </div>
+            <img
+              src="/logo.png"
+              alt="One Medical Logo"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                objectFit: 'cover',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.25)',
+              }}
+            />
             <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>One Medical</div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>Downtown Clinic</div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1.2, letterSpacing: '-0.2px' }}>One Medical</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 1 }}>Clinic Admin</div>
             </div>
           </div>
 

@@ -68,17 +68,17 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
   );
 
   return (
-    <section id="faq" className="py-8 sm:py-12 bg-white">
+    <section id="faq" className="py-8 sm:py-18 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="max-w-2xl mx-auto text-center space-y-1.5 mb-8">
-          <div className="text-[10.5px] font-bold uppercase tracking-widest text-[#003D9B]">
+          <div className="text-[10.5px] font-bold uppercase tracking-widest text-[#14B8A6]">
             FAQS
           </div>
           <h2 className="text-2xl sm:text-[32px] font-bold text-[#051A3E] tracking-tight">
             Frequently Asked Questions
           </h2>
-          <p className="text-xs sm:text-[13px] text-slate-500 leading-relaxed font-normal">
+          <p className="text-xs sm:text-[13px] pt-2 text-slate-500 font-semibold leading-relaxed font-normal">
             Everything you need to know about starting your recovery journey with One
             Medical. Can&apos;t find what you&apos;re looking for? Our team is always ready to
             assist.
@@ -123,9 +123,8 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
                       <span>{faq.q}</span>
                       <ChevronDown
                         size={14}
-                        className={`text-slate-400 shrink-0 transition-transform duration-200 ${
-                          isOpen ? 'rotate-180 text-[#003D9B]' : ''
-                        }`}
+                        className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#003D9B]' : ''
+                          }`}
                       />
                     </button>
 
@@ -143,8 +142,8 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
           {/* Sticky Sidebar (4 cols) */}
           <div className="lg:col-span-4 space-y-3.5 lg:sticky lg:top-18">
             <div className="bg-slate-50/80 rounded-2xl p-4.5 border border-slate-200/70 shadow-2xs">
-              <h3 className="text-sm font-bold text-[#051A3E] mb-1">
-                Still Have Questions?
+              <h3 className="text-xl font-semibold text-[#051A3E] mb-1">
+                Still Have <br /> <span>Questions?</span>
               </h3>
               <p className="text-[11px] text-slate-500 mb-3.5 leading-relaxed font-normal">
                 Our team is here to help you with appointments, treatments and recovery
@@ -157,7 +156,7 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
                     <MessageSquare size={11} />
                   </div>
                   <div>
-                    <div className="font-bold text-[#051A3E]">24/7 Support</div>
+                    <div className="font-semibold text-[#051A3E]">24/7 Support</div>
                     <div className="text-[9.5px] text-slate-400 font-normal">Live chat available</div>
                   </div>
                 </div>
@@ -167,7 +166,7 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
                     <Mail size={11} />
                   </div>
                   <div>
-                    <div className="font-bold text-[#051A3E]">Email Us</div>
+                    <div className="font-semibold text-[#051A3E]">Email Us</div>
                     <div className="text-[9.5px] text-slate-400 font-normal">support@onemedical.com</div>
                   </div>
                 </div>
@@ -177,7 +176,7 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
                     <Phone size={11} />
                   </div>
                   <div>
-                    <div className="font-bold text-[#051A3E]">Call Us</div>
+                    <div className="font-semibold text-[#051A3E]">Call Us</div>
                     <div className="text-[9.5px] text-slate-400 font-normal">+91 (800) 123-4567</div>
                   </div>
                 </div>
@@ -186,37 +185,52 @@ export default function FaqSection({ onOpenBooking }: FaqSectionProps) {
               <div className="space-y-1.5">
                 <a
                   href="mailto:support@onemedical.com"
-                  className="w-full py-1.5 bg-[#003D9B] hover:bg-[#002e75] text-white rounded-lg text-xs font-bold shadow-2xs transition-all text-center block"
+                  className="w-full py-3 bg-[#003D9B] hover:bg-[#002e75] text-white rounded-2xl text-xs font-bold shadow-2xs transition-all text-center block"
                 >
                   Contact Support
                 </a>
                 <button
                   onClick={onOpenBooking}
-                  className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003D9B] rounded-lg text-xs font-bold transition-all text-center"
+                  className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-[#003D9B] rounded-2xl text-xs font-bold transition-all text-center"
                 >
                   Book Consultation
                 </button>
               </div>
             </div>
 
-            {/* Dark Promo Card */}
-            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-tr from-[#051A3E] via-[#003D9B] to-[#051A3E] text-white p-4 shadow-xs text-left">
-              <div className="text-[9px] font-bold text-blue-200 uppercase tracking-widest mb-0.5">
-                Start Recovery
+            {/* Dark Promo Card with Background */}
+            <div className="relative rounded-3xl overflow-hidden text-white p-5 sm:p-6 shadow-md text-left group">
+              {/* Background Image */}
+              <img
+                src="https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=800"
+                alt="Clinic Treatment Room"
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 brightness-75"
+              />
+              {/* Blue Gradient Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-[#051A3E] via-[#003D9B]/85 to-[#051A3E]/90 mix-blend-multiply" />
+              <div className="absolute inset-0 bg-[#051A3E]/40" />
+
+              {/* Content */}
+              <div className="relative z-10 space-y-2">
+                <div className="text-[10px] font-extrabold text-blue-200 uppercase tracking-[0.2em]">
+                  START RECOVERY
+                </div>
+                <h4 className="text-base sm:text-[17px] font-bold text-white leading-tight">
+                  Join 10,000+ healthy patients
+                </h4>
+                <p className="text-[11.5px] text-blue-100/85 leading-relaxed font-normal">
+                  Take the first step toward lasting mobility and pain-free living.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={onOpenBooking}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-[#003D9B] hover:bg-blue-50 rounded-xl text-xs font-bold shadow-md transition-all group/btn"
+                  >
+                    <span>Get Started</span>
+                    <ArrowRight size={12} className="group-hover/btn:translate-x-0.5 transition-transform" />
+                  </button>
+                </div>
               </div>
-              <h4 className="text-xs sm:text-sm font-bold text-white mb-0.5">
-                Join 10,000+ healthy patients
-              </h4>
-              <p className="text-[10.5px] text-slate-200 mb-2 leading-relaxed font-normal">
-                Take the first step toward lasting mobility and pain-free living.
-              </p>
-              <button
-                onClick={onOpenBooking}
-                className="text-[11px] font-bold text-white underline hover:text-blue-200 transition-colors inline-flex items-center gap-1"
-              >
-                <span>Get Started</span>
-                <ArrowRight size={10} />
-              </button>
             </div>
           </div>
         </div>

@@ -74,7 +74,7 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
   };
 
   return (
-    <section id="therapists" className="py-8 sm:py-12 bg-slate-50/60 relative">
+    <section id="therapists" className="py-8 sm:py-12 bg-white relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Header */}
         <div className="max-w-2xl mx-auto space-y-1.5 mb-8">

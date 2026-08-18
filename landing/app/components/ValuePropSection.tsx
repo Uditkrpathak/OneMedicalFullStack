@@ -5,7 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 
 export default function ValuePropSection() {
   return (
-    <section className="py-8 sm:py-12 bg-slate-50/70">
+    <section className="py-8 sm:py-12 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
           {/* Left Side: Modern Clinic Treatment Room Image */}

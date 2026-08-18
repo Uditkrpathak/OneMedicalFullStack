@@ -243,14 +243,16 @@ export default function LoginPage() {
         <div className="max-w-md w-full mx-auto my-auto space-y-7">
           {/* Logo Header */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#003882] text-white flex items-center justify-center shadow-md">
-              <ShieldCheck size={24} />
-            </div>
+            <img
+              src="/logo.png"
+              alt="One Medical"
+              className="w-11 h-11 rounded-xl object-cover shadow-md"
+            />
             <div>
-              <div className="text-base font-black tracking-tight text-slate-900 flex items-center gap-1.5">
+              <div className="text-lg font-black tracking-tight text-slate-900 flex items-center gap-1.5">
                 <span>ONE MEDICAL</span>
               </div>
-              <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase">Physiotherapy Clinic Management Platform</p>
+              <p className="text-[10.5px] text-slate-400 font-semibold tracking-wider uppercase">Clinic Management Platform</p>
             </div>
           </div>
 
