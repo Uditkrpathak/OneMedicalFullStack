@@ -120,30 +120,40 @@ export const razorpayWebhook = async (req, res) => {
       await confirmAppointmentInternal(appointmentId, gatewayOrderId, paymentId);
       console.log(`[Razorpay Webhook] Appointment ${appointmentId} authoritatively CONFIRMED.`);
 
-      // 4. Generate GST Invoice atomically
-      let invoice = await Invoice.findOne({ transactionId: transaction._id });
+      // 4. Generate GST Invoice atomically & idempotently
+      let invoice = await Invoice.findOne({ $or: [{ transactionId: transaction._id }, { appointmentId }] });
       if (!invoice) {
-        const seq = await getNextSequence('invoice_seq');
-        const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq).padStart(5, '0')}`;
-        const totalAmountPaise = amountPaise || appointment?.amount || 75000;
-        const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
-        const taxesPaise = totalAmountPaise - consultationFeePaise;
+        try {
+          const seq = await getNextSequence('invoice_seq');
+          const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq).padStart(5, '0')}`;
+          const totalAmountPaise = amountPaise || appointment?.amount || 75000;
+          const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
+          const taxesPaise = totalAmountPaise - consultationFeePaise;
 
-        invoice = await Invoice.create({
-          invoiceNumber,
-          transactionId: transaction._id,
-          appointmentId,
-          patientId: appointment?.patientId,
-          therapistId: appointment?.therapistId,
-          consultationFee: consultationFeePaise,
-          taxes: taxesPaise,
-          discount: 0,
-          totalAmount: totalAmountPaise,
-          currency: 'INR',
-          status: 'PAID',
-          generatedAt: new Date()
-        });
-        console.log(`[Razorpay Webhook] Generated Invoice ${invoiceNumber} for Appointment ${appointmentId}.`);
+          invoice = await Invoice.create({
+            invoiceNumber,
+            transactionId: transaction._id,
+            appointmentId,
+            patientId: appointment?.patientId,
+            therapistId: appointment?.therapistId,
+            consultationFee: consultationFeePaise,
+            taxes: taxesPaise,
+            discount: 0,
+            totalAmount: totalAmountPaise,
+            currency: 'INR',
+            status: 'PAID',
+            generatedAt: new Date()
+          });
+          console.log(`[Razorpay Webhook] Generated Invoice ${invoiceNumber} for Appointment ${appointmentId}.`);
+        } catch (invErr) {
+          invoice = await Invoice.findOne({ $or: [{ transactionId: transaction._id }, { appointmentId }] });
+        }
+      }
+
+      if (invoice && (!transaction.invoiceId || !transaction.invoiceNumber)) {
+        transaction.invoiceId = invoice._id;
+        transaction.invoiceNumber = invoice.invoiceNumber;
+        await transaction.save();
       }
 
       // 5. Publish real-time event for Admin dashboard

@@ -285,6 +285,7 @@ const styles = StyleSheet.create({
   },
   equipmentRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   equipItem: {

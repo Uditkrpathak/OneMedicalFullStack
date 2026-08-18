@@ -10,19 +10,21 @@ import {
   TextInput,
   Modal,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { API_URL } from '../../../shared/config';
+import paymentApi from '../../payments/api';
 
 const { width } = Dimensions.get('window');
 
 export default function TherapistScheduleScreen({ navigation }) {
   const { token, user } = useSelector((state) => state.auth);
 
-  const [selectedDateIndex, setSelectedDateIndex] = useState(1); // TUE 24
+  const [selectedDateIndex, setSelectedDateIndex] = useState(0); // Index 0 is Today
   const [activeFilter, setActiveFilter] = useState('All');
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +36,51 @@ export default function TherapistScheduleScreen({ navigation }) {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [consultTypeFilter, setConsultTypeFilter] = useState('ALL');
+
+  // Clinic Dynamic UPI QR state
+  const [qrModalData, setQrModalData] = useState(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+
+  const handleOpenClinicUpiQr = async (appt) => {
+    try {
+      const res = await paymentApi.generateClinicDynamicQr(appt.id, token);
+      if (res.success && res.data) {
+        setQrModalData({
+          ...res.data,
+          patientName: appt.patientName,
+        });
+      } else {
+        Alert.alert('Error', res.error?.message || 'Failed to generate clinic UPI QR.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not reach payment gateway.');
+    }
+  };
+
+  const handleVerifyClinicPayment = async () => {
+    if (!qrModalData) return;
+    setVerifyingPayment(true);
+    try {
+      const res = await paymentApi.verifyClinicPayment(qrModalData.appointmentId, qrModalData.gatewayOrderId, token);
+      if (res.success) {
+        Alert.alert('Payment Verified', 'UPI Payment verified successfully. GST Tax invoice issued.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              setQrModalData(null);
+              fetchSchedule();
+            },
+          },
+        ]);
+      } else {
+        Alert.alert('Verification Failed', res.error?.message || 'Gateway has not confirmed payment yet.');
+      }
+    } catch (err) {
+      Alert.alert('Verification Error', err.message || 'Unable to verify payment with gateway.');
+    } finally {
+      setVerifyingPayment(false);
+    }
+  };
 
   const generateWeekDays = () => {
     const list = [];
@@ -49,7 +96,7 @@ export default function TherapistScheduleScreen({ navigation }) {
         iso,
         day: dayNames[d.getDay()],
         date: String(d.getDate()),
-        full: `${fullDayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`,
+        full: i === 0 ? `Today, ${monthNames[d.getMonth()]} ${d.getDate()}` : `${fullDayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`,
         isToday: i === 0,
       });
     }
@@ -74,12 +121,13 @@ export default function TherapistScheduleScreen({ navigation }) {
         const list = queue.map((a) => {
           const status = a.status || 'CONFIRMED';
           const type = a.consultationType === 'VIDEO' ? 'telehealth' : 'clinic_visit';
+          const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '10:00 AM');
           return {
             id: a.id || a.appointmentId || a._id,
-            time: a.time || '10:00 AM',
+            time: timeFormatted,
             patientName: a.patient?.name || a.patientName || 'Patient',
             condition: a.condition || 'Physical Rehabilitation',
-            sessionInfo: `${a.time || '10:00 AM'} — 45m session`,
+            sessionInfo: `${timeFormatted} — 45m session`,
             status,
             type,
           };
@@ -95,12 +143,13 @@ export default function TherapistScheduleScreen({ navigation }) {
           const list = dashJson.data.dailyTimeline.map((a) => {
             const status = a.status || 'CONFIRMED';
             const type = a.appointmentType || 'clinic_visit';
+            const timeFormatted = a.time || '10:00 AM';
             return {
               id: a.id || a._id,
-              time: a.time || '10:00 AM',
+              time: timeFormatted,
               patientName: a.patientName || 'Patient',
               condition: a.condition || 'Physical Rehabilitation',
-              sessionInfo: `${a.time} — 45m session`,
+              sessionInfo: `${timeFormatted} — 45m session`,
               status,
               type,
             };
@@ -245,23 +294,29 @@ export default function TherapistScheduleScreen({ navigation }) {
         })}
       </View>
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs (Horizontal Scrollable for Perfect Responsiveness) */}
       <View style={styles.filterPillsContainer}>
-        {['All', 'Confirmed', 'In Progress', 'Completed'].map((pill) => {
-          const isActive = activeFilter === pill;
-          return (
-            <TouchableOpacity
-              key={pill}
-              style={[styles.filterPill, isActive && styles.filterPillActive]}
-              onPress={() => setActiveFilter(pill)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                {pill}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+        >
+          {['All', 'Confirmed', 'In Progress', 'Completed', 'Missed'].map((pill) => {
+            const isActive = activeFilter === pill;
+            return (
+              <TouchableOpacity
+                key={pill}
+                style={[styles.filterPill, isActive && styles.filterPillActive]}
+                onPress={() => setActiveFilter(pill)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                  {pill}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* Schedule Timeline Content */}
@@ -280,6 +335,10 @@ export default function TherapistScheduleScreen({ navigation }) {
             const isInProgress = appt.status === 'IN_PROGRESS';
             const isConfirmed = appt.status === 'CONFIRMED' || appt.status === 'SCHEDULED';
             const isDocPending = appt.status === 'DOCUMENTATION_PENDING';
+            const isCheckedIn = appt.status === 'CHECKED_IN' || appt.status === 'WAITING_FOR_THERAPIST';
+            const isProviderNoShow = appt.status === 'PROVIDER_NO_SHOW';
+            const isPatientNoShow = appt.status === 'PATIENT_NO_SHOW';
+            const isNoAttendance = appt.status === 'NO_ATTENDANCE';
 
             return (
               <View key={appt.id || index} style={styles.timelineCardRow}>
@@ -292,6 +351,7 @@ export default function TherapistScheduleScreen({ navigation }) {
                       isCompleted && styles.nodeCompleted,
                       isInProgress && styles.nodeInProgress,
                       isDocPending && styles.nodeDocPending,
+                      isProviderNoShow && { borderColor: '#ef4444', backgroundColor: '#ef4444' },
                     ]}
                   />
                   {index < filteredAppointments.length - 1 && <View style={styles.trackLine} />}
@@ -303,6 +363,7 @@ export default function TherapistScheduleScreen({ navigation }) {
                     styles.appointmentCard,
                     isInProgress && styles.cardHighlightInProgress,
                     isDocPending && styles.cardHighlightDocPending,
+                    isProviderNoShow && { borderColor: '#fecaca', borderWidth: 1.5 },
                   ]}
                 >
                   {/* Card Header: Patient Name & Status Tag */}
@@ -319,9 +380,29 @@ export default function TherapistScheduleScreen({ navigation }) {
                         <Text style={styles.tagInProgressText}>IN PROGRESS</Text>
                       </View>
                     )}
-                    {isConfirmed && (
+                    {isCheckedIn && (
+                      <View style={[styles.tagConfirmed, { backgroundColor: '#fef3c7' }]}>
+                        <Text style={[styles.tagConfirmedText, { color: '#b45309' }]}>PATIENT WAITING</Text>
+                      </View>
+                    )}
+                    {isConfirmed && !isCheckedIn && (
                       <View style={styles.tagConfirmed}>
                         <Text style={styles.tagConfirmedText}>CONFIRMED</Text>
+                      </View>
+                    )}
+                    {isProviderNoShow && (
+                      <View style={[styles.tagCompleted, { backgroundColor: '#fee2e2' }]}>
+                        <Text style={[styles.tagCompletedText, { color: '#dc2626' }]}>MISSED SESSION</Text>
+                      </View>
+                    )}
+                    {isPatientNoShow && (
+                      <View style={[styles.tagCompleted, { backgroundColor: '#fef2f2' }]}>
+                        <Text style={[styles.tagCompletedText, { color: '#b91c1c' }]}>NO SHOW</Text>
+                      </View>
+                    )}
+                    {isNoAttendance && (
+                      <View style={styles.tagCompleted}>
+                        <Text style={styles.tagCompletedText}>UNATTENDED</Text>
                       </View>
                     )}
                     {isDocPending && (
@@ -400,6 +481,25 @@ export default function TherapistScheduleScreen({ navigation }) {
 
                   {isConfirmed && (
                     <View style={styles.confirmedActionRow}>
+                      {appt.paymentStatus !== 'PAID' && (
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: '#fef3c7',
+                            borderColor: '#fde68a',
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 7,
+                            borderRadius: 8,
+                          }}
+                          onPress={() => handleOpenClinicUpiQr(appt)}
+                        >
+                          <Ionicons name="qr-code" size={14} color="#b45309" style={{ marginRight: 4 }} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#b45309' }}>Collect UPI</Text>
+                        </TouchableOpacity>
+                      )}
+
                       <TouchableOpacity
                         style={styles.detailsOutlineBtn}
                         onPress={() =>
@@ -520,6 +620,59 @@ export default function TherapistScheduleScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Dynamic Clinic UPI QR Modal */}
+      <Modal visible={!!qrModalData} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.filterModalContent, { padding: 24, alignItems: 'center' }]}>
+            <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f172a' }}>Clinic UPI Payment</Text>
+              <TouchableOpacity onPress={() => setQrModalData(null)}>
+                <Ionicons name="close" size={22} color="#0f172a" />
+              </TouchableOpacity>
+            </View>
+
+            {/* QR Icon Frame */}
+            <View style={{ width: 180, height: 180, backgroundColor: '#f8fafc', borderRadius: 16, borderWidth: 2, borderColor: '#003D9B', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Ionicons name="qr-code" size={130} color="#003D9B" />
+              <View style={{ position: 'absolute', bottom: 8, backgroundColor: '#003D9B', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ color: '#ffffff', fontSize: 10, fontWeight: '800' }}>DYNAMIC UPI QR</Text>
+              </View>
+            </View>
+
+            <Text style={{ fontSize: 22, fontWeight: '900', color: '#003D9B' }}>₹{qrModalData?.amountRupees || 499}</Text>
+            <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Patient: {qrModalData?.patientName || 'Patient'}</Text>
+            <Text style={{ fontSize: 11, color: '#003D9B', fontWeight: '700', marginTop: 4 }}>VPA: {qrModalData?.upiVpa || 'onemedical.pay@icici'}</Text>
+
+            <View style={{ width: '100%', height: 1, backgroundColor: '#f1f5f9', marginVertical: 16 }} />
+
+            <TouchableOpacity
+              style={{
+                width: '100%',
+                backgroundColor: '#003D9B',
+                height: 48,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+              activeOpacity={0.85}
+              disabled={verifyingPayment}
+              onPress={handleVerifyClinicPayment}
+            >
+              {verifyingPayment ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <Ionicons name="shield-checkmark" size={16} color="#ffffff" />
+                  <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 14 }}>Verify Server Payment</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

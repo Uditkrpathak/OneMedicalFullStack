@@ -34,8 +34,10 @@ const CATEGORY_PRESETS = {
   OTHER: { title: 'Clinical Rehabilitation Notes', fileName: 'clinical_notes.pdf', mimeType: 'application/pdf', size: 550000, doc: 'Dr. Vivek Joshi', hosp: 'One Medical Center' },
 };
 
-export default function AddMedicalRecordScreen({ navigation }) {
-  const { token } = useSelector((state) => state.auth);
+export default function AddMedicalRecordScreen({ route, navigation }) {
+  const { token, user } = useSelector((state) => state.auth);
+  const patientId = route?.params?.patientId || route?.params?.userId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
+
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('MRI_SCAN');
   const [doctorName, setDoctorName] = useState('');
@@ -89,7 +91,7 @@ export default function AddMedicalRecordScreen({ navigation }) {
       const fileName = attachedFile?.fileName || 'document.pdf';
       const mimeType = attachedFile?.mimeType || 'application/pdf';
 
-      const uploadRes = await clinicalApi.getPresignedUploadUrl(fileName, mimeType, category, token);
+      const uploadRes = await clinicalApi.getPresignedUploadUrl(fileName, mimeType, category, token, patientId);
       const uploadData = uploadRes.data || {};
       const uploadUrl = uploadData.uploadUrl;
       const storageKey = uploadData.storageKey || uploadData.s3Key || uploadData.publicId;
@@ -129,6 +131,7 @@ export default function AddMedicalRecordScreen({ navigation }) {
       // Step 3: Register metadata in MongoDB
       setUploadStep('Registering record metadata in vault...');
       const payload = {
+        patientId: patientId || user?.userId || user?.id,
         title: title.trim(),
         category,
         doctorName: doctorName.trim() || undefined,

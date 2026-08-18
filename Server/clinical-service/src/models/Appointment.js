@@ -40,19 +40,6 @@ const AppointmentSchema = new mongoose.Schema({
   },
 
   // ─── Lifecycle Status ─────────────────────────────────────────────────────
-  // HELD                  → slot reserved, payment pending (10-min window)
-  // CONFIRMED             → payment received / confirmed appointment
-  // RESCHEDULE_REQUESTED  → doctor/clinic proposed new slot; awaiting patient approval
-  // RESCHEDULED           → prior slot transitioned
-  // CHECKED_IN            → patient arrived / checked in for session
-  // IN_PROGRESS           → active consultation underway
-  // COMPLETED             → appointment concluded with clinical notes
-  // CANCELLED_BY_PATIENT  → cancelled by patient
-  // CANCELLED_BY_DOCTOR   → emergency doctor cancellation
-  // CANCELLED_BY_CLINIC   → operational clinic cancellation
-  // CANCELLED             → generic legacy cancelled
-  // EXPIRED               → hold timed out
-  // NO_SHOW               → patient did not attend confirmed appointment
   status: {
     type: String,
     enum: [
@@ -69,12 +56,57 @@ const AppointmentSchema = new mongoose.Schema({
       'CANCELLED',
       'EXPIRED',
       'NO_SHOW',
+      'PROVIDER_NO_SHOW',
+      'PATIENT_NO_SHOW',
+      'NO_ATTENDANCE',
+      'TECHNICAL_FAILURE',
       'DOCUMENTATION_PENDING',
       'DOCUMENTED',
     ],
     default: 'HELD',
     index: true,
   },
+
+  // ─── Clinical Session Dimension ──────────────────────────────────────────
+  sessionStatus: {
+    type: String,
+    enum: ['NOT_STARTED', 'WAITING', 'IN_PROGRESS', 'ENDED'],
+    default: 'NOT_STARTED',
+    index: true,
+  },
+
+  // ─── Clinical Attendance Dimension ───────────────────────────────────────
+  attendanceOutcome: {
+    type: String,
+    enum: [
+      'PATIENT_PRESENT',
+      'PROVIDER_PRESENT',
+      'PROVIDER_NO_SHOW',
+      'PATIENT_NO_SHOW',
+      'NO_ATTENDANCE',
+      'TECHNICAL_FAILURE',
+      'COMPLETED',
+    ],
+    default: null,
+    index: true,
+  },
+
+  // ─── Attendance Timestamps ───────────────────────────────────────────────
+  patientCheckedInAt:      { type: Date },
+  patientJoinedAt:         { type: Date },
+  therapistJoinedAt:       { type: Date },
+  patientDisconnectedAt:   { type: Date },
+  therapistDisconnectedAt: { type: Date },
+
+  // ─── Reconciliation & Idempotency ────────────────────────────────────────
+  reconciliationStatus: {
+    type: String,
+    enum: ['PENDING', 'PROCESSED'],
+    default: 'PENDING',
+    index: true,
+  },
+  reconciledAt:            { type: Date },
+  refundProtected:         { type: Boolean, default: false },
 
   // ─── Reschedule Tracking ──────────────────────────────────────────────────
   rescheduleCount:     { type: Number, default: 0 },

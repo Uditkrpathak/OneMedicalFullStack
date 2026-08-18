@@ -94,9 +94,9 @@ export default function ChoosePaymentScreen({ route, navigation }) {
         </View>
 
         {/* PAYMENT METHOD SELECTION */}
-        <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Select Payment Option</Text>
+        <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Select UPI Payment Option</Text>
 
-        {/* OPTION 1: PAY NOW ONLINE */}
+        {/* OPTION 1: INSTANT UPI (ONLINE) */}
         <TouchableOpacity
           style={[styles.optionCard, paymentType === 'online' && styles.optionCardSelected]}
           activeOpacity={0.9}
@@ -105,78 +105,104 @@ export default function ChoosePaymentScreen({ route, navigation }) {
           <View style={styles.optionHeaderRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.optionTitleBadgeRow}>
-                <Text style={styles.optionTitle}>Pay Now (Online)</Text>
+                <Text style={styles.optionTitle}>Pay via UPI (Instant)</Text>
                 <View style={styles.recBadge}>
-                  <Text style={styles.recBadgeText}>RECOMMENDED</Text>
+                  <Text style={styles.recBadgeText}>FAST & SECURE</Text>
                 </View>
               </View>
-              <Text style={styles.optionSub}>Secure payment via UPI, Cards, or Netbanking.</Text>
+              <Text style={styles.optionSub}>Zero convenience fee via Google Pay, PhonePe, Paytm, or BHIM.</Text>
             </View>
             <View style={[styles.radioCircle, paymentType === 'online' && styles.radioCircleActive]}>
               {paymentType === 'online' && <View style={styles.radioInner} />}
             </View>
           </View>
 
-          {/* EXPANDED ONLINE METHODS */}
+          {/* EXPANDED UPI APPS */}
           {paymentType === 'online' && (
             <View style={styles.methodsSubContainer}>
               <TouchableOpacity
-                style={[styles.methodRow, onlineMethod === 'upi' && styles.methodRowSelected]}
+                style={[styles.methodRow, onlineMethod === 'gpay' && styles.methodRowSelected]}
+                onPress={() => setOnlineMethod('gpay')}
+              >
+                <Ionicons name="logo-google" size={20} color="#003D9B" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodName}>Google Pay</Text>
+                  <Text style={styles.methodDesc}>Instant 1-Tap UPI</Text>
+                </View>
+                {onlineMethod === 'gpay' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.methodRow, onlineMethod === 'phonepe' && styles.methodRowSelected]}
+                onPress={() => setOnlineMethod('phonepe')}
+              >
+                <Ionicons name="phone-portrait-outline" size={20} color="#003D9B" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodName}>PhonePe</Text>
+                  <Text style={styles.methodDesc}>Direct UPI Autopay</Text>
+                </View>
+                {onlineMethod === 'phonepe' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.methodRow, onlineMethod === 'paytm' && styles.methodRowSelected]}
+                onPress={() => setOnlineMethod('paytm')}
+              >
+                <Ionicons name="wallet-outline" size={20} color="#003D9B" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.methodName}>Paytm UPI</Text>
+                  <Text style={styles.methodDesc}>Direct Bank Transfer</Text>
+                </View>
+                {onlineMethod === 'paytm' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.methodRow, (onlineMethod === 'upi' || onlineMethod === 'bhim') && styles.methodRowSelected]}
                 onPress={() => setOnlineMethod('upi')}
               >
                 <Ionicons name="qr-code-outline" size={20} color="#003D9B" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.methodName}>UPI</Text>
-                  <Text style={styles.methodDesc}>Instant & Secure Pay</Text>
+                  <Text style={styles.methodName}>BHIM / Any UPI App / QR</Text>
+                  <Text style={styles.methodDesc}>Scan QR or Enter UPI ID (VPA)</Text>
                 </View>
-                {onlineMethod === 'upi' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.methodRow, onlineMethod === 'card' && styles.methodRowSelected]}
-                onPress={() => setOnlineMethod('card')}
-              >
-                <Ionicons name="card-outline" size={20} color={onlineMethod === 'card' ? '#003D9B' : '#64748b'} style={{ marginRight: 10 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.methodName}>Credit / Debit Card</Text>
-                  <Text style={styles.methodDesc}>Visa, Mastercard, RuPay</Text>
-                </View>
-                {onlineMethod === 'card' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.methodRow, onlineMethod === 'netbanking' && styles.methodRowSelected]}
-                onPress={() => setOnlineMethod('netbanking')}
-              >
-                <Ionicons name="business-outline" size={20} color={onlineMethod === 'netbanking' ? '#003D9B' : '#64748b'} style={{ marginRight: 10 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.methodName}>Net Banking</Text>
-                  <Text style={styles.methodDesc}>All Indian Banks Supported</Text>
-                </View>
-                {onlineMethod === 'netbanking' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
+                {(onlineMethod === 'upi' || onlineMethod === 'bhim') && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
               </TouchableOpacity>
             </View>
           )}
         </TouchableOpacity>
 
-        {/* OPTION 2: PAY AT CLINIC */}
-        <TouchableOpacity
-          style={[styles.optionCard, paymentType === 'clinic' && styles.optionCardSelected]}
-          activeOpacity={0.9}
-          onPress={() => setPaymentType('clinic')}
-        >
-          <View style={styles.optionHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.optionTitle}>Pay at Clinic</Text>
-              <Text style={styles.optionSub}>
-                Complete your payment at the reception after your session.
-              </Text>
-            </View>
-            <View style={[styles.radioCircle, paymentType === 'clinic' && styles.radioCircleActive]}>
-              {paymentType === 'clinic' && <View style={styles.radioInner} />}
+        {/* OPTION 2: PAY VIA UPI AT CLINIC RECEPTION (IN-CLINIC VISITS ONLY) */}
+        {appointment?.appointmentPlace === 'telehealth' || appointment?.serviceType === 'online_consultation' ? (
+          <View style={[styles.optionCard, { opacity: 0.6, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }]}>
+            <View style={styles.optionHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.optionTitle, { color: '#64748b' }]}>Pay at Clinic (Disabled for Telehealth)</Text>
+                <Text style={styles.optionSub}>
+                  Online video sessions require upfront UPI confirmation to connect with the specialist.
+                </Text>
+              </View>
+              <Ionicons name="lock-closed" size={18} color="#94a3b8" />
             </View>
           </View>
-        </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[styles.optionCard, paymentType === 'clinic' && styles.optionCardSelected]}
+            activeOpacity={0.9}
+            onPress={() => setPaymentType('clinic')}
+          >
+            <View style={styles.optionHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.optionTitle}>Pay via UPI at Clinic Reception</Text>
+                <Text style={styles.optionSub}>
+                  Scan the Dynamic Clinic UPI QR at reception when arriving for your session.
+                </Text>
+              </View>
+              <View style={[styles.radioCircle, paymentType === 'clinic' && styles.radioCircleActive]}>
+                {paymentType === 'clinic' && <View style={styles.radioInner} />}
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* PAYMENT SUMMARY */}
         <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Payment Summary</Text>

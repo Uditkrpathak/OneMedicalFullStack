@@ -15,8 +15,12 @@ export const EVENT_TYPES = {
   APPOINTMENT_CANCELLED: 'appointment.cancelled',
   APPOINTMENT_REMINDER_24H: 'appointment.reminder_24h',
   APPOINTMENT_REMINDER_1H: 'appointment.reminder_1h',
+  APPOINTMENT_REMINDER_STARTING: 'appointment.reminder_starting',
   APPOINTMENT_THERAPIST_LATE: 'appointment.therapist_late',
+  APPOINTMENT_PROVIDER_NO_SHOW: 'appointment.provider_no_show',
   APPOINTMENT_PATIENT_NO_SHOW: 'appointment.patient_no_show',
+  APPOINTMENT_NO_ATTENDANCE: 'appointment.no_attendance',
+  APPOINTMENT_TECHNICAL_FAILURE: 'appointment.technical_failure',
   APPOINTMENT_COMPLETED: 'appointment.completed',
 
   // Telehealth
@@ -161,6 +165,15 @@ export const EVENT_POLICIES = {
     },
     retentionDays: 30,
   },
+  [EVENT_TYPES.APPOINTMENT_REMINDER_STARTING]: {
+    type: 'appointment',
+    priority: 'high',
+    channels: {
+      patient: { inApp: true, push: true, email: false, sms: true },
+      therapist: { inApp: true, push: true, email: false, sms: true },
+    },
+    retentionDays: 14,
+  },
   [EVENT_TYPES.APPOINTMENT_THERAPIST_LATE]: {
     type: 'appointment',
     priority: 'high',
@@ -169,14 +182,45 @@ export const EVENT_POLICIES = {
     },
     retentionDays: 30,
   },
+  [EVENT_TYPES.APPOINTMENT_PROVIDER_NO_SHOW]: {
+    type: 'appointment',
+    priority: 'high',
+    channels: {
+      patient: { inApp: true, push: true, email: true, sms: true },
+      therapist: { inApp: true, push: true, email: true, sms: false },
+      clinic_admin: { inApp: true, push: true, email: true, sms: false },
+    },
+    retentionDays: 90,
+  },
   [EVENT_TYPES.APPOINTMENT_PATIENT_NO_SHOW]: {
     type: 'appointment',
     priority: 'normal',
     channels: {
+      patient: { inApp: true, push: true, email: true, sms: false },
       therapist: { inApp: true, push: true, email: false, sms: false },
       clinic_admin: { inApp: true, push: false, email: false, sms: false },
     },
     retentionDays: 60,
+  },
+  [EVENT_TYPES.APPOINTMENT_NO_ATTENDANCE]: {
+    type: 'appointment',
+    priority: 'normal',
+    channels: {
+      patient: { inApp: true, push: false, email: true, sms: false },
+      therapist: { inApp: true, push: false, email: false, sms: false },
+      clinic_admin: { inApp: true, push: false, email: false, sms: false },
+    },
+    retentionDays: 60,
+  },
+  [EVENT_TYPES.APPOINTMENT_TECHNICAL_FAILURE]: {
+    type: 'appointment',
+    priority: 'high',
+    channels: {
+      patient: { inApp: true, push: true, email: true, sms: false },
+      therapist: { inApp: true, push: true, email: true, sms: false },
+      clinic_admin: { inApp: true, push: true, email: true, sms: false },
+    },
+    retentionDays: 90,
   },
   [EVENT_TYPES.APPOINTMENT_COMPLETED]: {
     type: 'appointment',

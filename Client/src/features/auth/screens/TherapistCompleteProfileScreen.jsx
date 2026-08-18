@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,12 +10,13 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useUpdateTherapistProfileMutation } from '../authApiSlice';
-import { updateProfileStatus, loginSuccess } from '../authSlice';
+import { updateProfileStatus, loginSuccess, logout } from '../authSlice';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -23,6 +24,27 @@ export default function TherapistCompleteProfileScreen({ navigation }) {
   const dispatch = useDispatch();
   const { user, token } = useSelector((state) => state.auth);
   const [updateTherapistProfile, { isLoading }] = useUpdateTherapistProfileMutation();
+
+  const handleExitAttempt = () => {
+    Alert.alert(
+      'Profile Setup Required',
+      'Please complete your specialist credentials before accessing the therapist workspace. Would you like to log out?',
+      [
+        { text: 'Continue Setup', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: () => dispatch(logout()),
+        },
+      ]
+    );
+    return true;
+  };
+
+  useEffect(() => {
+    const backSub = BackHandler.addEventListener('hardwareBackPress', handleExitAttempt);
+    return () => backSub.remove();
+  }, []);
 
   const [selectedDays, setSelectedDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [form, setForm] = useState({
@@ -97,7 +119,7 @@ export default function TherapistCompleteProfileScreen({ navigation }) {
     <SafeAreaView style={styles.container}>
       {/* HEADER */}
       <View style={styles.headerRow}>
-        <TouchableOpacity style={styles.headerBackBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.headerBackBtn} onPress={handleExitAttempt}>
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
         <View style={styles.brandRow}>

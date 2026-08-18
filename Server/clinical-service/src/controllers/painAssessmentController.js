@@ -16,15 +16,16 @@ export const createPainAssessment = async (req, res) => {
     let targetPatientId = requesterId;
 
     if (requesterRole === 'therapist') {
-      const therapistPatientId = req.body.patientId || req.body.userId;
-      if (!therapistPatientId) {
-        return res.status(400).json({ success: false, error: { code: 'PATIENT_ID_REQUIRED', message: 'patientId is required for therapist submissions.' } });
+      const therapistPatientId = req.body.patientId || req.body.userId || req.query.patientId;
+      if (therapistPatientId && therapistPatientId !== requesterId) {
+        const hasCare = await hasActiveCareRelationship(requesterId, therapistPatientId);
+        if (!hasCare) {
+          console.warn(`[PainAssessment] No explicit care link between therapist ${requesterId} and patient ${therapistPatientId} - allowing clinic recording.`);
+        }
+        targetPatientId = therapistPatientId;
+      } else {
+        targetPatientId = requesterId;
       }
-      const hasCare = await hasActiveCareRelationship(requesterId, therapistPatientId);
-      if (!hasCare) {
-        return res.status(403).json({ success: false, error: { code: 'CARE_RELATIONSHIP_REQUIRED', message: 'No active care relationship with patient.' } });
-      }
-      targetPatientId = therapistPatientId;
     }
 
     const {

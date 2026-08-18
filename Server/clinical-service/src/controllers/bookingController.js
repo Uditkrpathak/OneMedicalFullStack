@@ -1054,8 +1054,10 @@ export const getAppointmentsDashboard = async (req, res) => {
     const enrichedTimeline = todayAppointments.map(enrichAppointment).map(a => ({
       id: a._id,
       name: a.patientName,
-      detail: `${new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} - ${a.type}`,
+      detail: `${new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${a.type}`,
       status: a.status,
+      sessionStatus: a.sessionStatus || 'NOT_STARTED',
+      attendanceOutcome: a.attendanceOutcome || null,
       startTime: a.startTime,
       endTime: a.endTime,
     }));
@@ -1104,10 +1106,10 @@ export const updateAppointmentStatus = async (req, res) => {
     // Allowed Transitions State Machine:
     const ALLOWED_TRANSITIONS = {
       'HELD': ['CONFIRMED', 'EXPIRED', 'CANCELLED'],
-      'CONFIRMED': ['IN_PROGRESS', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW', 'RESCHEDULE_REQUESTED', 'COMPLETED'],
+      'CONFIRMED': ['IN_PROGRESS', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE', 'RESCHEDULE_REQUESTED', 'COMPLETED'],
       'RESCHEDULE_REQUESTED': ['CONFIRMED', 'CANCELLED'],
-      'CHECKED_IN': ['IN_PROGRESS', 'CANCELLED', 'NO_SHOW'],
-      'IN_PROGRESS': ['DOCUMENTATION_PENDING', 'DOCUMENTED', 'COMPLETED', 'CANCELLED'],
+      'CHECKED_IN': ['IN_PROGRESS', 'CANCELLED', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'TECHNICAL_FAILURE'],
+      'IN_PROGRESS': ['DOCUMENTATION_PENDING', 'DOCUMENTED', 'COMPLETED', 'TECHNICAL_FAILURE', 'CANCELLED'],
       'DOCUMENTATION_PENDING': ['DOCUMENTED', 'COMPLETED'],
       'DOCUMENTED': ['COMPLETED'],
       // Terminal states cannot transition to anything
@@ -1118,6 +1120,10 @@ export const updateAppointmentStatus = async (req, res) => {
       'CANCELLED_BY_CLINIC': [],
       'EXPIRED': [],
       'NO_SHOW': [],
+      'PROVIDER_NO_SHOW': [],
+      'PATIENT_NO_SHOW': [],
+      'NO_ATTENDANCE': [],
+      'TECHNICAL_FAILURE': [],
     };
 
     if (!ALLOWED_TRANSITIONS[currentStatus] || !ALLOWED_TRANSITIONS[currentStatus].includes(nextStatus)) {
@@ -1140,16 +1146,12 @@ export const updateAppointmentStatus = async (req, res) => {
       if (now < allowedEarliest) {
         return res.status(400).json({
           success: false,
-          error: { code: 'TIMESTAMP_VALIDATION_ERROR', message: `Cannot start appointment before scheduled slot (${startTime.toLocaleTimeString()}).` }
-        });
-      }
-      if (now > endTime) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'TIMESTAMP_VALIDATION_ERROR', message: `Cannot start appointment as scheduled slot has ended (${endTime.toLocaleTimeString()}).` }
+          error: { code: 'TIMESTAMP_VALIDATION_ERROR', message: `Cannot start appointment before scheduled slot (${startTime.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}).` }
         });
       }
       appt.startedAt = now;
+      appt.therapistJoinedAt = now;
+      appt.sessionStatus = 'IN_PROGRESS';
     }
 
     if (nextStatus === 'COMPLETED' || nextStatus === 'DOCUMENTED') {
@@ -1160,10 +1162,13 @@ export const updateAppointmentStatus = async (req, res) => {
         });
       }
       appt.completedAt = now;
+      appt.sessionStatus = 'ENDED';
+      appt.attendanceOutcome = 'COMPLETED';
     }
 
     if (nextStatus.includes('CANCELLED')) {
       appt.cancelledAt = now;
+      appt.sessionStatus = 'ENDED';
       if (reason) appt.cancellationReason = reason;
     }
 
@@ -1190,6 +1195,127 @@ export const updateAppointmentStatus = async (req, res) => {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
+
+// ─── PATIENT CHECK-IN ENDPOINT ────────────────────────────────────────────────
+// POST /api/v1/appointments/:id/check-in
+export const patientCheckIn = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.headers['x-user-id'];
+    const now = new Date();
+
+    const appt = await Appointment.findById(id);
+    if (!appt || appt.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+
+    if (appt.patientId !== userId && req.headers['x-user-role'] === 'patient') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only check in for your own appointment.' } });
+    }
+
+    // Telehealth Upfront Payment Enforcement
+    const isTelehealth = appt.appointmentPlace === 'telehealth' || appt.serviceType === 'online_consultation' || appt.appointmentType === 'telehealth';
+    if (isTelehealth && appt.paymentStatus !== 'PAID') {
+      return res.status(402).json({
+        success: false,
+        error: {
+          code: 'PAYMENT_REQUIRED',
+          message: 'Online telehealth consultations require upfront UPI payment before entering the session.',
+        },
+      });
+    }
+
+    // Check-in allowed from T - 15m onwards
+    const allowedCheckInEarliest = new Date(new Date(appt.startTime).getTime() - 15 * 60 * 1000);
+    if (now < allowedCheckInEarliest) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'EARLY_CHECK_IN',
+          message: `Check-in opens 15 minutes prior to session (${new Date(appt.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}).`,
+        },
+      });
+    }
+
+    appt.patientCheckedInAt = now;
+    appt.patientJoinedAt = now;
+    appt.sessionStatus = 'WAITING';
+    if (appt.status === 'CONFIRMED') {
+      appt.status = 'CHECKED_IN';
+    }
+    await appt.save();
+
+    await publishEvent('appointment.patient_checked_in', {
+      appointmentId: appt._id,
+      patientId: appt.patientId,
+      therapistId: appt.therapistId,
+      timestamp: now.toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Checked in successfully. Please wait for your therapist to join.',
+        appointment: appt,
+      },
+    });
+  } catch (err) {
+    console.error('[patientCheckIn] Error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── THERAPIST JOIN SESSION ENDPOINT ──────────────────────────────────────────
+// POST /api/v1/appointments/:id/join
+export const therapistJoinSession = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.headers['x-user-id'];
+    const now = new Date();
+
+    const appt = await Appointment.findById(id);
+    if (!appt || appt.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+
+    // Telehealth Upfront Payment Enforcement
+    const isTelehealth = appt.appointmentPlace === 'telehealth' || appt.serviceType === 'online_consultation' || appt.appointmentType === 'telehealth';
+    if (isTelehealth && appt.paymentStatus !== 'PAID') {
+      return res.status(402).json({
+        success: false,
+        error: {
+          code: 'PAYMENT_REQUIRED',
+          message: 'Online telehealth consultations require verified UPI payment before starting.',
+        },
+      });
+    }
+
+    appt.therapistJoinedAt = now;
+    appt.startedAt = appt.startedAt || now;
+    appt.sessionStatus = 'IN_PROGRESS';
+    appt.status = 'IN_PROGRESS';
+    await appt.save();
+
+    await publishEvent('clinical.consultation_started', {
+      appointmentId: appt._id,
+      patientId: appt.patientId,
+      therapistId: appt.therapistId,
+      timestamp: now.toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: 'Joined consultation successfully.',
+        appointment: appt,
+      },
+    });
+  } catch (err) {
+    console.error('[therapistJoinSession] Error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 
 
 

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -32,7 +33,9 @@ export default function MedicalInformationScreen({ route, navigation }) {
       { procedure: 'ACL Reconstruction', year: 2019, notes: 'Left Knee, full recovery' }
     ],
     clinicalFlags: ['Fall Risk Assessment Normal'],
-    bloodGroup: 'O+'
+    bloodGroup: user?.bloodGroup || 'O+',
+    height: user?.height || 172,
+    weight: user?.weight || 68,
   });
 
   const [isAllergyModalVisible, setAllergyModalVisible] = useState(false);
@@ -41,6 +44,14 @@ export default function MedicalInformationScreen({ route, navigation }) {
   const [isMedModalVisible, setMedModalVisible] = useState(false);
   const [newMedName, setNewMedName] = useState('');
   const [newMedDosage, setNewMedDosage] = useState('');
+
+  const [isConditionModalVisible, setConditionModalVisible] = useState(false);
+  const [newConditionText, setNewConditionText] = useState('');
+
+  const [isSurgeryModalVisible, setSurgeryModalVisible] = useState(false);
+  const [newSurgeryProcedure, setNewSurgeryProcedure] = useState('');
+  const [newSurgeryYear, setNewSurgeryYear] = useState('');
+  const [newSurgeryNotes, setNewSurgeryNotes] = useState('');
 
   useEffect(() => {
     const loadMedicalData = async () => {
@@ -52,6 +63,9 @@ export default function MedicalInformationScreen({ route, navigation }) {
             setMedicalInfo(prev => ({
               ...prev,
               ...res.data,
+              bloodGroup: res.data.bloodGroup || user?.bloodGroup || prev.bloodGroup,
+              height: res.data.height || user?.height || prev.height,
+              weight: res.data.weight || user?.weight || prev.weight,
               medicalConditions: res.data.medicalConditions?.length ? res.data.medicalConditions : prev.medicalConditions,
               allergies: res.data.allergies?.length ? res.data.allergies : prev.allergies,
               currentMedications: res.data.currentMedications?.length ? res.data.currentMedications : prev.currentMedications,
@@ -66,7 +80,18 @@ export default function MedicalInformationScreen({ route, navigation }) {
       }
     };
     loadMedicalData();
-  }, [targetPatientId, token]);
+  }, [targetPatientId, token, user]);
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        title: 'OneMedical Clinical Profile',
+        message: `Clinical Medical Summary for ${user?.name || 'Patient'}:\nBlood Group: ${medicalInfo.bloodGroup}\nAllergies: ${medicalInfo.allergies.join(', ') || 'None'}\nConditions: ${medicalInfo.medicalConditions.join(', ') || 'None'}`,
+      });
+    } catch (err) {
+      // Ignored
+    }
+  };
 
   const handleAddAllergy = async () => {
     if (!newAllergyText.trim()) return;
@@ -100,10 +125,47 @@ export default function MedicalInformationScreen({ route, navigation }) {
     }
   };
 
+  const handleAddCondition = async () => {
+    if (!newConditionText.trim()) return;
+    const updated = [...(medicalInfo.medicalConditions || []), newConditionText.trim()];
+    setMedicalInfo(prev => ({ ...prev, medicalConditions: updated }));
+    setConditionModalVisible(false);
+    setNewConditionText('');
+
+    try {
+      await clinicalApi.updatePatientMedicalInfo(targetPatientId, { medicalConditions: updated }, token);
+    } catch (e) {
+      console.warn('Failed to sync condition:', e.message);
+    }
+  };
+
+  const handleAddSurgery = async () => {
+    if (!newSurgeryProcedure.trim()) return;
+    const updated = [
+      ...(medicalInfo.pastSurgeries || []),
+      {
+        procedure: newSurgeryProcedure.trim(),
+        year: parseInt(newSurgeryYear.trim()) || new Date().getFullYear(),
+        notes: newSurgeryNotes.trim() || 'Full recovery',
+      }
+    ];
+    setMedicalInfo(prev => ({ ...prev, pastSurgeries: updated }));
+    setSurgeryModalVisible(false);
+    setNewSurgeryProcedure('');
+    setNewSurgeryYear('');
+    setNewSurgeryNotes('');
+
+    try {
+      await clinicalApi.updatePatientMedicalInfo(targetPatientId, { pastSurgeries: updated }, token);
+    } catch (e) {
+      console.warn('Failed to sync surgery:', e.message);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#0284c7" />
+        <ActivityIndicator size="large" color="#003D9B" />
       </SafeAreaView>
     );
   }
@@ -116,33 +178,33 @@ export default function MedicalInformationScreen({ route, navigation }) {
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Clinical Medical Profile</Text>
-        <TouchableOpacity style={styles.headerShareBtn}>
+        <TouchableOpacity style={styles.headerShareBtn} onPress={handleShare} activeOpacity={0.7}>
           <Ionicons name="share-outline" size={20} color="#0f172a" />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollInner} showsVerticalScrollIndicator={false}>
-        {/* DEMOGRAPHICS & VITALS CARD (From Identity) */}
-        <Text style={styles.sectionTitle}>PHYSICAL PROFILE (IDENTITY SERVICE)</Text>
+        {/* DEMOGRAPHICS & VITALS CARD */}
+        <Text style={styles.sectionTitle}>PHYSICAL & BIOMETRIC DETAILS</Text>
         <View style={styles.vitalsCard}>
           <View style={styles.vitalsGrid}>
             <View style={styles.vitalBox}>
               <Text style={styles.vitalLabel}>Blood Group</Text>
-              <Text style={styles.vitalVal}>{medicalInfo.bloodGroup || 'O+'}</Text>
+              <Text style={styles.vitalVal}>{medicalInfo.bloodGroup || user?.bloodGroup || 'O+'}</Text>
             </View>
             <View style={styles.vitalBox}>
               <Text style={styles.vitalLabel}>Height</Text>
-              <Text style={styles.vitalVal}>172 <Text style={styles.vitalUnit}>cm</Text></Text>
+              <Text style={styles.vitalVal}>{medicalInfo.height || user?.height || 172} <Text style={styles.vitalUnit}>cm</Text></Text>
             </View>
             <View style={styles.vitalBox}>
               <Text style={styles.vitalLabel}>Weight</Text>
-              <Text style={styles.vitalVal}>68 <Text style={styles.vitalUnit}>kg</Text></Text>
+              <Text style={styles.vitalVal}>{medicalInfo.weight || user?.weight || 68} <Text style={styles.vitalUnit}>kg</Text></Text>
             </View>
           </View>
         </View>
 
-        {/* ALLERGIES SECTION (From Clinical DB) */}
-        <Text style={styles.sectionTitle}>ALLERGIES (CLINICAL DB)</Text>
+        {/* ALLERGIES SECTION */}
+        <Text style={styles.sectionTitle}>KNOWN ALLERGIES</Text>
         <View style={styles.card}>
           {(!medicalInfo.allergies || medicalInfo.allergies.length === 0) ? (
             <View style={styles.emptyBox}>
@@ -164,17 +226,29 @@ export default function MedicalInformationScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* MEDICAL CONDITIONS (From Clinical DB) */}
+        {/* MEDICAL CONDITIONS */}
         <Text style={styles.sectionTitle}>CHRONIC & CLINICAL CONDITIONS</Text>
-        <View style={styles.conditionsRow}>
-          {(medicalInfo.medicalConditions || []).map((cond, idx) => (
-            <View key={idx} style={styles.conditionPill}>
-              <Text style={styles.conditionPillText}>{typeof cond === 'string' ? cond : (cond?.name || cond?.condition || '')}</Text>
+        <View style={styles.card}>
+          {(!medicalInfo.medicalConditions || medicalInfo.medicalConditions.length === 0) ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No chronic medical conditions recorded.</Text>
             </View>
-          ))}
+          ) : (
+            <View style={styles.conditionsRow}>
+              {(medicalInfo.medicalConditions || []).map((cond, idx) => (
+                <View key={idx} style={styles.conditionPill}>
+                  <Text style={styles.conditionPillText}>{typeof cond === 'string' ? cond : (cond?.name || cond?.condition || '')}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.addInlineBtn} onPress={() => setConditionModalVisible(true)}>
+            <Text style={styles.addInlineText}>+ Add Condition</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* CURRENT MEDICATIONS (From Clinical DB) */}
+        {/* CURRENT MEDICATIONS */}
         <Text style={[styles.sectionTitle, { marginTop: 16 }]}>PRESCRIBED MEDICATIONS</Text>
         {(medicalInfo.currentMedications || []).map((med, idx) => (
           <View key={idx} style={styles.medCard}>
@@ -195,18 +269,28 @@ export default function MedicalInformationScreen({ route, navigation }) {
         {/* SURGERIES & INJURY HISTORY */}
         <Text style={[styles.sectionTitle, { marginTop: 16 }]}>SURGICAL & INJURY HISTORY</Text>
         <View style={styles.card}>
-          {(medicalInfo.pastSurgeries || []).map((surg, idx) => (
-            <View key={idx} style={styles.timelineItem}>
-              <View style={styles.dotLineCol}>
-                <View style={styles.timelineDot} />
-                {idx < (medicalInfo.pastSurgeries.length - 1) && <View style={styles.timelineLine} />}
-              </View>
-              <View style={{ flex: 1, paddingBottom: 12 }}>
-                <Text style={styles.injuryTitle}>{typeof surg?.procedure === 'string' ? surg.procedure : 'Surgical Procedure'}</Text>
-                <Text style={styles.injurySub}>{surg?.year ? `${surg.year} • ` : ''}{typeof surg?.notes === 'string' ? surg.notes : 'Recorded history'}</Text>
-              </View>
+          {(!medicalInfo.pastSurgeries || medicalInfo.pastSurgeries.length === 0) ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No past surgical or major injury history recorded.</Text>
             </View>
-          ))}
+          ) : (
+            (medicalInfo.pastSurgeries || []).map((surg, idx) => (
+              <View key={idx} style={styles.timelineItem}>
+                <View style={styles.dotLineCol}>
+                  <View style={styles.timelineDot} />
+                  {idx < (medicalInfo.pastSurgeries.length - 1) && <View style={styles.timelineLine} />}
+                </View>
+                <View style={{ flex: 1, paddingBottom: 12 }}>
+                  <Text style={styles.injuryTitle}>{typeof surg?.procedure === 'string' ? surg.procedure : 'Surgical Procedure'}</Text>
+                  <Text style={styles.injurySub}>{surg?.year ? `${surg.year} • ` : ''}{typeof surg?.notes === 'string' ? surg.notes : 'Recorded history'}</Text>
+                </View>
+              </View>
+            ))
+          )}
+
+          <TouchableOpacity style={styles.addInlineBtn} onPress={() => setSurgeryModalVisible(true)}>
+            <Text style={styles.addInlineText}>+ Add Surgical History</Text>
+          </TouchableOpacity>
         </View>
 
         {/* CLINICAL NOTES & SPECIALIST OBSERVATIONS */}
@@ -221,7 +305,7 @@ export default function MedicalInformationScreen({ route, navigation }) {
               <View key={note?._id || idx} style={[styles.noteCard, idx > 0 && { marginTop: 10 }]}>
                 <View style={styles.noteHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="document-text-outline" size={15} color="#0284c7" style={{ marginRight: 6 }} />
+                    <Ionicons name="document-text-outline" size={15} color="#003D9B" style={{ marginRight: 6 }} />
                     <Text style={styles.noteAuthor}>{typeof note?.author === 'string' ? note.author : 'Clinical Specialist'}</Text>
                   </View>
                   <Text style={styles.noteDate}>
@@ -234,19 +318,19 @@ export default function MedicalInformationScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* EMERGENCY CONTACT (Identity Service) */}
-        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>EMERGENCY CONTACT (IDENTITY SERVICE)</Text>
+        {/* EMERGENCY CONTACT */}
+        <Text style={[styles.sectionTitle, { marginTop: 16 }]}>PRIMARY EMERGENCY CONTACT</Text>
         <View style={styles.emergencyCard}>
           <View style={styles.emergencyAvatarCircle}>
             <Text style={styles.emergencyInitials}>EC</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.emergencyName}>{user?.emergencyContactName || 'Primary Emergency Contact'}</Text>
-            <Text style={styles.emergencyPhone}>{user?.emergencyContactPhone || '+91 98765 43210'}</Text>
+            <Text style={styles.emergencyPhone}>{user?.emergencyContactPhone || user?.emergencyContact || '+91 98765 43210'}</Text>
           </View>
           <TouchableOpacity
             style={styles.callCircleBtn}
-            onPress={() => Alert.alert('Emergency Call', 'Connecting to emergency contact...')}
+            onPress={() => Alert.alert('Emergency Call', `Calling ${user?.emergencyContactPhone || user?.emergencyContact || '+91 98765 43210'}...`)}
           >
             <Ionicons name="call" size={18} color="#ffffff" />
           </TouchableOpacity>
@@ -260,7 +344,7 @@ export default function MedicalInformationScreen({ route, navigation }) {
             <Text style={styles.modalTitle}>Add Allergy</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="e.g. Penicillin, Peanuts"
+              placeholder="e.g. Penicillin, Peanuts, Pollen"
               value={newAllergyText}
               onChangeText={setNewAllergyText}
             />
@@ -269,6 +353,29 @@ export default function MedicalInformationScreen({ route, navigation }) {
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddAllergy}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: ADD CONDITION */}
+      <Modal visible={isConditionModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Medical Condition</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Hypertension, Lower Back Pain, Asthma"
+              value={newConditionText}
+              onChangeText={setNewConditionText}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setConditionModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddCondition}>
                 <Text style={styles.modalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>
@@ -298,6 +405,42 @@ export default function MedicalInformationScreen({ route, navigation }) {
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddMedication}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: ADD SURGERY */}
+      <Modal visible={isSurgeryModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Surgical / Injury History</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Procedure (e.g. ACL Reconstruction, Knee Arthroscopy)"
+              value={newSurgeryProcedure}
+              onChangeText={setNewSurgeryProcedure}
+            />
+            <TextInput
+              style={[styles.modalInput, { marginTop: 10 }]}
+              placeholder="Year (e.g. 2021)"
+              keyboardType="number-pad"
+              value={newSurgeryYear}
+              onChangeText={setNewSurgeryYear}
+            />
+            <TextInput
+              style={[styles.modalInput, { marginTop: 10 }]}
+              placeholder="Notes (e.g. Left Knee, full recovery)"
+              value={newSurgeryNotes}
+              onChangeText={setNewSurgeryNotes}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setSurgeryModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddSurgery}>
                 <Text style={styles.modalSaveText}>Save</Text>
               </TouchableOpacity>
             </View>

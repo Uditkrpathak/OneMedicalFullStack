@@ -97,7 +97,7 @@ export const getTherapistDashboard = async (req, res) => {
         gender: nextApptDoc.patientGender || 'Patient',
         condition: nextApptDoc.serviceName || nextApptDoc.chiefComplaint || 'Physical Rehabilitation',
         startTime: nextApptDoc.startTime,
-        timeFormatted: apptTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timeFormatted: apptTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }),
         minutesUntil,
         visitType: nextApptDoc.appointmentType || 'clinic_visit',
         roomNumber: nextApptDoc.roomNumber || (nextApptDoc.appointmentType === 'telehealth' ? 'TELEHEALTH' : 'ROOM 204B'),
@@ -123,7 +123,7 @@ export const getTherapistDashboard = async (req, res) => {
     // Daily Timeline
     const dailyTimeline = (todaysAppointments.length > 0 ? todaysAppointments : allAppointments.slice(0, 6)).map((a) => {
       const timeStr = a.startTime
-        ? new Date(a.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
         : '10:00 AM';
       return {
         id: a._id,

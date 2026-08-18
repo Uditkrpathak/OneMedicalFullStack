@@ -46,15 +46,19 @@ export default function PaymentsInvoicesScreen({ navigation }) {
   };
 
   const filteredTxns = transactions.filter((t) => {
-    if (filter === 'paid') return t.status === 'captured';
-    if (filter === 'pending') return t.status === 'created' || t.status === 'authorized';
-    if (filter === 'refunded') return t.status === 'refunded' || t.status === 'partially_refunded';
+    const s = (t.status || t.paymentStatus || '').toLowerCase();
+    if (filter === 'paid') return s === 'captured' || s === 'paid';
+    if (filter === 'pending') return s === 'created' || s === 'authorized' || s === 'pending';
+    if (filter === 'refunded') return s === 'refunded' || s === 'partially_refunded';
     return true;
   });
 
   const totalPaid = transactions
-    .filter((t) => t.status === 'captured')
-    .reduce((sum, t) => sum + (t.amountPaise || 0), 0) / 100;
+    .filter((t) => {
+      const s = (t.status || t.paymentStatus || '').toLowerCase();
+      return s === 'captured' || s === 'paid';
+    })
+    .reduce((sum, t) => sum + (t.amountPaise || (t.amount ? t.amount * 100 : 0) || 0), 0) / 100;
 
   const handleDownloadTaxSummary = () => {
     Alert.alert(
@@ -88,26 +92,29 @@ export default function PaymentsInvoicesScreen({ navigation }) {
             <View style={styles.outstandingBadge}>
               <Text style={styles.outstandingText}>OUTSTANDING: ₹0</Text>
             </View>
-            <TouchableOpacity style={styles.taxSummaryBtn} onPress={handleDownloadTaxSummary}>
+            <TouchableOpacity style={styles.taxSummaryBtn} onPress={handleDownloadTaxSummary} activeOpacity={0.8}>
               <Ionicons name="document-text-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
               <Text style={styles.taxSummaryText}>Download Tax Summary</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* FILTER CHIPS */}
-        <View style={styles.filterRow}>
-          {['all', 'paid', 'pending', 'refunded'].map((item) => (
-            <TouchableOpacity
-              key={item}
-              style={[styles.filterChip, filter === item && styles.filterChipActive]}
-              onPress={() => setFilter(item)}
-            >
-              <Text style={[styles.filterChipText, filter === item && styles.filterChipTextActive]}>
-                {item.toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        {/* FILTER CHIPS (Horizontal Scrollable) */}
+        <View style={styles.filterWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {['all', 'paid', 'pending', 'refunded'].map((item) => (
+              <TouchableOpacity
+                key={item}
+                style={[styles.filterChip, filter === item && styles.filterChipActive]}
+                onPress={() => setFilter(item)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, filter === item && styles.filterChipTextActive]}>
+                  {item.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* TRANSACTIONS LIST */}
@@ -115,46 +122,67 @@ export default function PaymentsInvoicesScreen({ navigation }) {
           <ActivityIndicator size="large" color="#003D9B" style={{ marginTop: 40 }} />
         ) : filteredTxns.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Ionicons name="receipt-outline" size={36} color="#94a3b8" style={{ marginBottom: 8 }} />
+            <Ionicons name="receipt-outline" size={44} color="#94a3b8" style={{ marginBottom: 12 }} />
             <Text style={styles.emptyTitle}>No Transactions Found</Text>
             <Text style={styles.emptySub}>Your payment invoices will appear here after booking physiotherapy sessions.</Text>
+            <TouchableOpacity
+              style={styles.bookCtaBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                if (navigation.canGoBack()) navigation.goBack();
+                else navigation.navigate('PatientHome');
+              }}
+            >
+              <Ionicons name="calendar" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+              <Text style={styles.bookCtaText}>Book a Consultation</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          filteredTxns.map((item) => (
-            <TouchableOpacity
-              key={item._id}
-              style={styles.txnCard}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('InvoiceDetails', { transactionId: item._id })}
-            >
-              <View style={styles.txnIconBox}>
-                <Ionicons
-                  name={item.status === 'captured' ? 'checkmark-circle' : item.status === 'refunded' ? 'arrow-undo-circle' : 'time-outline'}
-                  size={26}
-                  color={item.status === 'captured' ? '#16a34a' : item.status === 'refunded' ? '#3b82f6' : '#eab308'}
-                />
-              </View>
+          filteredTxns.map((item) => {
+            const rawStatus = (item.status || item.paymentStatus || 'created').toLowerCase();
+            const isPaid = rawStatus === 'captured' || rawStatus === 'paid';
+            const isRefunded = rawStatus === 'refunded' || rawStatus === 'partially_refunded';
+            const statusLabel = isPaid ? 'PAID' : isRefunded ? 'REFUNDED' : 'PENDING';
+            const amountVal = item.amountPaise ? item.amountPaise / 100 : (item.amount || 0);
 
-              <View style={styles.txnDetails}>
-                <Text style={styles.txnTitle}>{item.therapistName ? `Dr. Consultation • ${item.therapistName}` : 'Physiotherapy Consultation'}</Text>
-                <Text style={styles.txnSub}>
-                  {new Date(item.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {item.paymentMethod ? item.paymentMethod.toUpperCase() : 'UPI'}
-                </Text>
-              </View>
+            return (
+              <TouchableOpacity
+                key={item._id || item.id}
+                style={styles.txnCard}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('InvoiceDetails', { transactionId: item._id || item.id })}
+              >
+                <View style={styles.txnIconBox}>
+                  <Ionicons
+                    name={isPaid ? 'checkmark-circle' : isRefunded ? 'arrow-undo-circle' : 'time-outline'}
+                    size={28}
+                    color={isPaid ? '#16a34a' : isRefunded ? '#2563eb' : '#eab308'}
+                  />
+                </View>
 
-              <View style={styles.txnRightCol}>
-                <Text style={styles.txnAmountText}>₹{((item.amountPaise || 0) / 100).toLocaleString('en-IN')}</Text>
-                <Text
-                  style={[
-                    styles.txnStatusBadge,
-                    { color: item.status === 'captured' ? '#16a34a' : item.status === 'refunded' ? '#2563eb' : '#eab308' }
-                  ]}
-                >
-                  {item.status.toUpperCase()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))
+                <View style={styles.txnDetails}>
+                  <Text style={styles.txnTitle} numberOfLines={1}>
+                    {item.therapistName ? `Dr. Consultation • ${item.therapistName}` : 'Physiotherapy Consultation'}
+                  </Text>
+                  <Text style={styles.txnSub}>
+                    {new Date(item.createdAt || item.date || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {(item.paymentMethod || 'UPI').toUpperCase()}
+                  </Text>
+                </View>
+
+                <View style={styles.txnRightCol}>
+                  <Text style={styles.txnAmountText}>₹{amountVal.toLocaleString('en-IN')}</Text>
+                  <Text
+                    style={[
+                      styles.txnStatusBadge,
+                      { color: isPaid ? '#16a34a' : isRefunded ? '#2563eb' : '#d97706' }
+                    ]}
+                  >
+                    {statusLabel}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
       </ScrollView>
     </SafeAreaView>
@@ -210,6 +238,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   outstandingBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
@@ -235,13 +265,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#ffffff',
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
+  filterWrapper: {
     marginBottom: 16,
+    marginHorizontal: -20,
+  },
+  filterScroll: {
+    paddingHorizontal: 20,
+    gap: 8,
   },
   filterChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: '#ffffff',
@@ -319,5 +352,20 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textAlign: 'center',
     marginTop: 4,
+    marginBottom: 16,
+  },
+  bookCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#003D9B',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  bookCtaText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#ffffff',
   },
 });

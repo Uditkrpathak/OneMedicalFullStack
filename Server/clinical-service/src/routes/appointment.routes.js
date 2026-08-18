@@ -13,6 +13,8 @@ import {
   getOutageImpact,
   getAppointmentsDashboard,
   updateAppointmentStatus,
+  patientCheckIn,
+  therapistJoinSession,
 } from '../controllers/bookingController.js';
 
 const router = express.Router();
@@ -27,6 +29,8 @@ router.get('/appointments/outage-impact',          getOutageImpact);      // Out
 router.get('/appointments/outage/impact',          getOutageImpact);
 router.get('/appointments/:id',                    getAppointmentById);   // Single appointment (RBAC enforced)
 
+router.post('/appointments/:id/check-in',          patientCheckIn);       // Patient check-in
+router.post('/appointments/:id/join',              therapistJoinSession); // Therapist join session
 router.patch('/appointments/:id/status',           updateAppointmentStatus); // Strict state machine transition
 router.post('/appointments/:id/cancel',            cancelAppointment);    // Cancellation policy enforced
 router.post('/appointments/:id/reschedule',        rescheduleAppointment);// Hold-swap pattern

@@ -127,3 +127,16 @@ export const requireOwnershipOrAssignedTherapist = () => {
     return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Forbidden: Invalid role claims.' } });
   };
 };
+
+export const requireCompletedProfile = (req, res, next) => {
+  if (req.user?.role === 'clinic_admin' || req.user?.role === 'super_admin' || req.user?.userId === 'internal_service') {
+    return next();
+  }
+  if (req.user?.isProfileCompleted === false) {
+    return res.status(403).json({
+      success: false,
+      error: { code: 'PROFILE_INCOMPLETE', message: 'You must complete your profile before accessing clinical services.' }
+    });
+  }
+  next();
+};

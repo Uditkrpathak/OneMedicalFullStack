@@ -214,24 +214,26 @@ export default function AppNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
           <Stack.Screen name="Otp" component={OtpScreen} />
-          <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
+        </>
+      ) : !user?.isProfileCompleted ? (
+        <>
+          {/* Profile Completion Gatekeeping — User MUST complete profile before accessing Home */}
+          {user?.role === 'therapist' ? (
+            <Stack.Screen name="TherapistCompleteProfile" component={TherapistCompleteProfileScreen} />
+          ) : (
+            <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
+          )}
           <Stack.Screen name="EnablePermissions" component={EnablePermissionsScreen} />
           <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
-          <Stack.Screen name="PatientHome" component={PatientTabs} />
-          <Stack.Screen name="TherapistHome" component={TherapistTabs} />
         </>
       ) : (
         <>
-          {/* Main Role-Based App */}
+          {/* Fully Verified & Completed App Access */}
           {user?.role === 'therapist' ? (
             <Stack.Screen name="TherapistHome" component={TherapistTabs} />
           ) : (
             <Stack.Screen name="PatientHome" component={PatientTabs} />
           )}
-
-          <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
-          <Stack.Screen name="EnablePermissions" component={EnablePermissionsScreen} />
-          <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
         </>
       )}
 

@@ -75,6 +75,60 @@ export const renderNotificationContent = ({
         sms: `OneMedical: Your session starts in 1 hour at ${data.appointmentTime}. Open app to join.`,
       };
 
+    case 'appointment.reminder_starting':
+      return {
+        title: 'Session Starting Now 🩺',
+        message: isTherapist
+          ? `Your consultation with ${data.patientName || 'Patient'} is starting now. Please join the session.`
+          : `Your session with ${data.therapistName || 'Specialist'} is starting now. Tap to enter consultation.`,
+        email: null,
+        sms: `OneMedical: Your consultation with ${isTherapist ? data.patientName : data.therapistName} starts now. Tap to join: ${data.route || 'Open app'}`,
+      };
+
+    case 'appointment.provider_no_show':
+      return {
+        title: isTherapist ? '⚠️ Missed Consultation Incident' : 'Appointment Reschedule Protected 🛡️',
+        message: isTherapist
+          ? `You did not start the scheduled consultation with ${data.patientName || 'Patient'} within the allowed attendance window. An incident has been logged.`
+          : `Your session was missed because the specialist was unavailable. You have not been charged. Tap to reschedule at zero cost.`,
+        email: {
+          subject: isTherapist ? 'Incident Logged: Missed Session — OneMedical' : 'Your Session Has Been Protected — OneMedical',
+          text: isTherapist
+            ? `Hello Dr. ${data.therapistName || ''},\n\nYou did not conduct scheduled appointment #${data.appointmentId} with ${data.patientName} within the allowed attendance window.\n\nPlease submit an explanation in your specialist portal.`
+            : `Hello ${data.patientName || ''},\n\nYour appointment #${data.appointmentId} with ${data.therapistName} could not take place because the specialist was unavailable.\n\nYour payment is fully protected and you will not be charged. You can reschedule your session for free in the OneMedical app.`,
+          html: `<div style="font-family: sans-serif; padding: 20px; color: #0f172a;"><h2 style="color: ${isTherapist ? '#dc2626' : '#003D9B'};">OneMedical Care Notice</h2><p>${isTherapist ? `You missed scheduled appointment #${data.appointmentId} with ${data.patientName}.` : `Your appointment with <strong>${data.therapistName}</strong> was missed because the therapist was unavailable.`}</p><p><strong>Status:</strong> ${isTherapist ? 'Provider No-Show Recorded' : 'Zero-Charge Protected — Free Reschedule Available'}</p></div>`,
+        },
+        sms: isTherapist
+          ? `OneMedical Alert: You missed session #${data.appointmentId} with ${data.patientName}. Incident recorded.`
+          : `OneMedical: Your session was missed by the specialist. You will not be charged. Tap to reschedule: ${data.route || 'Open app'}`,
+      };
+
+    case 'appointment.patient_no_show':
+      return {
+        title: isTherapist ? 'Patient Missed Session' : 'Missed Consultation',
+        message: isTherapist
+          ? `Patient ${data.patientName || 'Patient'} did not attend the scheduled consultation #${data.appointmentId}.`
+          : `You missed your scheduled session with ${data.therapistName || 'Specialist'}.`,
+        email: null,
+        sms: `OneMedical: Appointment #${data.appointmentId} was marked as missed.`,
+      };
+
+    case 'appointment.no_attendance':
+      return {
+        title: 'Unattended Session Expired',
+        message: `Consultation #${data.appointmentId} expired as neither party attended the session.`,
+        email: null,
+        sms: `OneMedical: Session #${data.appointmentId} expired due to no attendance.`,
+      };
+
+    case 'appointment.technical_failure':
+      return {
+        title: 'Session Disconnected (Technical Issue)',
+        message: `We detected a connection issue during your consultation #${data.appointmentId}. Our care team will assist you with rescheduling.`,
+        email: null,
+        sms: `OneMedical: Technical connection issue recorded for session #${data.appointmentId}. Support team notified.`,
+      };
+
     case 'clinical.high_pain_alert':
       return {
         title: '⚠️ CRITICAL PAIN ALERT',

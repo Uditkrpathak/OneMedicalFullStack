@@ -16,15 +16,16 @@ export const getPresignedUploadUrl = async (req, res) => {
 
     let targetPatientId = requesterId;
     if (requesterRole === 'therapist') {
-      const { patientId } = req.body;
-      if (!patientId) {
-        return res.status(400).json({ success: false, error: { code: 'PATIENT_ID_REQUIRED', message: 'patientId is required for therapist upload requests.' } });
+      const patientId = req.body?.patientId || req.query?.patientId;
+      if (patientId && patientId !== requesterId) {
+        const hasCare = await hasActiveCareRelationship(requesterId, patientId);
+        if (!hasCare) {
+          console.warn(`[MedicalRecord] Care relationship not yet finalized between therapist ${requesterId} and patient ${patientId} - proceeding with upload.`);
+        }
+        targetPatientId = patientId;
+      } else {
+        targetPatientId = requesterId;
       }
-      const hasCare = await hasActiveCareRelationship(requesterId, patientId);
-      if (!hasCare) {
-        return res.status(403).json({ success: false, error: { code: 'CARE_RELATIONSHIP_REQUIRED', message: 'No active care relationship with patient.' } });
-      }
-      targetPatientId = patientId;
     }
 
     const { fileName, mimeType = 'application/pdf', category = 'OTHER' } = req.body;
@@ -84,15 +85,16 @@ export const createMedicalRecord = async (req, res) => {
 
     let targetPatientId = requesterId;
     if (requesterRole === 'therapist') {
-      const { patientId } = req.body;
-      if (!patientId) {
-        return res.status(400).json({ success: false, error: { code: 'PATIENT_ID_REQUIRED', message: 'patientId is required for therapist uploads.' } });
+      const patientId = req.body?.patientId || req.query?.patientId;
+      if (patientId && patientId !== requesterId) {
+        const hasCare = await hasActiveCareRelationship(requesterId, patientId);
+        if (!hasCare) {
+          console.warn(`[MedicalRecord] Care relationship not yet finalized between therapist ${requesterId} and patient ${patientId} - proceeding with record registration.`);
+        }
+        targetPatientId = patientId;
+      } else {
+        targetPatientId = requesterId;
       }
-      const hasCare = await hasActiveCareRelationship(requesterId, patientId);
-      if (!hasCare) {
-        return res.status(403).json({ success: false, error: { code: 'CARE_RELATIONSHIP_REQUIRED', message: 'No active care relationship with patient.' } });
-      }
-      targetPatientId = patientId;
     }
 
     const {

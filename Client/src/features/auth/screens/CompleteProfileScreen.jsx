@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,13 +10,14 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector, useDispatch } from 'react-redux';
 import { useForm, Controller } from 'react-hook-form';
 import { useUpdatePatientProfileMutation } from '../authApiSlice';
-import { updateProfile, updateProfileStatus, loginSuccess } from '../authSlice';
+import { updateProfile, updateProfileStatus, loginSuccess, logout } from '../authSlice';
 import { colors } from '../../../theme/colors';
 
 const CONCERNS = [
@@ -34,6 +35,27 @@ export default function CompleteProfileScreen({ navigation }) {
 
   const [updatePatientProfile, { isLoading }] = useUpdatePatientProfileMutation();
   const [profilePhoto, setProfilePhoto] = React.useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300');
+
+  const handleExitAttempt = () => {
+    Alert.alert(
+      'Profile Setup Required',
+      'Please complete your medical profile to access OneMedical care features. Would you like to log out?',
+      [
+        { text: 'Continue Setup', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: () => dispatch(logout()),
+        },
+      ]
+    );
+    return true; // Prevent default Android back navigation
+  };
+
+  useEffect(() => {
+    const backSub = BackHandler.addEventListener('hardwareBackPress', handleExitAttempt);
+    return () => backSub.remove();
+  }, []);
 
   const {
     control,
@@ -154,13 +176,7 @@ export default function CompleteProfileScreen({ navigation }) {
       <View style={styles.headerRow}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-            } else {
-              navigation.navigate(user?.role === 'therapist' ? 'TherapistHome' : 'PatientHome');
-            }
-          }}
+          onPress={handleExitAttempt}
         >
           <Ionicons name="arrow-back" size={20} color="#0f172a" />
         </TouchableOpacity>

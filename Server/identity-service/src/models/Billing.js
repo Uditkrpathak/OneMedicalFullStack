@@ -20,6 +20,7 @@ const InvoiceSchema = new mongoose.Schema({
 
 InvoiceSchema.index({ transactionId: 1 }, { unique: true });
 InvoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
+InvoiceSchema.index({ appointmentId: 1 }, { unique: true, sparse: true });
 InvoiceSchema.index({ patientId: 1, createdAt: -1 });
 
 const RefundSchema = new mongoose.Schema({

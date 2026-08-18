@@ -32,8 +32,9 @@ const PAIN_TYPES = [
   { id: 'dull', label: '🌊 Dull' },
 ];
 
-export default function BodyPainMapScreen({ navigation }) {
-  const { token } = useSelector(state => state.auth);
+export default function BodyPainMapScreen({ route, navigation }) {
+  const { token, user } = useSelector(state => state.auth);
+  const patientId = route?.params?.patientId || route?.params?.userId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
 
   const [viewSide, setViewSide] = useState('back'); // 'front' | 'back'
   const [selectedRegion, setSelectedRegion] = useState(BODY_REGIONS[3]); // Lumbar Spine
@@ -47,7 +48,8 @@ export default function BodyPainMapScreen({ navigation }) {
     const fetchPainLogs = async () => {
       try {
         setLoading(true);
-        const res = await clinicalApi.getPainAssessments({}, token);
+        const query = patientId ? { patientId } : {};
+        const res = await clinicalApi.getPainAssessments(query, token);
         if (res.success && res.data) {
           const list = Array.isArray(res.data) ? res.data : (res.data.assessments || []);
           setLogs(list);
@@ -59,7 +61,7 @@ export default function BodyPainMapScreen({ navigation }) {
       }
     };
     fetchPainLogs();
-  }, [token]);
+  }, [token, patientId]);
 
   const togglePainType = (id) => {
     if (selectedPainTypes.includes(id)) {
@@ -88,6 +90,8 @@ export default function BodyPainMapScreen({ navigation }) {
     try {
       setSaving(true);
       const payload = {
+        patientId: patientId || user?.userId || user?.id,
+        userId: patientId || user?.userId || user?.id,
         bodyRegion: selectedRegion?.id || 'lumbar_spine',
         painScore: painLevel,
         painLevel: painLevel,

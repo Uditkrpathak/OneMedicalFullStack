@@ -170,13 +170,15 @@ export const clinicalApi = {
   },
 
   // ── Medical Records & Private S3 Vault (Phase 8) ──
-  getPresignedUploadUrl: async (fileName, mimeType = 'application/pdf', category = 'OTHER', token) => {
+  getPresignedUploadUrl: async (fileName, mimeType = 'application/pdf', category = 'OTHER', token, patientId = null) => {
+    const payload = { fileName, mimeType, category };
+    if (patientId) payload.patientId = patientId;
     const res = await resilientFetch(
       '/medical-records/upload-url',
       {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fileName, mimeType, category })
+        body: JSON.stringify(payload)
       }
     );
     return { success: res.success, data: res.data, source: res.source, error: res.error };

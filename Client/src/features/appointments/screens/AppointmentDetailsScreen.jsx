@@ -175,6 +175,34 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
+        {/* UPI PAYMENT STATUS & SELF-PAY BANNER */}
+        {snapshot?.paymentStatus !== 'PAID' && snapshot?.status !== 'CANCELLED' && (
+          <View style={{ backgroundColor: '#eff6ff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#bfdbfe', gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="qr-code-outline" size={20} color="#003D9B" />
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#003D9B' }}>Payment Pending (₹{Math.round((snapshot.amount || 49900) / 100)})</Text>
+              </View>
+              <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#b45309' }}>PAY AT CLINIC</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 12, color: '#475569', lineHeight: 16 }}>
+              You can pay right now via UPI to skip reception counter queues, or scan the dynamic clinic QR upon arrival.
+            </Text>
+            {user?.role === 'patient' && (
+              <TouchableOpacity
+                style={{ backgroundColor: '#003D9B', borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('ChoosePayment', { appointmentId })}
+              >
+                <Ionicons name="flash" size={16} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Pay ₹{Math.round((snapshot.amount || 49900) / 100)} via UPI Now</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Clinical Snapshot */}
         <View style={styles.clinicalSnapshotCard}>
           <Text style={styles.sectionHeading}>CLINICAL SNAPSHOT</Text>

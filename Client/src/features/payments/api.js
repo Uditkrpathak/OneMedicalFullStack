@@ -73,6 +73,38 @@ export const paymentApi = {
     return { success: res.success, data: res.data, error: res.error };
   },
 
+  // ─── Generate Clinic Dynamic UPI QR ─────────────────────────────────────────
+  generateClinicDynamicQr: async (appointmentId, token) => {
+    const res = await resilientFetch(
+      '/payments/clinic/dynamic-qr',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ appointmentId }),
+      }
+    );
+    return { success: res.success, data: res.data, error: res.error };
+  },
+
+  // ─── Verify Clinic UPI Payment ──────────────────────────────────────────────
+  verifyClinicPayment: async (appointmentId, gatewayOrderId, token) => {
+    const res = await resilientFetch(
+      '/payments/clinic/verify',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ appointmentId, gatewayOrderId }),
+      }
+    );
+    return { success: res.success, data: res.data, error: res.error, message: res.message };
+  },
+
   // ─── Get Invoice Details By ID ──────────────────────────────────────────────
   getInvoiceById: async (invoiceOrTransactionId, token) => {
     const res = await resilientFetch(

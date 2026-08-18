@@ -9,6 +9,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Share,
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,6 +38,17 @@ export default function SavedSpecialistsScreen({ navigation }) {
       setSpecialists([]);
     }
   }, [savedRes]);
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        title: 'OneMedical Specialists',
+        message: 'Book consultations with certified physiotherapy and rehabilitation specialists on OneMedical: https://onemedical.app/specialists',
+      });
+    } catch (err) {
+      // Ignored
+    }
+  };
 
   const handleUnsave = async (id) => {
     try {
@@ -70,6 +82,46 @@ export default function SavedSpecialistsScreen({ navigation }) {
     return true;
   });
 
+  const handleNavigateToBooking = (doc) => {
+    if (doc) {
+      try {
+        navigation.navigate('SelectDateTime', {
+          therapistId: doc._id || doc.id,
+          therapistName: doc.name,
+          doctor: doc,
+        });
+      } catch {
+        try {
+          navigation.navigate('BookAppointment', {
+            therapistId: doc._id || doc.id,
+            therapistName: doc.name,
+            doctor: doc,
+          });
+        } catch {
+          navigation.navigate('PatientHome', { screen: 'Book', params: { doctor: doc } });
+        }
+      }
+    } else {
+      try {
+        navigation.navigate('BookAppointment');
+      } catch {
+        try {
+          navigation.navigate('PatientHome', { screen: 'Book' });
+        } catch {
+          navigation.navigate('Book');
+        }
+      }
+    }
+  };
+
+  const handleNavigateToDetail = (doc) => {
+    navigation.navigate('TherapistDetail', {
+      doctorId: doc._id || doc.id,
+      therapistId: doc._id || doc.id,
+      doctor: doc,
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* HEADER */}
@@ -78,7 +130,7 @@ export default function SavedSpecialistsScreen({ navigation }) {
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Saved Specialists</Text>
-        <TouchableOpacity style={styles.headerRightBtn}>
+        <TouchableOpacity style={styles.headerRightBtn} onPress={handleShare} activeOpacity={0.7}>
           <Ionicons name="share-outline" size={20} color="#0f172a" />
         </TouchableOpacity>
       </View>
@@ -102,20 +154,23 @@ export default function SavedSpecialistsScreen({ navigation }) {
         </View>
 
         {/* CATEGORY CHIPS */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {['All', 'Nearby', 'Sports', 'Orthopedic'].map((item) => {
-            const isSelected = category === item;
-            return (
-              <TouchableOpacity
-                key={item}
-                style={[styles.chip, isSelected && styles.chipActive]}
-                onPress={() => setCategory(item)}
-              >
-                <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>{item}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.chipsWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+            {['All', 'Nearby', 'Sports', 'Orthopedic'].map((item) => {
+              const isSelected = category === item;
+              return (
+                <TouchableOpacity
+                  key={item}
+                  style={[styles.chip, isSelected && styles.chipActive]}
+                  onPress={() => setCategory(item)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>{item}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         {/* SPECIALIST LIST */}
         {isLoading ? (
@@ -132,7 +187,7 @@ export default function SavedSpecialistsScreen({ navigation }) {
             buttonText={search.trim() ? "Clear Search" : "Explore Doctors"}
             onButtonPress={() => {
               if (search.trim()) setSearch('');
-              else navigation.navigate('Book');
+              else handleNavigateToBooking();
             }}
           />
         ) : (
@@ -189,14 +244,16 @@ export default function SavedSpecialistsScreen({ navigation }) {
                 <View style={styles.actionButtonsRow}>
                   <TouchableOpacity
                     style={styles.viewProfileBtn}
-                    onPress={() => navigation.navigate('TherapistDetail', { doctorId: doc._id })}
+                    activeOpacity={0.8}
+                    onPress={() => handleNavigateToDetail(doc)}
                   >
                     <Text style={styles.viewProfileBtnText}>View Profile</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.bookAppointmentBtn}
-                    onPress={() => navigation.navigate('Book', { doctor: doc })}
+                    activeOpacity={0.85}
+                    onPress={() => handleNavigateToBooking(doc)}
                   >
                     <Text style={styles.bookAppointmentBtnText}>Book Appointment</Text>
                   </TouchableOpacity>
@@ -213,7 +270,7 @@ export default function SavedSpecialistsScreen({ navigation }) {
           <Text style={styles.exploreBannerSub}>
             Explore our directory of world-class specialists in your area.
           </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Book')}>
+          <TouchableOpacity onPress={() => handleNavigateToBooking()} activeOpacity={0.8}>
             <Text style={styles.exploreLinkText}>Explore All Specialists ➔</Text>
           </TouchableOpacity>
         </View>
@@ -283,8 +340,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0f172a',
   },
-  chipsRow: {
+  chipsWrapper: {
     marginBottom: 16,
+    marginHorizontal: -20,
+  },
+  chipsRow: {
+    paddingHorizontal: 20,
     gap: 8,
   },
   chip: {
@@ -294,7 +355,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginRight: 8,
   },
   chipActive: {
     backgroundColor: '#0038A8',

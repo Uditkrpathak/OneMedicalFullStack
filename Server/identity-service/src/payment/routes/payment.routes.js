@@ -2,6 +2,8 @@ import express from 'express';
 import {
   createOrder,
   verifyPayment,
+  generateClinicDynamicQr,
+  verifyClinicPayment,
   getMyTransactions,
   getInvoices,
   getInvoiceById
@@ -14,12 +16,16 @@ const router = express.Router();
 router.post('/webhook/razorpay', express.raw({ type: 'application/json' }), razorpayWebhook);
 router.post('/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
 
-// Authenticated Payment Orders & Verification
+// Authenticated Payment Orders & Verification (UPI Exclusive)
 router.post('/orders',              createOrder);
 router.post('/payments/orders',     createOrder);
 
 router.post('/verify',              verifyPayment);
 router.post('/payments/verify',     verifyPayment);
+
+// Clinic Dynamic UPI QR & Verification
+router.post('/clinic/dynamic-qr',   generateClinicDynamicQr);
+router.post('/clinic/verify',       verifyClinicPayment);
 
 // Authenticated History & Invoices
 router.get('/transactions/my',      getMyTransactions);

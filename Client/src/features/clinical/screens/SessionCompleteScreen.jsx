@@ -227,7 +227,13 @@ export default function SessionCompleteScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.primaryBtn}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('RecoveryMain')}
+            onPress={() => {
+              try {
+                navigation.navigate('PatientHome', { screen: 'Dashboard' });
+              } catch {
+                navigation.navigate('RecoveryMain');
+              }
+            }}
           >
             <Text style={styles.primaryBtnText}>Return to Recovery Dashboard</Text>
           </TouchableOpacity>

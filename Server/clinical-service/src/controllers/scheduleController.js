@@ -525,7 +525,7 @@ export const getConsultationQueue = async (req, res) => {
       const u = appt.patientId ? userMap.get(appt.patientId.toString()) : null;
       const patientName = appt.patientName || u?.name || `Patient ${String(appt.patientId).slice(-4)}`;
       const timeStr = appt.startTime
-        ? new Date(appt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        ? new Date(appt.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
         : (appt.appointmentTime || appt.time || '09:00 AM');
 
       return {
