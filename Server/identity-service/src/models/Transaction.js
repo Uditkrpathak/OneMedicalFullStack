@@ -14,9 +14,12 @@ const TransactionSchema = new mongoose.Schema({
   gateway:          { type: String, default: 'razorpay' },
   status: {
     type: String,
-    enum: ['created', 'authorized', 'captured', 'failed', 'refund_pending', 'refunded', 'partially_refunded', 'expired'],
+    enum: ['created', 'pending', 'authorized', 'captured', 'PAID', 'failed', 'refund_pending', 'refund_processing', 'refunded', 'partially_refunded', 'expired'],
     default: 'created',
   },
+  failureCode:      { type: String },
+  failureReason:    { type: String },
+  version:          { type: Number, default: 1 },
   paymentMethod:    { type: String, default: 'UPI' },   // Strictly 'UPI'
   upiApp:           { type: String, default: 'upi' },   // 'gpay', 'phonepe', 'paytm', 'bhim', 'qr', 'upi_id'
   upiVpa:           { type: String },
@@ -24,7 +27,7 @@ const TransactionSchema = new mongoose.Schema({
   paymentPlace:     { type: String, enum: ['online', 'clinic'], default: 'online' },
   verificationSource: {
     type: String,
-    enum: ['WEBHOOK', 'SERVER_VERIFY', 'GATEWAY_SYNC', 'CLINIC_QR_VERIFY'],
+    enum: ['WEBHOOK', 'SERVER_VERIFY', 'GATEWAY_SYNC', 'CLINIC_QR_VERIFY', 'RECONCILER'],
     default: 'SERVER_VERIFY'
   },
   verifiedAt:       { type: Date },

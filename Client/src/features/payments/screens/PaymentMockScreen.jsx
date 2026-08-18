@@ -61,7 +61,19 @@ export default function PaymentMockScreen({ route, navigation }) {
         }, token);
 
         if (verifyRes.success) {
-          navigation.replace('AppointmentConfirmed', { appointmentId });
+          navigation.replace('AppointmentConfirmed', {
+            appointmentId,
+            appointment: route.params?.appointment,
+            doctor: route.params?.doctor,
+            doctorName: route.params?.doctor?.name || route.params?.doctorName,
+            serviceName: route.params?.serviceName,
+            clinicName: route.params?.clinicName,
+            dateTimeStr: route.params?.dateTimeStr,
+            dateStr: route.params?.dateStr,
+            timeStr: route.params?.timeStr,
+            consultMode: route.params?.consultMode,
+            paymentStatus: 'PAID',
+          });
         } else {
           alert(verifyRes.error?.message || 'Payment simulation verification failed.');
         }

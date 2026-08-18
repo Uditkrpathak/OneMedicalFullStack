@@ -109,6 +109,13 @@ export default function PatientDashboardScreen({ navigation }) {
     }
   }, [socket]);
 
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearchSubmit = (text) => {
+    const query = (text !== undefined ? text : searchQuery).trim();
+    navigation.navigate('Book', { search: query });
+  };
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return 'Good Morning';
@@ -192,7 +199,20 @@ export default function PatientDashboardScreen({ navigation }) {
             style={styles.searchInput}
             placeholder="Search therapists, clinics or treatments"
             placeholderTextColor="#94a3b8"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={() => handleSearchSubmit(searchQuery)}
+            returnKeyType="search"
           />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={() => handleSearchSubmit(searchQuery)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="arrow-forward-circle" size={20} color="#003D9B" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* TODAY'S APPOINTMENT HERO CARD OR NO APPOINTMENT STATE */}
@@ -726,17 +746,26 @@ export default function PatientDashboardScreen({ navigation }) {
         {/* NEED ASSISTANCE FOOTER BANNER */}
         <View style={styles.supportCard}>
           <View style={styles.supportAvatarBox}>
-            <Ionicons name="headset-outline" size={24} color="#2563eb" />
+            <Ionicons name="headset-outline" size={24} color="#003D9B" />
           </View>
           <Text style={styles.supportTitle}>Need assistance?</Text>
           <Text style={styles.supportSub}>
-            Our care team is here to help you with your recovery journey.
+            Our clinical care team is here 24/7 to help you with your recovery journey, appointments, and payments.
           </Text>
 
-          <TouchableOpacity style={styles.supportBtn}>
+          <TouchableOpacity
+            style={styles.supportBtn}
+            activeOpacity={0.88}
+            onPress={() => navigation.navigate('HelpSupport')}
+          >
+            <Ionicons name="chatbubbles-outline" size={17} color="#ffffff" style={{ marginRight: 8 }} />
             <Text style={styles.supportBtnText}>Contact Support</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={{ marginTop: 8 }}>
+          <TouchableOpacity
+            style={{ marginTop: 10, paddingVertical: 4 }}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('HelpSupport')}
+          >
             <Text style={styles.faqLinkText}>Frequently Asked Questions</Text>
           </TouchableOpacity>
         </View>

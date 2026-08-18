@@ -46,8 +46,20 @@ export default function PaymentProcessingScreen({ route, navigation }) {
         if (isMounted) {
           setStatusText('Payment confirmed!');
           setTimeout(() => {
-            navigation.replace('AppointmentConfirmed', { appointmentId });
-          }, 1200);
+            navigation.replace('AppointmentConfirmed', {
+              appointmentId,
+              appointment: route.params?.appointment,
+              doctor: route.params?.doctor,
+              doctorName: route.params?.doctor?.name || route.params?.doctorName,
+              serviceName: route.params?.serviceName,
+              clinicName: route.params?.clinicName,
+              dateTimeStr: route.params?.dateTimeStr,
+              dateStr: route.params?.dateStr,
+              timeStr: route.params?.timeStr,
+              consultMode: route.params?.consultMode,
+              paymentStatus: 'PAID',
+            });
+          }, 1000);
         }
       } catch (err) {
         // Critical: payment errors must NOT redirect to AppointmentConfirmed.

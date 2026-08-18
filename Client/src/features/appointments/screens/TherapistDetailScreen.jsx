@@ -49,6 +49,7 @@ export default function TherapistDetailScreen({ route, navigation }) {
     try {
       if (nextState) {
         await saveSpecialist(therapistId).unwrap();
+        navigation.navigate('SavedSpecialists');
       } else {
         await removeSavedSpecialist(therapistId).unwrap();
       }

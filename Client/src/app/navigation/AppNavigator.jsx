@@ -214,6 +214,9 @@ export default function AppNavigator() {
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
           <Stack.Screen name="Otp" component={OtpScreen} />
+          <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="NeedHelp" component={NeedHelpScreen} />
         </>
       ) : !user?.isProfileCompleted ? (
         <>
@@ -225,6 +228,8 @@ export default function AppNavigator() {
           )}
           <Stack.Screen name="EnablePermissions" component={EnablePermissionsScreen} />
           <Stack.Screen name="SetupComplete" component={SetupCompleteScreen} />
+          <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
         </>
       ) : (
         <>
@@ -234,70 +239,70 @@ export default function AppNavigator() {
           ) : (
             <Stack.Screen name="PatientHome" component={PatientTabs} />
           )}
+
+          {/* Authenticated Protected Clinical, Booking & Payment Screens */}
+          <Stack.Screen name="MedicalRecordViewer" component={MedicalRecordViewerScreen} />
+          <Stack.Screen name="PaymentsInvoices" component={PaymentsInvoicesScreen} />
+          <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
+          <Stack.Screen name="SavedSpecialists" component={SavedSpecialistsScreen} />
+          <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
+          <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
+          <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+          <Stack.Screen name="About" component={AboutScreen} />
+          <Stack.Screen name="ChangeMobile" component={ChangeMobileScreen} />
+          <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+          <Stack.Screen name="TherapistCompleteProfile" component={TherapistCompleteProfileScreen} />
+          <Stack.Screen name="TherapistSchedule" component={TherapistScheduleScreen} />
+          <Stack.Screen name="TherapistPatients" component={TherapistPatientListScreen} />
+          <Stack.Screen name="PatientList" component={TherapistPatientListScreen} />
+          <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
+          <Stack.Screen name="AppointmentDetails" component={AppointmentDetailsScreen} />
+          <Stack.Screen name="ClinicalConsultation" component={ClinicalConsultationScreen} />
+          <Stack.Screen name="RecoveryMain" component={RecoveryMainScreen} />
+          <Stack.Screen name="MyRecoveryPrograms" component={MyRecoveryProgramsScreen} />
+          <Stack.Screen name="RecoveryProgramDetail" component={RecoveryProgramDetailScreen} />
+          <Stack.Screen name="TodaysSession" component={TodaysSessionScreen} />
+          <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
+          <Stack.Screen name="ExerciseTimerActive" component={ExerciseTimerActiveScreen} />
+          <Stack.Screen name="ExerciseProgress" component={ExerciseProgressScreen} />
+          <Stack.Screen name="SessionComplete" component={SessionCompleteScreen} />
+          <Stack.Screen name="RecoveryProgressAnalytics" component={RecoveryProgressAnalyticsScreen} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="TherapistDetail" component={TherapistDetailScreen} />
+          <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
+          <Stack.Screen name="ChoosePayment" component={ChoosePaymentScreen} />
+          <Stack.Screen name="PaymentProcessing" component={PaymentProcessingScreen} />
+          <Stack.Screen name="AppointmentConfirmed" component={AppointmentConfirmedScreen} />
+          <Stack.Screen name="MyBookings" component={MyBookingsScreen} />
+          <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
+          <Stack.Screen name="BookAppointment" component={BookAppointmentScreen} />
+          <Stack.Screen name="RescheduleAppointment" component={RescheduleAppointmentScreen} />
+          <Stack.Screen name="CancelAppointment" component={CancelAppointmentScreen} />
+          <Stack.Screen name="ExerciseTimer" component={ExerciseTimerScreen} />
+          <Stack.Screen name="PatientDetail" component={PatientDetailScreen} />
+          <Stack.Screen name="PrescribeProgram" component={PrescribeProgramScreen} />
+          <Stack.Screen name="MedicalRecords" component={MedicalRecordsScreen} />
+          <Stack.Screen name="PaymentMock" component={PaymentMockScreen} />
+          <Stack.Screen name="Invoices" component={InvoicesScreen} />
+          <Stack.Screen name="ConversationsList" component={ConversationsListScreen} />
+          <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="ChatRoom" component={ChatScreen} />
+          <Stack.Screen name="VideoCall" component={VideoCallScreen} />
+          <Stack.Screen name="PatientProfileOverview" component={PatientProfileOverviewScreen} />
+          <Stack.Screen name="EditPatientProfile" component={EditPatientProfileScreen} />
+          <Stack.Screen name="MedicalInformation" component={MedicalInformationScreen} />
+          <Stack.Screen name="MedicalRecordsVault" component={MedicalRecordsVaultScreen} />
+          <Stack.Screen name="WriteDoctorReview" component={WriteDoctorReviewScreen} />
+          <Stack.Screen name="SearchFilter" component={SearchFilterScreen} />
+          <Stack.Screen name="EmergencyTriage" component={EmergencyTriageScreen} />
+          <Stack.Screen name="AddMedicalRecord" component={AddMedicalRecordScreen} />
+          <Stack.Screen name="ReviewSubmitted" component={ReviewSubmittedScreen} />
+          <Stack.Screen name="BodyPainMap" component={BodyPainMapScreen} />
+          <Stack.Screen name="ReferralRewards" component={ReferralRewardsScreen} />
+          <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+          <Stack.Screen name="NeedHelp" component={NeedHelpScreen} />
         </>
       )}
-
-      {/* Shared Screens */}
-      <Stack.Screen name="MedicalRecordViewer" component={MedicalRecordViewerScreen} />
-      <Stack.Screen name="PaymentsInvoices" component={PaymentsInvoicesScreen} />
-      <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
-      <Stack.Screen name="SavedSpecialists" component={SavedSpecialistsScreen} />
-      <Stack.Screen name="NotificationPreferences" component={NotificationPreferencesScreen} />
-      <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
-      <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
-      <Stack.Screen name="About" component={AboutScreen} />
-      <Stack.Screen name="ChangeMobile" component={ChangeMobileScreen} />
-      <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
-      <Stack.Screen name="TherapistCompleteProfile" component={TherapistCompleteProfileScreen} />
-      <Stack.Screen name="TherapistSchedule" component={TherapistScheduleScreen} />
-      <Stack.Screen name="TherapistPatients" component={TherapistPatientListScreen} />
-      <Stack.Screen name="PatientList" component={TherapistPatientListScreen} />
-      <Stack.Screen name="ExerciseLibrary" component={ExerciseLibraryScreen} />
-      <Stack.Screen name="AppointmentDetails" component={AppointmentDetailsScreen} />
-      <Stack.Screen name="ClinicalConsultation" component={ClinicalConsultationScreen} />
-      <Stack.Screen name="RecoveryMain" component={RecoveryMainScreen} />
-      <Stack.Screen name="MyRecoveryPrograms" component={MyRecoveryProgramsScreen} />
-      <Stack.Screen name="RecoveryProgramDetail" component={RecoveryProgramDetailScreen} />
-      <Stack.Screen name="TodaysSession" component={TodaysSessionScreen} />
-      <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
-      <Stack.Screen name="ExerciseTimerActive" component={ExerciseTimerActiveScreen} />
-      <Stack.Screen name="ExerciseProgress" component={ExerciseProgressScreen} />
-      <Stack.Screen name="SessionComplete" component={SessionCompleteScreen} />
-      <Stack.Screen name="RecoveryProgressAnalytics" component={RecoveryProgressAnalyticsScreen} />
-      <Stack.Screen name="Notifications" component={NotificationsScreen} />
-      <Stack.Screen name="TherapistDetail" component={TherapistDetailScreen} />
-      <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
-      <Stack.Screen name="ChoosePayment" component={ChoosePaymentScreen} />
-      <Stack.Screen name="PaymentProcessing" component={PaymentProcessingScreen} />
-      <Stack.Screen name="AppointmentConfirmed" component={AppointmentConfirmedScreen} />
-      <Stack.Screen name="MyBookings" component={MyBookingsScreen} />
-      <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
-      <Stack.Screen name="BookAppointment" component={BookAppointmentScreen} />
-      <Stack.Screen name="RescheduleAppointment" component={RescheduleAppointmentScreen} />
-      <Stack.Screen name="CancelAppointment" component={CancelAppointmentScreen} />
-      <Stack.Screen name="ExerciseTimer" component={ExerciseTimerScreen} />
-      <Stack.Screen name="PatientDetail" component={PatientDetailScreen} />
-      <Stack.Screen name="PrescribeProgram" component={PrescribeProgramScreen} />
-      <Stack.Screen name="MedicalRecords" component={MedicalRecordsScreen} />
-      <Stack.Screen name="PaymentMock" component={PaymentMockScreen} />
-      <Stack.Screen name="Invoices" component={InvoicesScreen} />
-      <Stack.Screen name="ConversationsList" component={ConversationsListScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
-      <Stack.Screen name="ChatRoom" component={ChatScreen} />
-      <Stack.Screen name="VideoCall" component={VideoCallScreen} />
-      <Stack.Screen name="PatientProfileOverview" component={PatientProfileOverviewScreen} />
-      <Stack.Screen name="EditPatientProfile" component={EditPatientProfileScreen} />
-      <Stack.Screen name="MedicalInformation" component={MedicalInformationScreen} />
-      <Stack.Screen name="MedicalRecordsVault" component={MedicalRecordsVaultScreen} />
-      <Stack.Screen name="WriteDoctorReview" component={WriteDoctorReviewScreen} />
-      <Stack.Screen name="SearchFilter" component={SearchFilterScreen} />
-      <Stack.Screen name="EmergencyTriage" component={EmergencyTriageScreen} />
-      <Stack.Screen name="AddMedicalRecord" component={AddMedicalRecordScreen} />
-      <Stack.Screen name="ReviewSubmitted" component={ReviewSubmittedScreen} />
-      <Stack.Screen name="BodyPainMap" component={BodyPainMapScreen} />
-      <Stack.Screen name="ReferralRewards" component={ReferralRewardsScreen} />
-      <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
-      <Stack.Screen name="NeedHelp" component={NeedHelpScreen} />
     </Stack.Navigator>
   );
 }

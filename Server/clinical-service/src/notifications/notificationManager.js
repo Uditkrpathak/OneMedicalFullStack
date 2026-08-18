@@ -33,6 +33,26 @@ const fetchUserDetails = async (userId) => {
 };
 
 /**
+ * Fetches authoritative Transaction record from Identity Service (financial single source of truth)
+ */
+const fetchAuthoritativeTransaction = async (transactionIdOrApptId) => {
+  const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
+  const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+  try {
+    const res = await fetch(`${identityUrl}/api/v1/payments/internal/transactions/${transactionIdOrApptId}`, {
+      headers: { 'x-internal-key': internalKey },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json?.data?.transaction || null;
+    }
+  } catch (err) {
+    // Non-fatal if offline
+  }
+  return null;
+};
+
+/**
  * Core Notification Processing Pipeline
  */
 export const processNotificationEvent = async (eventEnvelope) => {
@@ -54,6 +74,52 @@ export const processNotificationEvent = async (eventEnvelope) => {
   const priority = eventPriority || policy?.priority || 'normal';
   const retentionDays = policy?.retentionDays || (priority === 'critical' ? 365 : priority === 'low' ? 30 : 90);
   const expiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
+
+  // ── Confirmation Invariant Gatekeeper (Financial Single Source of Truth) ──
+  if (event === 'appointment.confirmed') {
+    const appointmentId = data.appointmentId || eventEnvelope.appointmentId;
+    const transactionId = data.transactionId || eventEnvelope.transactionId;
+
+    if (!appointmentId) {
+      console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: appointment.confirmed missing appointmentId.`);
+      return { success: false, error: 'MISSING_APPOINTMENT_ID', blocked: true };
+    }
+
+    try {
+      const Appointment = mongoose.model('Appointment');
+      const appt = await Appointment.findById(appointmentId).lean();
+      
+      if (!appt || appt.isDeleted) {
+        console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: appointment.confirmed for non-existent appointment ${appointmentId}.`);
+        return { success: false, error: 'APPOINTMENT_NOT_FOUND', blocked: true };
+      }
+
+      // 1. Appointment status === CONFIRMED
+      if (appt.status !== 'CONFIRMED') {
+        console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: appointment.confirmed invariant violation. Appointment ${appointmentId} status is '${appt.status}', expected 'CONFIRMED'.`);
+        return { success: false, error: 'STATUS_NOT_CONFIRMED', currentStatus: appt.status, blocked: true };
+      }
+
+      // 2. Transaction status === PAID (Financial Authority)
+      const txn = await fetchAuthoritativeTransaction(transactionId || appt.transactionId || appointmentId);
+      if (txn) {
+        const txnStatus = (txn.status || '').toUpperCase();
+        if (txnStatus !== 'PAID' && txnStatus !== 'CAPTURED') {
+          console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: Transaction financial authority status is '${txn.status}', expected 'PAID' / 'captured'.`);
+          return { success: false, error: 'TRANSACTION_NOT_PAID', currentTxnStatus: txn.status, blocked: true };
+        }
+        if (txn.appointmentId && txn.appointmentId.toString() !== appt._id.toString()) {
+          console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: Transaction appointmentId mismatch (${txn.appointmentId} !== ${appt._id}).`);
+          return { success: false, error: 'TRANSACTION_APPOINTMENT_MISMATCH', blocked: true };
+        }
+      } else if (appt.paymentStatus !== 'PAID' && !data.isInternalBypass) {
+        console.warn(`[NotificationManager Gatekeeper] ❌ BLOCKED: appointment.confirmed invariant violation. Appointment ${appointmentId} paymentStatus is '${appt.paymentStatus}', expected 'PAID'.`);
+        return { success: false, error: 'PAYMENT_NOT_PAID', currentPaymentStatus: appt.paymentStatus, blocked: true };
+      }
+    } catch (dbErr) {
+      console.warn(`[NotificationManager Gatekeeper] DB check error:`, dbErr.message);
+    }
+  }
 
   console.log(`\n[NotificationManager] Processing Event: ${event} (${eventId}) | Priority: ${priority} | Recipients: ${recipients.length}`);
   metricsService.increment('notifications.created', recipients.length);

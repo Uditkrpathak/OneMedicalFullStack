@@ -115,6 +115,23 @@ export const paymentApi = {
     );
     return { success: res.success, data: res.data, error: res.error };
   },
+
+  // ─── Get Payment Status (Safe Timeout Polling) ──────────────────────────────
+  getPaymentStatus: async (appointmentOrTransactionId, token) => {
+    const res = await resilientFetch(
+      `/payments/status/${appointmentOrTransactionId}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }
+    );
+    return { success: res.success, data: res.data, error: res.error };
+  },
+
+  // ─── Get Payment Health ─────────────────────────────────────────────────────
+  getPaymentHealth: async () => {
+    const res = await resilientFetch('/health/payment');
+    return { success: res.success, data: res.data, error: res.error };
+  },
 };
 
 export default paymentApi;

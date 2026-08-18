@@ -6,7 +6,10 @@ import {
   verifyClinicPayment,
   getMyTransactions,
   getInvoices,
-  getInvoiceById
+  getInvoiceById,
+  getPaymentStatus,
+  getPaymentHealth,
+  getTransactionInternal,
 } from '../controllers/paymentController.js';
 import { razorpayWebhook } from '../controllers/webhookController.js';
 
@@ -15,6 +18,12 @@ const router = express.Router();
 // Webhook (raw body verification)
 router.post('/webhook/razorpay', express.raw({ type: 'application/json' }), razorpayWebhook);
 router.post('/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
+
+// Payment Diagnostics & Health & Internal Verification
+router.get('/health',                   getPaymentHealth);
+router.get('/internal/transactions/:id', getTransactionInternal);
+router.get('/status/:id',               getPaymentStatus);
+router.get('/:id/status',               getPaymentStatus);
 
 // Authenticated Payment Orders & Verification (UPI Exclusive)
 router.post('/orders',              createOrder);

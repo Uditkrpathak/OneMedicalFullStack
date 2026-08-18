@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -75,7 +76,16 @@ export default function HelpSupportScreen({ navigation }) {
 
         {/* CONTACT OPTIONS ROW */}
         <View style={styles.channelsGrid}>
-          <TouchableOpacity style={styles.channelCard} onPress={() => Alert.alert('Live Chat', 'Connecting to agent... Avg wait: 2 mins')}>
+          <TouchableOpacity
+            style={styles.channelCard}
+            onPress={() => {
+              try {
+                navigation.navigate('Consultations');
+              } catch {
+                Alert.alert('Live Support', 'Connecting to online clinical care desk...');
+              }
+            }}
+          >
             <Ionicons name="chatbubbles-outline" size={20} color="#0038A8" style={{ marginBottom: 6 }} />
             <Text style={styles.channelTitle}>Live Chat</Text>
             <View style={styles.waitBadge}>
@@ -83,13 +93,27 @@ export default function HelpSupportScreen({ navigation }) {
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.channelCard} onPress={() => Alert.alert('Call Clinic', 'Calling helpline: +1 (800) 555-0199')}>
+          <TouchableOpacity
+            style={styles.channelCard}
+            onPress={() => {
+              Linking.openURL('tel:+918040001234').catch(() => {
+                Alert.alert('Call Helpline', 'Helpline: +91 80 4000 1234 (Available 24/7)');
+              });
+            }}
+          >
             <Ionicons name="call-outline" size={20} color="#0038A8" style={{ marginBottom: 6 }} />
             <Text style={styles.channelTitle}>Call Clinic</Text>
             <Text style={styles.channelSub}>24/7 Direct</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.channelCard} onPress={() => Alert.alert('Email', 'Emailing support@onemedical.com')}>
+          <TouchableOpacity
+            style={styles.channelCard}
+            onPress={() => {
+              Linking.openURL('mailto:support@onemedical.app?subject=Patient%20Support%20Inquiry').catch(() => {
+                Alert.alert('Email Support', 'Email: support@onemedical.app');
+              });
+            }}
+          >
             <Ionicons name="mail-outline" size={20} color="#0038A8" style={{ marginBottom: 6 }} />
             <Text style={styles.channelTitle}>Email</Text>
             <Text style={styles.channelSub}>24h Response</Text>

@@ -102,20 +102,29 @@ export default function AppointmentsPage() {
     if (s === 'IN_PROGRESS') {
       return { label: '● IN PROGRESS', style: 'bg-cyan-50 text-cyan-700 border-cyan-300 font-extrabold' };
     }
+    if (s === 'CHECKED_IN') {
+      return { label: '● CHECKED IN', style: 'bg-teal-50 text-teal-700 border-teal-200/80 font-bold' };
+    }
     if (s === 'CONFIRMED') {
       return { label: '● CONFIRMED', style: 'bg-blue-50 text-blue-700 border-blue-200/80' };
     }
     if (s === 'HELD' || s === 'PENDING') {
       return { label: '● HELD', style: 'bg-amber-50 text-amber-700 border-amber-200/60' };
     }
-    if (s === 'RESCHEDULE_REQUESTED') {
-      return { label: '● RESCHEDULE REQ', style: 'bg-purple-50 text-purple-700 border-purple-200' };
+    if (s === 'RESCHEDULE_REQUESTED' || s === 'RESCHEDULED') {
+      return { label: '● RESCHEDULED', style: 'bg-purple-50 text-purple-700 border-purple-200' };
     }
     if (s.includes('CANCELLED')) {
       return { label: '● CANCELLED', style: 'bg-rose-50 text-rose-700 border-rose-200' };
     }
-    if (s === 'NO_SHOW') {
+    if (s === 'PROVIDER_NO_SHOW') {
+      return { label: '● PROVIDER NO SHOW', style: 'bg-rose-50 text-rose-800 border-rose-300 font-bold' };
+    }
+    if (s === 'PATIENT_NO_SHOW' || s === 'NO_SHOW') {
       return { label: '● NO SHOW', style: 'bg-slate-100 text-slate-600 border-slate-300' };
+    }
+    if (s === 'EXPIRED' || s === 'PAYMENT_EXPIRED') {
+      return { label: '● EXPIRED', style: 'bg-slate-100 text-slate-500 border-slate-300' };
     }
     return { label: `● ${s}`, style: 'bg-slate-100 text-slate-500 border-slate-200' };
   };

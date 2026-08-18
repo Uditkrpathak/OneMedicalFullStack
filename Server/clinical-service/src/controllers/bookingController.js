@@ -231,7 +231,7 @@ export const confirmAppointment = async (req, res) => {
     }
 
     const { id } = req.params;
-    const { paymentOrderId, paymentId } = req.body;
+    const { paymentOrderId, paymentId, transactionId } = req.body;
 
     const appointment = await Appointment.findById(id);
     if (!appointment || appointment.isDeleted) {
@@ -259,15 +259,21 @@ export const confirmAppointment = async (req, res) => {
       await appointment.save();
       return res.json({ success: true, data: { appointment }, idempotent: true });
     }
-    if (appointment.status === 'EXPIRED')   return res.status(400).json({ success: false, error: { code: 'HOLD_EXPIRED', message: 'This appointment hold has expired.' } });
+    if (appointment.status === 'EXPIRED') {
+      return res.status(400).json({ success: false, error: { code: 'HOLD_EXPIRED', message: 'This appointment hold has expired.' } });
+    }
+    if (appointment.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'CANNOT_CONFIRM_CANCELLED', message: 'Cannot confirm a cancelled appointment.' } });
+    }
     if (appointment.status !== 'HELD' && appointment.status !== 'RESCHEDULE_REQUESTED') {
       return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot confirm appointment in status: ${appointment.status}` } });
     }
 
     appointment.status         = 'CONFIRMED';
-    appointment.paymentStatus  = appointment.paymentStatus === 'PAID' ? 'PAID' : 'PAID';
+    appointment.paymentStatus  = 'PAID';
     appointment.paymentOrderId = paymentOrderId || appointment.paymentOrderId;
     appointment.paymentId      = paymentId || appointment.paymentId;
+    appointment.transactionId  = transactionId || appointment.transactionId;
     appointment.holdExpiresAt  = null;
     await appointment.save();
 
@@ -279,7 +285,9 @@ export const confirmAppointment = async (req, res) => {
       : '';
 
     await publishEvent('appointment.confirmed', {
+      type:            'appointment.confirmed',
       appointmentId:   appointment._id,
+      transactionId:   transactionId || appointment.transactionId,
       patientId:       appointment.patientId,
       therapistId:     appointment.therapistId,
       patientName:     appointment.patientName,

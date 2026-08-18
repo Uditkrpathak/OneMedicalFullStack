@@ -338,6 +338,32 @@ export const clinicalApi = {
       }
     );
     return { success: res.success, data: res.data, source: res.source, isOfflineQueued: res.isOfflineQueued, error: res.error };
+  },
+
+  // ── Patient Medical Information ──
+  getPatientMedicalInfo: async (patientId, token) => {
+    const endpoint = patientId ? `/patients/${patientId}/medical-info` : '/medical-info/me';
+    const res = await resilientFetch(
+      endpoint,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return { success: res.success, data: res.data, source: res.source, error: res.error };
+  },
+
+  updatePatientMedicalInfo: async (patientId, updateData, token) => {
+    const endpoint = patientId ? `/patients/${patientId}/medical-info` : '/medical-info/me';
+    const res = await resilientFetch(
+      endpoint,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updateData)
+      }
+    );
+    return { success: res.success, data: res.data, source: res.source, isOfflineQueued: res.isOfflineQueued, error: res.error };
   }
 };
 

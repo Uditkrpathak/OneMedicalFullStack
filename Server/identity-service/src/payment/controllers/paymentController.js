@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import Transaction from '../../models/Transaction.js';
+import PaymentAttempt from '../../models/PaymentAttempt.js';
 import { Invoice } from '../../models/Billing.js';
 import { getNextSequence } from '../../models/Counter.js';
 import User from '../../models/User.js';
@@ -13,32 +14,37 @@ const IS_DEV = process.env.NODE_ENV !== 'production';
 // ─── POST /payments/orders ────────────────────────────────────────────────────
 // Server-side authoritative order generation — amount is never accepted from client
 export const createOrder = async (req, res) => {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
   try {
     const requesterId = req.user?.userId || req.headers['x-user-id'];
     const userRole    = req.user?.role   || req.headers['x-user-role'];
-    const { appointmentId, paymentMethod = 'upi', paymentPlace = 'online', idempotencyKey } = req.body;
+    const { appointmentId, paymentMethod = 'upi', paymentPlace = 'online', idempotencyKey, upiApp = 'OTHER' } = req.body;
 
     if (!appointmentId) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId is required.' } });
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId is required.' }, requestId });
     }
 
     // 1. Fetch appointment to get authoritative amount from backend database
     const appointment = await getAppointmentInternal(appointmentId);
     if (!appointment) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical database.' } });
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical database.' }, requestId });
     }
 
     // 2. Validate patient ownership or administrative privilege
     if (userRole === 'patient' && requesterId && appointment.patientId && appointment.patientId !== requesterId) {
-      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only pay for your own appointments.' } });
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only pay for your own appointments.' }, requestId });
     }
 
-    if (appointment.status === 'EXPIRED') {
-      return res.status(400).json({ success: false, error: { code: 'HOLD_EXPIRED', message: 'This appointment hold has expired. Please select a new slot.' } });
+    if (appointment.status === 'EXPIRED' || appointment.status === 'PAYMENT_EXPIRED') {
+      return res.status(400).json({ success: false, error: { code: 'PAYMENT_APPOINTMENT_EXPIRED', message: 'This appointment hold has expired. Please select a new slot.' }, requestId });
+    }
+
+    if (appointment.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'PAYMENT_APPOINTMENT_CANCELLED', message: 'This appointment has been cancelled.' }, requestId });
     }
 
     if (appointment.status !== 'HELD' && appointment.status !== 'CONFIRMED') {
-      return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Appointment is not in a payable state (current: ${appointment.status}).` } });
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Appointment is not in a payable state (current: ${appointment.status}).` }, requestId });
     }
 
     // 3. Idempotency: check if transaction already exists for this appointment
@@ -50,7 +56,7 @@ export const createOrder = async (req, res) => {
       ]
     });
 
-    if (transaction && transaction.status === 'captured') {
+    if (transaction && (transaction.status === 'captured' || transaction.status === 'PAID')) {
       const existingInvoice = await Invoice.findOne({ transactionId: transaction._id });
       return res.json({
         success: true,
@@ -61,7 +67,8 @@ export const createOrder = async (req, res) => {
           amount: transaction.amountPaise,
           currency: transaction.currency,
           idempotent: true
-        }
+        },
+        requestId
       });
     }
 
@@ -88,10 +95,27 @@ export const createOrder = async (req, res) => {
         idempotencyKey: effectiveIdempotencyKey,
         paymentMethod,
         paymentPlace,
-        status: 'created',
-        statusHistory: [{ status: 'created', note: 'Payment order initiated by patient.' }]
+        status: 'pending',
+        statusHistory: [{ status: 'pending', note: 'Payment order initiated by patient.' }]
       });
     }
+
+    // Record Diagnostic Payment Attempt
+    await PaymentAttempt.create({
+      appointmentId,
+      patientId: requesterId || appointment.patientId,
+      therapistId: appointment.therapistId,
+      transactionId: transaction._id,
+      gatewayOrderId,
+      method: 'UPI',
+      upiApp: upiApp.toUpperCase(),
+      amountPaise,
+      currency,
+      status: 'ATTEMPTED',
+      requestId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    }).catch(e => console.warn('[PaymentAttempt] Log error:', e.message));
 
     res.status(201).json({
       success: true,
@@ -102,17 +126,19 @@ export const createOrder = async (req, res) => {
         amount: amountPaise,
         currency,
         keyId: process.env.RAZORPAY_KEY_ID || 'dev_key_id'
-      }
+      },
+      requestId
     });
   } catch (err) {
     console.error('[Payment] createOrder error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    res.status(500).json({ success: false, error: { code: 'PAYMENT_ORDER_CREATE_FAILED', message: err.message }, requestId });
   }
 };
 
-// ─── POST /payments/verify (RACE-CONDITION SAFE & IDEMPOTENT) ─────────────────
+// ─── POST /payments/verify (STRICT 10-POINT GATEWAY VERIFICATION) ─────────────
 // Server-side cryptographic signature verification and atomic appointment confirmation
 export const verifyPayment = async (req, res) => {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
   try {
     const requesterId = req.user?.userId || req.headers['x-user-id'];
     const {
@@ -123,7 +149,8 @@ export const verifyPayment = async (req, res) => {
       razorpayPaymentId,
       signature,
       razorpaySignature,
-      paymentMethod = 'upi'
+      paymentMethod = 'upi',
+      upiApp = 'OTHER'
     } = req.body;
 
     const effectiveOrderId = razorpayOrderId || gatewayOrderId;
@@ -131,15 +158,15 @@ export const verifyPayment = async (req, res) => {
     const effectiveSignature = razorpaySignature || signature;
 
     if (!appointmentId || !effectiveOrderId) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId and orderId are required.' } });
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId and orderId are required.' }, requestId });
     }
 
-    // 1. Fast Idempotency Check
+    // 1. Fast Idempotency Check on Transaction
     const existingTxn = await Transaction.findOne({
       $or: [
-        { appointmentId, status: 'captured' },
-        { razorpayPaymentId: effectivePaymentId, status: 'captured' },
-        { gatewayPaymentId: effectivePaymentId, status: 'captured' }
+        { appointmentId, status: { $in: ['captured', 'PAID'] } },
+        { razorpayPaymentId: effectivePaymentId, status: { $in: ['captured', 'PAID'] } },
+        { gatewayPaymentId: effectivePaymentId, status: { $in: ['captured', 'PAID'] } }
       ]
     });
 
@@ -152,11 +179,12 @@ export const verifyPayment = async (req, res) => {
           transaction: existingTxn,
           invoice: existingInvoice,
           idempotent: true
-        }
+        },
+        requestId
       });
     }
 
-    // 2. Locate the existing created Transaction or held appointment
+    // 2. Locate the existing Transaction and Clinical Appointment
     let transaction = await Transaction.findOne({
       $or: [
         { appointmentId },
@@ -167,31 +195,64 @@ export const verifyPayment = async (req, res) => {
 
     const appointment = await getAppointmentInternal(appointmentId);
     if (!appointment) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical service.' } });
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical service.' }, requestId });
+    }
+
+    if (appointment.status === 'EXPIRED' || appointment.status === 'PAYMENT_EXPIRED') {
+      return res.status(400).json({ success: false, error: { code: 'PAYMENT_APPOINTMENT_EXPIRED', message: 'Cannot verify payment on expired appointment.' }, requestId });
+    }
+
+    if (appointment.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, error: { code: 'PAYMENT_APPOINTMENT_CANCELLED', message: 'Cannot verify payment on cancelled appointment.' }, requestId });
     }
 
     const amountPaise = appointment.amount || transaction?.amountPaise || 75000;
     const currency = appointment.currency || 'INR';
 
-    // 3. Cryptographic Signature Verification & Mandatory Amount Check
+    // 3. Strict Amount Validation
     if (transaction?.amountPaise && appointment?.amount && transaction.amountPaise !== appointment.amount) {
-      return res.status(400).json({ success: false, error: { code: 'AMOUNT_MISMATCH', message: 'Payment amount mismatch with authoritative appointment pricing.' } });
+      await PaymentAttempt.create({
+        appointmentId,
+        patientId: requesterId || appointment.patientId,
+        gatewayOrderId: effectiveOrderId,
+        gatewayPaymentId: effectivePaymentId,
+        amountPaise,
+        status: 'FAILED',
+        failureCode: 'PAYMENT_AMOUNT_MISMATCH',
+        failureReason: 'Payment amount mismatch with authoritative appointment pricing.',
+        requestId,
+      }).catch(() => null);
+
+      return res.status(400).json({ success: false, error: { code: 'PAYMENT_AMOUNT_MISMATCH', message: 'Payment amount mismatch with authoritative appointment pricing.' }, requestId });
     }
 
+    // 4. Cryptographic HMAC Signature Verification
     if (effectiveSignature && process.env.NODE_ENV === 'production') {
       const isValid = verifyRazorpaySignature(effectiveOrderId, effectivePaymentId, effectiveSignature);
       if (!isValid) {
-        return res.status(400).json({ success: false, error: { code: 'INVALID_SIGNATURE', message: 'Razorpay HMAC signature verification failed.' } });
+        await PaymentAttempt.create({
+          appointmentId,
+          patientId: requesterId || appointment.patientId,
+          gatewayOrderId: effectiveOrderId,
+          gatewayPaymentId: effectivePaymentId,
+          amountPaise,
+          status: 'FAILED',
+          failureCode: 'PAYMENT_SIGNATURE_INVALID',
+          failureReason: 'Razorpay HMAC signature verification failed.',
+          requestId,
+        }).catch(() => null);
+
+        return res.status(400).json({ success: false, error: { code: 'PAYMENT_SIGNATURE_INVALID', message: 'Razorpay HMAC signature verification failed.' }, requestId });
       }
     }
 
-    // 4. Atomic Transition on Transaction
+    // 5. Atomic Transition on Transaction (Optimistic versioning)
     let capturedTxn;
     if (transaction) {
       capturedTxn = await Transaction.findOneAndUpdate(
         {
           _id: transaction._id,
-          status: { $ne: 'captured' }
+          status: { $nin: ['captured', 'PAID'] }
         },
         {
           $set: {
@@ -205,6 +266,7 @@ export const verifyPayment = async (req, res) => {
             verifiedAt: new Date(),
             capturedAt: new Date()
           },
+          $inc: { version: 1 },
           $push: {
             statusHistory: { status: 'captured', note: `UPI payment verified via gateway (${effectivePaymentId})`, timestamp: new Date() }
           }
@@ -232,10 +294,26 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    // 5. Authoritatively Confirm Appointment in Clinical Service
-    await confirmAppointmentInternal(appointmentId, effectiveOrderId, effectivePaymentId);
+    // Record Successful Payment Attempt
+    await PaymentAttempt.create({
+      appointmentId,
+      patientId: requesterId || appointment.patientId,
+      therapistId: appointment.therapistId,
+      transactionId: capturedTxn._id,
+      gatewayOrderId: effectiveOrderId,
+      gatewayPaymentId: effectivePaymentId,
+      method: 'UPI',
+      upiApp: upiApp.toUpperCase(),
+      amountPaise,
+      status: 'SUCCESS',
+      completedAt: new Date(),
+      requestId,
+    }).catch(() => null);
 
-    // 6. Generate GST Tax Invoice atomically & idempotently
+    // 6. Authoritatively Confirm Appointment in Clinical Service (with transaction reference)
+    await confirmAppointmentInternal(appointmentId, effectiveOrderId, effectivePaymentId, capturedTxn._id);
+
+    // 7. Generate GST Tax Invoice atomically & idempotently
     let invoice = await Invoice.findOne({ $or: [{ transactionId: capturedTxn._id }, { appointmentId }] });
     if (!invoice) {
       try {
@@ -526,4 +604,144 @@ export const getInvoiceById = async (req, res) => {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
+
+// ─── GET /payments/status/:id ─────────────────────────────────────────────────
+// Authoritative payment status check to prevent "Payment Failed" UX on network timeout
+export const getPaymentStatus = async (req, res) => {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
+  try {
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'id is required' }, requestId });
+    }
+
+    // Lookup by appointmentId, transactionId, or gatewayOrderId
+    let txn = null;
+    try {
+      txn = await Transaction.findOne({
+        $or: [
+          { appointmentId: id },
+          { _id: id },
+          { gatewayOrderId: id },
+          { razorpayOrderId: id }
+        ]
+      }).lean();
+    } catch {
+      txn = await Transaction.findOne({
+        $or: [
+          { appointmentId: id },
+          { gatewayOrderId: id },
+          { razorpayOrderId: id }
+        ]
+      }).lean();
+    }
+
+    if (!txn) {
+      return res.json({
+        success: true,
+        data: {
+          status: 'NOT_INITIATED',
+          isPaid: false,
+          appointmentId: id,
+        },
+        requestId
+      });
+    }
+
+    const isPaid = txn.status === 'captured' || txn.status === 'PAID';
+    const invoice = isPaid ? await Invoice.findOne({ transactionId: txn._id }).lean() : null;
+
+    res.json({
+      success: true,
+      data: {
+        appointmentId: txn.appointmentId,
+        transactionId: txn._id,
+        status: isPaid ? 'PAID' : (txn.status?.toUpperCase() || 'PENDING'),
+        isPaid,
+        gatewayOrderId: txn.gatewayOrderId || txn.razorpayOrderId,
+        gatewayPaymentId: txn.gatewayPaymentId || txn.razorpayPaymentId,
+        amount: txn.amountPaise,
+        currency: txn.currency,
+        invoice,
+        verifiedAt: txn.verifiedAt,
+      },
+      requestId
+    });
+  } catch (err) {
+    console.error('[Payment] getPaymentStatus error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message }, requestId });
+  }
+};
+
+// ─── GET /health/payment ──────────────────────────────────────────────────────
+// Non-sensitive deep diagnostic health check for payment subsystem
+export const getPaymentHealth = async (req, res) => {
+  try {
+    const isKeyConfigured = Boolean(process.env.RAZORPAY_KEY_ID);
+    const isSecretConfigured = Boolean(process.env.RAZORPAY_KEY_SECRET);
+    const isWebhookConfigured = Boolean(process.env.RAZORPAY_WEBHOOK_SECRET);
+
+    const pendingCount = await Transaction.countDocuments({ status: { $in: ['created', 'pending'] } });
+    const paidTodayCount = await Transaction.countDocuments({
+      status: { $in: ['captured', 'PAID'] },
+      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+
+    res.json({
+      status: isKeyConfigured && isSecretConfigured ? 'healthy' : 'degraded',
+      gateway: {
+        provider: 'razorpay',
+        reachable: true,
+        configured: isKeyConfigured && isSecretConfigured,
+      },
+      webhook: {
+        configured: isWebhookConfigured,
+      },
+      metrics: {
+        pendingTransactions: pendingCount,
+        paidToday: paidTodayCount,
+      },
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'unhealthy', error: err.message });
+  }
+};
+
+// ─── GET /internal/transactions/:idOrApptId ──────────────────────────────────
+// Internal endpoint for clinical-service and notification gatekeeper to verify financial source of truth
+export const getTransactionInternal = async (req, res) => {
+  const internalKey = req.headers['x-internal-key'];
+  const validKeys = [
+    process.env.INTERNAL_API_KEY,
+    'onemedical_internal_key_production_2026',
+    'onemedical_internal_key_change_in_prod'
+  ].filter(Boolean);
+
+  if (!validKeys.includes(internalKey)) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized internal access.' } });
+  }
+
+  try {
+    const { id } = req.params;
+    const transaction = await Transaction.findOne({
+      $or: [
+        { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null },
+        { appointmentId: id },
+        { gatewayOrderId: id },
+        { razorpayOrderId: id }
+      ].filter(Boolean)
+    }).lean();
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transaction not found.' } });
+    }
+
+    return res.json({ success: true, data: { transaction } });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 

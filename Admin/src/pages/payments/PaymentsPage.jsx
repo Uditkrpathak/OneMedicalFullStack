@@ -244,7 +244,13 @@ export default function PaymentsPage() {
                       <td>{t.method}</td>
                       <td className="font-bold text-slate-900">{fmt(t.amount)}</td>
                       <td>
-                        <span className={t.status === 'PAID' ? 'badge badge-green text-[10px]' : 'badge badge-slate text-[10px]'}>
+                        <span className={
+                          t.status === 'PAID' ? 'badge badge-green text-[10px]' :
+                          t.status === 'FAILED' ? 'badge badge-red text-[10px]' :
+                          t.status === 'EXPIRED' ? 'badge badge-amber text-[10px]' :
+                          t.status === 'REFUNDED' ? 'badge badge-purple text-[10px]' :
+                          'badge badge-slate text-[10px]'
+                        }>
                           ● {t.status}
                         </span>
                       </td>

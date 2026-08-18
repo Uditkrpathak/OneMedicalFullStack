@@ -27,16 +27,25 @@ import { getDoctorAvatarSource, getDoctorImageUri } from '../../../utils/doctorI
 
 const { width } = Dimensions.get('window');
 
-export default function BookAppointmentScreen({ navigation }) {
+export default function BookAppointmentScreen({ route, navigation }) {
   const { token } = useSelector((state) => state.auth);
 
+  const initialSearch = route?.params?.search || route?.params?.initialSearch || '';
+
   // Flow Step State: 1 = Services/Categories, 2 = Place Selection, 3 = Doctor List, 4 = Time Slot Booking
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initialSearch ? 3 : 1);
 
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [appointmentPlace, setAppointmentPlace] = useState('online'); // 'online' | 'home'
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [favorites, setFavorites] = useState({});
+
+  useEffect(() => {
+    if (route?.params?.search) {
+      setSearchQuery(route.params.search);
+      setStep(3);
+    }
+  }, [route?.params?.search]);
 
   const [selectedFilter, setSelectedFilter] = useState('nearby');
   const [activeFilters, setActiveFilters] = useState({
@@ -256,7 +265,13 @@ export default function BookAppointmentScreen({ navigation }) {
           {step === 4 && 'Select Time Slot'}
         </Text>
 
-        <View style={{ width: 32 }} />
+        <TouchableOpacity
+          style={styles.headerBackBtn}
+          onPress={() => navigation.navigate('SavedSpecialists')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="heart" size={22} color="#ef4444" />
+        </TouchableOpacity>
       </View>
 
       {/* STEP 1: POPULAR SERVICES & CATEGORIES */}
@@ -267,8 +282,15 @@ export default function BookAppointmentScreen({ navigation }) {
             <Ionicons name="search" size={18} color="#64748b" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search services or conditions"
+              placeholder="Search services, doctors or clinics"
               placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={(txt) => {
+                setSearchQuery(txt);
+                if (txt.trim().length > 0) setStep(3);
+              }}
+              onSubmitEditing={() => setStep(3)}
+              returnKeyType="search"
             />
           </View>
 
@@ -515,7 +537,13 @@ export default function BookAppointmentScreen({ navigation }) {
                           <View style={styles.docListMainInfo}>
                             <View style={styles.docNameFavRow}>
                               <Text style={styles.docListName}>{docName}</Text>
-                              <TouchableOpacity onPress={() => toggleFavorite(docId)}>
+                              <TouchableOpacity
+                                onPress={async () => {
+                                  await toggleFavorite(docId);
+                                  navigation.navigate('SavedSpecialists');
+                                }}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              >
                                 <Ionicons
                                   name={isFav ? 'heart' : 'heart-outline'}
                                   size={22}

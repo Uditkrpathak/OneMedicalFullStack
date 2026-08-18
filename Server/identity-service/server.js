@@ -77,9 +77,12 @@ app.use((err, req, res, next) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+import { startPaymentReconciliationScheduler } from './src/payment/services/paymentReconciler.js';
+
 const start = async () => {
   await connectDB();
   await connectRabbitMQ();
+  startPaymentReconciliationScheduler();
   app.listen(PORT, () => console.log(`🚀 [Identity Service] Running on port ${PORT}`));
 };
 

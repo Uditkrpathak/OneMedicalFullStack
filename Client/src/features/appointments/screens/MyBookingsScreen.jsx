@@ -28,12 +28,18 @@ export default function MyBookingsScreen({ navigation }) {
   const [error, setError] = useState(null);
 
   const STATUS_LABELS = {
-    HELD:      'Reserved',
-    CONFIRMED: 'Confirmed',
-    COMPLETED: 'Completed',
-    CANCELLED: 'Cancelled',
-    EXPIRED:   'Expired',
-    NO_SHOW:   'No Show',
+    HELD:              'Reserved',
+    CONFIRMED:         'Confirmed',
+    CHECKED_IN:        'Checked In',
+    IN_PROGRESS:       'In Progress',
+    COMPLETED:         'Completed',
+    CANCELLED:         'Cancelled',
+    EXPIRED:           'Expired',
+    PAYMENT_EXPIRED:   'Payment Expired',
+    RESCHEDULED:       'Rescheduled',
+    NO_SHOW:           'No Show',
+    PROVIDER_NO_SHOW:  'Provider Missed',
+    PATIENT_NO_SHOW:   'Patient Missed',
   };
 
   const formatIST = (isoStr) => {

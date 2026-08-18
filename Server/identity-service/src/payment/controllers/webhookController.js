@@ -92,9 +92,9 @@ export const razorpayWebhook = async (req, res) => {
         await transaction.save();
       }
 
-      // 2. Authoritatively confirm the appointment in clinical-service
+      // 2. Authoritatively confirm the appointment in clinical-service (with transaction reference)
       try {
-        await confirmAppointmentInternal(appointmentId, orderId, paymentId);
+        await confirmAppointmentInternal(appointmentId, orderId, paymentId, transaction._id);
       } catch (err) {
         console.error('[Razorpay Webhook] Error confirming appointment:', err.message);
       }

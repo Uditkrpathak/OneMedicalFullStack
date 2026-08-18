@@ -50,7 +50,14 @@ export default function AppointmentDetailScreen({ route, navigation }) {
   const [therapistInfo, setTherapistInfo] = useState(null);
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
 
-  const computeCountdown = (isoStartTime) => {
+  const computeCountdown = (isoStartTime, status) => {
+    const s = (status || '').toUpperCase();
+    if (s === 'CANCELLED') return 'Appointment Cancelled';
+    if (s === 'EXPIRED' || s === 'PAYMENT_EXPIRED') return 'Booking Expired';
+    if (s === 'COMPLETED') return 'Session Completed';
+    if (s === 'IN_PROGRESS') return 'Session In Progress';
+    if (s === 'RESCHEDULED') return 'Session Rescheduled';
+
     if (!isoStartTime) return 'Scheduled';
     const apptTime = new Date(isoStartTime).getTime();
     const now = Date.now();
@@ -244,10 +251,37 @@ export default function AppointmentDetailScreen({ route, navigation }) {
           </View>
 
           <View style={styles.countdownRow}>
-            <Ionicons name="time-outline" size={24} color="#003D9B" style={{ marginRight: 10 }} />
+            <Ionicons
+              name={
+                booking.status === 'CANCELLED' ? 'close-circle' :
+                booking.status === 'COMPLETED' ? 'checkmark-circle' :
+                booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED' ? 'alert-circle' :
+                'time-outline'
+              }
+              size={24}
+              color={
+                booking.status === 'CANCELLED' ? '#ef4444' :
+                booking.status === 'COMPLETED' ? '#16a34a' :
+                booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED' ? '#f59e0b' :
+                '#003D9B'
+              }
+              style={{ marginRight: 10 }}
+            />
             <View style={{ flex: 1 }}>
-              <Text style={styles.countdownTitle}>{computeCountdown(booking.startTime)}</Text>
-              <Text style={styles.countdownSub}>{booking.date}</Text>
+              <Text style={[
+                styles.countdownTitle,
+                booking.status === 'CANCELLED' && { color: '#ef4444' },
+                booking.status === 'COMPLETED' && { color: '#16a34a' },
+                (booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED') && { color: '#d97706' },
+              ]}>
+                {computeCountdown(booking.startTime, booking.status)}
+              </Text>
+              <Text style={styles.countdownSub}>
+                {booking.status === 'CANCELLED'
+                  ? `Cancelled • ${booking.date}`
+                  : booking.date
+                }
+              </Text>
             </View>
           </View>
         </View>
@@ -398,7 +432,6 @@ export default function AppointmentDetailScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ACTION BUTTONS */}
         {booking.status === 'CONFIRMED' || booking.status === 'UPCOMING' ? (
           <>
             <TouchableOpacity
@@ -416,6 +449,14 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               <Text style={styles.cancelLinkText}>Cancel Appointment</Text>
             </TouchableOpacity>
           </>
+        ) : booking.status === 'CANCELLED' ? (
+          <TouchableOpacity
+            style={styles.primaryRescheduleBtn}
+            activeOpacity={0.88}
+            onPress={() => navigation.navigate('BookAppointment')}
+          >
+            <Text style={styles.primaryRescheduleBtnText}>Book New Consultation</Text>
+          </TouchableOpacity>
         ) : null}
       </ScrollView>
 
