@@ -7,8 +7,26 @@ interface PricingSectionProps {
   onOpenBooking: (planTitle?: string) => void;
 }
 
+interface PlanFeature {
+  text: string;
+  included: boolean;
+  highlight?: boolean;
+}
+
+interface PricingPlan {
+  id: string;
+  name: string;
+  price: string;
+  period: string;
+  desc: string;
+  featured: boolean;
+  badge?: string;
+  features: PlanFeature[];
+  ctaText: string;
+}
+
 export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
-  const plans = [
+  const plans: PricingPlan[] = [
     {
       id: 'basic',
       name: 'Basic',
