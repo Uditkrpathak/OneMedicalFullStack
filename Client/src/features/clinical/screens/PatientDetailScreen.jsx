@@ -115,7 +115,7 @@ export default function PatientDetailScreen({ route, navigation }) {
               <Text style={styles.emptySub}>Prescribe a customized program to track exercises, pain ratings, and session compliance.</Text>
               <TouchableOpacity
                 style={styles.prescribeBtn}
-                onPress={() => navigation.navigate('PrescribeProgram', { targetPatientId: patientId, patientName })}
+                onPress={() => navigation.navigate('PrescribeProgram', { patientId, targetPatientId: patientId, patientName })}
               >
                 <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 4 }} />
                 <Text style={styles.prescribeBtnText}>Prescribe Program</Text>
@@ -128,7 +128,7 @@ export default function PatientDetailScreen({ route, navigation }) {
           <View style={styles.actionsGrid}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => navigation.navigate('PrescribeProgram', { targetPatientId: patientId, patientName })}
+              onPress={() => navigation.navigate('PrescribeProgram', { patientId, targetPatientId: patientId, patientName })}
             >
               <Ionicons name="create-outline" size={22} color="#003D9B" style={{ marginBottom: 6 }} />
               <Text style={styles.actionCardTitle}>Prescribe Protocol</Text>

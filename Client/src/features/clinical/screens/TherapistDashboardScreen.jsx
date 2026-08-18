@@ -149,7 +149,7 @@ export default function TherapistDashboardScreen({ navigation }) {
             <Ionicons name={nextAppt ? "time-outline" : "checkmark-circle-outline"} size={14} color="#003D9B" />
             <Text style={styles.nextPillText}>
               {nextAppt
-                ? `Next: ${nextAppt.timeFormatted || '10:30 AM'} (${nextAppt.minutesUntil ? `In ${nextAppt.minutesUntil}m` : 'Now'})`
+                ? `Next: ${nextAppt.timeFormatted || '10:30 AM'} (${nextAppt.timeUntilFormatted || 'Ready'})`
                 : (overview.completedAppointments > 0 ? 'All sessions completed today 🎉' : 'No upcoming sessions')}
             </Text>
           </View>
@@ -189,7 +189,7 @@ export default function TherapistDashboardScreen({ navigation }) {
                   <View style={styles.timeRow}>
                     <Ionicons name="time-outline" size={13} color="#64748b" />
                     <Text style={styles.timeDetailText}>
-                      {nextAppt.timeFormatted} (In {nextAppt.minutesUntil || 0} mins)
+                      {nextAppt.timeFormatted} ({nextAppt.timeUntilFormatted || 'Ready'})
                     </Text>
                   </View>
                 </View>
@@ -290,8 +290,26 @@ export default function TherapistDashboardScreen({ navigation }) {
           <View style={styles.timelineContainer}>
             {dailyTimeline.length > 0 ? (
               dailyTimeline.map((item, index) => {
-                const isCompleted = ['COMPLETED', 'DOCUMENTED'].includes(item.status);
-                const isNext = ['IN_PROGRESS', 'CONFIRMED'].includes(item.status) && index === 1;
+                const s = (item.status || '').toUpperCase();
+                const isCompleted = ['COMPLETED', 'DOCUMENTED'].includes(s);
+                const isNoShow = ['NO_ATTENDANCE', 'PATIENT_NO_SHOW', 'PROVIDER_NO_SHOW', 'CANCELLED'].includes(s);
+                const isActive = ['IN_PROGRESS', 'CONFIRMED', 'CHECKED_IN'].includes(s);
+
+                const dotStyle = isCompleted
+                  ? { backgroundColor: '#16a34a' }
+                  : isNoShow
+                  ? { backgroundColor: '#94a3b8' }
+                  : isActive
+                  ? { backgroundColor: '#003D9B' }
+                  : { backgroundColor: '#cbd5e1' };
+
+                const statusColor = isCompleted
+                  ? '#16a34a'
+                  : isNoShow
+                  ? '#64748b'
+                  : isActive
+                  ? '#003D9B'
+                  : '#64748b';
 
                 return (
                   <TouchableOpacity
@@ -299,28 +317,31 @@ export default function TherapistDashboardScreen({ navigation }) {
                     style={styles.timelineRow}
                     activeOpacity={0.7}
                     onPress={() =>
-                      navigation.navigate('AppointmentDetails', {
+                      navigation.navigate('ClinicalConsultation', {
                         appointmentId: item.id,
-                        patientName: item.patientName,
+                        appointment: {
+                          id: item.id,
+                          _id: item.id,
+                          patientId: item.patientId,
+                          patientName: item.patientName,
+                          serviceType: item.condition,
+                          status: item.status,
+                          startTime: item.startTime,
+                        }
                       })
                     }
                   >
                     <View style={styles.timelineLeftTrack}>
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          isCompleted && styles.dotCompleted,
-                          isNext && styles.dotNext,
-                        ]}
-                      >
+                      <View style={[styles.timelineDot, dotStyle]}>
                         {isCompleted && <Ionicons name="checkmark" size={10} color="#ffffff" />}
+                        {isNoShow && <Ionicons name="close" size={9} color="#ffffff" />}
                       </View>
                       {index < dailyTimeline.length - 1 && <View style={styles.timelineLine} />}
                     </View>
 
                     <View style={styles.timelineContent}>
-                      <Text style={[styles.timelineStatusHeader, isNext && { color: '#003D9B' }]}>
-                        {item.time} • {item.status.replace('_', ' ')}
+                      <Text style={[styles.timelineStatusHeader, { color: statusColor }]}>
+                        {item.time} • {s.replace(/_/g, ' ')}
                       </Text>
                       <Text style={styles.timelinePatientName}>{item.patientName}</Text>
                       <Text style={styles.timelineConditionText}>{item.condition}</Text>

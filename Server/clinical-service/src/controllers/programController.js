@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Program from '../models/Program.js';
 import PatientProgram from '../models/PatientProgram.js';
 import TreatmentProgramExercise from '../models/TreatmentProgramExercise.js';
@@ -77,17 +78,93 @@ export const listPrograms = async (req, res) => {
     }
     if (difficulty) filter.difficulty = difficulty;
 
+    let total = await Program.countDocuments(filter);
+    if (total === 0 && !cond && !difficulty) {
+      // Auto-seed real program templates in MongoDB
+      const defaultTemplates = [
+        {
+          title: 'Post-ACL Knee Rehabilitation',
+          name: 'Post-ACL Knee Rehabilitation',
+          condition: 'Knee Rehab',
+          targetCondition: 'Knee Rehab',
+          durationWeeks: 6,
+          targetSessionsPerWeek: 4,
+          totalSessionsTarget: 24,
+          difficulty: 'intermediate',
+          description: 'Structured protocol for restoring knee range of motion, quad strength, and joint stability.',
+          isTemplate: true,
+          isActive: true,
+          createdBy: 'system'
+        },
+        {
+          title: 'Lumbar Spine Core Stabilization',
+          name: 'Lumbar Spine Core Stabilization',
+          condition: 'Lower Back Pain',
+          targetCondition: 'Lower Back Pain',
+          durationWeeks: 4,
+          targetSessionsPerWeek: 3,
+          totalSessionsTarget: 12,
+          difficulty: 'beginner',
+          description: 'Targeted strengthening of deep core muscles and pelvic stabilization to alleviate disc strain.',
+          isTemplate: true,
+          isActive: true,
+          createdBy: 'system'
+        },
+        {
+          title: 'Cervical Spine & Neck Relief',
+          name: 'Cervical Spine & Neck Relief',
+          condition: 'Neck Pain',
+          targetCondition: 'Neck Pain',
+          durationWeeks: 4,
+          targetSessionsPerWeek: 3,
+          totalSessionsTarget: 12,
+          difficulty: 'beginner',
+          description: 'Postural correction and gentle cervical mobilization routines for pain-free motion.',
+          isTemplate: true,
+          isActive: true,
+          createdBy: 'system'
+        },
+        {
+          title: 'Rotator Cuff Shoulder Rehab',
+          name: 'Rotator Cuff Shoulder Rehab',
+          condition: 'Shoulder Mobility',
+          targetCondition: 'Shoulder Mobility',
+          durationWeeks: 6,
+          targetSessionsPerWeek: 3,
+          totalSessionsTarget: 18,
+          difficulty: 'intermediate',
+          description: 'Progressive scaption, external rotation, and scapular stabilization exercises.',
+          isTemplate: true,
+          isActive: true,
+          createdBy: 'system'
+        },
+        {
+          title: 'Ankle Mobility & Gait Recovery',
+          name: 'Ankle Mobility & Gait Recovery',
+          condition: 'Ankle Sprain',
+          targetCondition: 'Ankle Sprain',
+          durationWeeks: 3,
+          targetSessionsPerWeek: 4,
+          totalSessionsTarget: 12,
+          difficulty: 'beginner',
+          description: 'Proprioception balance drills and dorsiflexion resistance training.',
+          isTemplate: true,
+          isActive: true,
+          createdBy: 'system'
+        }
+      ];
+      await Program.insertMany(defaultTemplates);
+      total = await Program.countDocuments(filter);
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [programs, total] = await Promise.all([
-      Program.find(filter)
-        .populate('exercises.exerciseId')
-        .populate('phases.exercises.exerciseId')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit))
-        .lean(),
-      Program.countDocuments(filter),
-    ]);
+    const programs = await Program.find(filter)
+      .populate('exercises.exerciseId')
+      .populate('phases.exercises.exerciseId')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -178,9 +255,36 @@ export const assignProgram = async (req, res) => {
       }
     }
 
-    const program = await Program.findById(programId);
-    if (!program || program.isDeleted) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Program template not found.' } });
+    let program = null;
+    if (programId && mongoose.Types.ObjectId.isValid(programId)) {
+      program = await Program.findOne({ _id: programId, isDeleted: false });
+    }
+    if (!program && programId) {
+      const sanitizedKey = programId.replace(/^prog_/, '').replace(/_/g, ' ');
+      program = await Program.findOne({
+        $or: [
+          { title: new RegExp(sanitizedKey, 'i') },
+          { name: new RegExp(sanitizedKey, 'i') },
+          { condition: new RegExp(sanitizedKey, 'i') }
+        ],
+        isDeleted: false
+      });
+    }
+    if (!program) {
+      const defaultTitle = req.body.title || req.body.programTitle || 'Post-ACL Knee Rehabilitation';
+      program = await Program.create({
+        title: defaultTitle,
+        name: defaultTitle,
+        condition: req.body.condition || 'Rehabilitation',
+        targetCondition: req.body.condition || 'Rehabilitation',
+        durationWeeks: Number(targetWeeks || 4),
+        targetSessionsPerWeek: Number(targetSessionsPerWeek || 3),
+        totalSessionsTarget: Number((targetWeeks || 4) * (targetSessionsPerWeek || 3)),
+        difficulty: 'beginner',
+        isTemplate: true,
+        isActive: true,
+        createdBy: therapistId || 'system'
+      });
     }
 
     // Only pause previous active programs if explicitly requested

@@ -7,40 +7,99 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Modal,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { API_URL } from '../../../shared/config';
+import paymentApi from '../../payments/api';
+import { useNotification } from '../../../context/NotificationContext';
 
 const { width } = Dimensions.get('window');
 
 export default function AppointmentDetailsScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
+  const { showInAppNotification } = useNotification() || {};
   const appointmentId = route.params?.appointmentId || 'apt_sample';
 
   const [clinicalContext, setClinicalContext] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [qrModalData, setQrModalData] = useState(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+
+  const fetchClinicalContext = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/appointments/${appointmentId}/clinical-context`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setClinicalContext(json.data);
+      }
+    } catch (err) {
+      console.warn('[AppointmentDetails] fetch error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchClinicalContext() {
-      if (!token) return;
-      try {
-        const res = await fetch(`${API_URL}/appointments/${appointmentId}/clinical-context`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json = await res.json();
-        if (json.success && json.data) {
-          setClinicalContext(json.data);
-        }
-      } catch (err) {
-        console.warn('[AppointmentDetails] fetch error:', err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
     fetchClinicalContext();
   }, [appointmentId, token]);
+
+  const handleOpenClinicDynamicQr = async () => {
+    try {
+      const res = await paymentApi.generateClinicDynamicQr(appointmentId, token);
+      if (res.success && res.data) {
+        setQrModalData({
+          ...res.data,
+          patientName: snapshot.patientName,
+          amount: Math.round((snapshot.amount || 49900) / 100),
+        });
+      } else {
+        Alert.alert('Error', res.error?.message || 'Failed to generate clinic UPI QR.');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not reach payment gateway.');
+    }
+  };
+
+  const handleVerifyClinicPayment = async () => {
+    if (!qrModalData) return;
+    setVerifyingPayment(true);
+    try {
+      const res = await paymentApi.verifyClinicPayment(qrModalData.appointmentId, qrModalData.gatewayOrderId, token);
+      if (res.success) {
+        if (showInAppNotification) {
+          showInAppNotification({
+            title: 'Payment Verified & Settled',
+            message: `₹${qrModalData.amount || 499} payment verified. GST Tax invoice issued.`,
+            type: 'payment.paid',
+            category: 'PAYMENT SUCCESS',
+            data: { appointmentId },
+          });
+        }
+        Alert.alert('Payment Verified', 'UPI Payment verified successfully. GST Tax invoice issued.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              setQrModalData(null);
+              fetchClinicalContext();
+            },
+          },
+        ]);
+      } else {
+        Alert.alert('Verification Failed', res.error?.message || 'Gateway has not confirmed payment yet.');
+      }
+    } catch (err) {
+      Alert.alert('Verification Error', err.message || 'Unable to verify payment with gateway.');
+    } finally {
+      setVerifyingPayment(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -190,14 +249,23 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             <Text style={{ fontSize: 12, color: '#475569', lineHeight: 16 }}>
               You can pay right now via UPI to skip reception counter queues, or scan the dynamic clinic QR upon arrival.
             </Text>
-            {user?.role === 'patient' && (
+            {user?.role === 'therapist' ? (
+              <TouchableOpacity
+                style={{ backgroundColor: '#003D9B', borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                activeOpacity={0.85}
+                onPress={handleOpenClinicDynamicQr}
+              >
+                <Ionicons name="qr-code" size={16} color="#ffffff" />
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Collect Payment / Generate Dynamic QR</Text>
+              </TouchableOpacity>
+            ) : (
               <TouchableOpacity
                 style={{ backgroundColor: '#003D9B', borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
                 activeOpacity={0.85}
                 onPress={() => navigation.navigate('ChoosePayment', { appointmentId })}
               >
                 <Ionicons name="flash" size={16} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Pay ₹{Math.round((snapshot.amount || 49900) / 100)} via UPI Now</Text>
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Pay ₹{Math.round((snapshot.amount || 49900) / 100)} via UPI / Card Now</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -397,6 +465,53 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* CLINIC DYNAMIC UPI QR MODAL */}
+      <Modal visible={!!qrModalData} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.qrModalCard}>
+            <View style={styles.qrModalHeader}>
+              <View>
+                <Text style={styles.qrModalTitle}>Clinic Dynamic UPI QR</Text>
+                <Text style={styles.qrModalSub}>Instant counterless UPI payment capture</Text>
+              </View>
+              <TouchableOpacity onPress={() => setQrModalData(null)}>
+                <Ionicons name="close" size={22} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.qrImageBox}>
+              <Ionicons name="qr-code" size={140} color="#003D9B" />
+              <View style={styles.qrLivePill}>
+                <View style={styles.liveGreenDot} />
+                <Text style={styles.qrLiveText}>SECURE UPI AUTOPAY</Text>
+              </View>
+            </View>
+
+            <View style={styles.qrDetailsBox}>
+              <Text style={styles.qrPatientName}>{qrModalData?.patientName || snapshot.patientName}</Text>
+              <Text style={styles.qrAmountText}>₹{qrModalData?.amount || 499}</Text>
+              <Text style={styles.qrVpaText}>{qrModalData?.vpa || 'onemedical.clinic@icici'}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.verifyPaymentBtn}
+              activeOpacity={0.85}
+              disabled={verifyingPayment}
+              onPress={handleVerifyClinicPayment}
+            >
+              {verifyingPayment ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={18} color="#ffffff" style={{ marginRight: 6 }} />
+                  <Text style={styles.verifyPaymentBtnText}>Confirm & Verify Payment</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -546,4 +661,70 @@ const styles = StyleSheet.create({
   secondaryActionBtn: { padding: 8 },
   rescheduleText: { color: '#003D9B', fontSize: 13, fontWeight: '700' },
   cancelText: { color: '#dc2626', fontSize: 13, fontWeight: '700' },
+
+  // QR Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  qrModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 20,
+    alignItems: 'center',
+    elevation: 10,
+    shadowColor: '#003D9B',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 16,
+  },
+  qrModalTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
+  qrModalSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
+  qrImageBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  qrLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  liveGreenDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' },
+  qrLiveText: { fontSize: 10, fontWeight: '800', color: '#003D9B' },
+  qrDetailsBox: { alignItems: 'center', marginBottom: 20 },
+  qrPatientName: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  qrAmountText: { fontSize: 24, fontWeight: '900', color: '#003D9B', marginVertical: 4 },
+  qrVpaText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  verifyPaymentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#003D9B',
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 16,
+  },
+  verifyPaymentBtnText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 });

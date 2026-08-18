@@ -499,19 +499,27 @@ export const getConsultationQueue = async (req, res) => {
       filter.status = {
         $in: [
           'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED',
-          'RESCHEDULED', 'SCHEDULED', 'HELD',
+          'RESCHEDULED', 'SCHEDULED', 'HELD', 'DOCUMENTED', 'DOCUMENTATION_PENDING',
+          'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE',
           'confirmed', 'checked_in', 'in_progress', 'completed', 'scheduled', 'held'
         ]
       };
     }
 
     if (date) {
-      // Calculate exact IST day start and end
-      const startOfDay = new Date(`${date}T00:00:00+05:30`);
-      const endOfDay = new Date(`${date}T23:59:59.999+05:30`);
+      const targetDateStr = date;
+      const startOfDayUtc = new Date(`${date}T00:00:00.000Z`);
+      const endOfDayUtc = new Date(`${date}T23:59:59.999Z`);
+      const startOfDayIst = new Date(`${date}T00:00:00+05:30`);
+      const endOfDayIst = new Date(`${date}T23:59:59.999+05:30`);
+
+      const minDate = new Date(Math.min(startOfDayUtc.getTime(), startOfDayIst.getTime()));
+      const maxDate = new Date(Math.max(endOfDayUtc.getTime(), endOfDayIst.getTime()));
+
       filter.$or = [
-        { startTime: { $gte: startOfDay, $lte: endOfDay } },
-        { appointmentDate: { $gte: startOfDay, $lte: endOfDay } },
+        { startTime: { $gte: minDate, $lte: maxDate } },
+        { appointmentDate: { $gte: minDate, $lte: maxDate } },
+        { appointmentDate: new RegExp(`^${targetDateStr}`) },
       ];
     }
 

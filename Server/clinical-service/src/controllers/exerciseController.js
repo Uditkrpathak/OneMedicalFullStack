@@ -28,11 +28,71 @@ export const listExercises = async (req, res) => {
     if (difficulty) filter.difficulty = difficulty;
     if (search)     filter.name = new RegExp(search, 'i');
 
+    let total = await Exercise.countDocuments({ isDeleted: false });
+    if (total === 0) {
+      const defaultExercises = [
+        {
+          name: 'Isometric Quad Sets',
+          bodyPart: 'Knee',
+          category: 'Strength',
+          difficulty: 'beginner',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationSec: 30,
+          isPublic: true,
+          instructions: 'Sit with leg straight. Tighten thigh muscle pushing back of knee into the bed.',
+        },
+        {
+          name: 'Straight Leg Raise',
+          bodyPart: 'Knee & Hip',
+          category: 'Strength',
+          difficulty: 'beginner',
+          defaultSets: 3,
+          defaultReps: 12,
+          defaultDurationSec: 30,
+          isPublic: true,
+          instructions: 'Lie on back, bend one knee, keep other leg straight and lift 12 inches off floor.',
+        },
+        {
+          name: 'Heel Slides with Towel',
+          bodyPart: 'Knee',
+          category: 'Mobility',
+          difficulty: 'beginner',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationSec: 30,
+          isPublic: true,
+          instructions: 'Lie on back and gently slide heel toward buttocks using towel for assistance.',
+        },
+        {
+          name: 'Hamstring Curl & Stretch',
+          bodyPart: 'Hamstrings',
+          category: 'Flexibility',
+          difficulty: 'beginner',
+          defaultSets: 3,
+          defaultReps: 10,
+          defaultDurationSec: 30,
+          isPublic: true,
+          instructions: 'Stand holding chair for balance, bend knee bringing heel toward buttocks smoothly.',
+        },
+        {
+          name: 'Ankle Pumps & Mobilization',
+          bodyPart: 'Ankle',
+          category: 'Mobility',
+          difficulty: 'beginner',
+          defaultSets: 3,
+          defaultReps: 15,
+          defaultDurationSec: 20,
+          isPublic: true,
+          instructions: 'Point toes down and pull toes up in smooth continuous rhythm.',
+        }
+      ];
+      await Exercise.insertMany(defaultExercises);
+      total = await Exercise.countDocuments({ isDeleted: false });
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [exercises, total] = await Promise.all([
-      Exercise.find(filter).skip(skip).limit(parseInt(limit)).lean(),
-      Exercise.countDocuments(filter),
-    ]);
+    const exercises = await Exercise.find(filter).skip(skip).limit(parseInt(limit)).lean();
 
     res.json({ success: true, data: exercises, meta: { page: parseInt(page), limit: parseInt(limit), total } });
   } catch (err) {

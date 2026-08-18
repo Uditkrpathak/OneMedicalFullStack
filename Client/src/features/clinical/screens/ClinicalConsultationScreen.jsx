@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,19 +10,25 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Platform,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { API_URL } from '../../../shared/config';
+import { useNotification } from '../../../context/NotificationContext';
 
 const { width } = Dimensions.get('window');
 
 export default function ClinicalConsultationScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
+  const { showInAppNotification } = useNotification() || {};
+
   const appointmentId = route.params?.appointmentId || 'apt_sample';
-  const initialPatientName = route.params?.patientName || 'Sanya Malhotra';
+  const initialPatientName = route.params?.patientName || route.params?.booking?.patientName || 'Udit';
+  const therapistDisplayName = user?.name || 'Dr. Vivek Joshi';
+  const therapistRegNumber = user?.registrationNumber || 'PT-3821';
+  const clinicDisplayName = user?.clinicName || 'ONE MEDICAL Center, MG Road';
 
   const [consultationId, setConsultationId] = useState(null);
   const [currentStep, setCurrentStep] = useState(1);
@@ -30,23 +36,33 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savedStatusText, setSavedStatusText] = useState('Saved just now');
 
+  // Modals for dynamic additions
+  const [vitalsModalVisible, setVitalsModalVisible] = useState(false);
+  const [jointPickerVisible, setJointPickerVisible] = useState(false);
+  const [addExerciseModalVisible, setAddExerciseModalVisible] = useState(false);
+  const [addHomeExerciseModalVisible, setAddHomeExerciseModalVisible] = useState(false);
+
+  // New Exercise Form State
+  const [newExerciseForm, setNewExerciseForm] = useState({ name: '', sets: '3', reps: '10', holdSec: '30' });
+  const [newHomeExForm, setNewHomeExForm] = useState({ name: '', sets: '2', reps: '10', frequency: '2x Daily' });
+
   // Unified 6-Step Consultation State
   const [consultationData, setConsultationData] = useState({
     // Step 1: Preparation
     step1_preparation: {
-      chiefComplaint: 'Patellar instability and lower back stiffness during knee flexion.',
+      chiefComplaint: 'Patellar instability and localized stiffness during knee flexion.',
       painScore: 4,
       painType: ['Radiating'],
       painDuration: 'Today',
       painLocation: { bodyPart: 'Left Knee', region: 'Front' },
       sessionGoals: ['Reduce Pain', 'Improve Mobility'],
-      observations: { swelling: true, inflammation: false, limitedRom: true, muscleTight: true },
+      observations: { swelling: true, inflammation: false, limitedRom: true, muscleTight: true, tenderness: true },
     },
 
     // Step 2: Assessment
     step2_assessment: {
       vitals: { bp: '120/80', hr: 72, temp: 98.6, spo2: 98 },
-      painMovement: 6,
+      painMovement: 4,
       painRest: 2,
       structuredRom: [
         {
@@ -62,58 +78,59 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
       specialTests: [
         { name: 'Lachman Test', result: 'POSITIVE' },
         { name: 'Straight Leg Raise', result: 'NEGATIVE' },
+        { name: 'McMurray Test', result: 'NEGATIVE' },
       ],
       functionalObservations: ['Walking', 'Balance', 'Sit to Stand'],
-      clinicalImpression: 'Patient presents with significant reduction in localized tenderness over L4-L5.',
+      clinicalImpression: 'Patient presents with reduction in localized tenderness and progressive knee stability.',
     },
 
     // Step 3: Treatment
     step3_treatment: {
-      modalities: ['Manual Therapy', 'IFT'],
+      modalities: ['Manual Therapy', 'IFT', 'Heat Therapy'],
       exercisesPerformed: [
-        { name: 'Pelvic Tilts', sets: 3, reps: 12, holdSec: 30 },
-        { name: 'Cat-Cow Stretch', sets: 2, reps: 10, holdSec: 45 },
+        { name: 'Isometric Quad Sets', sets: 3, reps: 12, holdSec: 30 },
+        { name: 'Straight Leg Raise (SLR)', sets: 2, reps: 10, holdSec: 10 },
       ],
-      bodyRegionTreated: 'Lower Back',
+      bodyRegionTreated: 'Left Knee',
       patientResponse: 'Tolerated Well',
       sessionIntensity: 'Moderate',
       durationMins: 45,
-      treatmentRemarks: 'Tolerated manual mobilization well. Patient noted 20% reduction in discomfort.',
+      treatmentRemarks: 'Tolerated manual mobilization well. Patient noted 25% reduction in pain post-session.',
     },
 
     // Step 4: Recovery
     step4_recovery: {
-      programName: 'Lumbar Spine Stabilization',
+      programName: 'Post-ACL Knee Rehabilitation',
       homeExercises: [
-        { name: 'Pelvic Tilts', sets: 3, reps: 10, frequency: '2x Daily' },
-        { name: 'Cat-Cow Stretch', sets: 2, reps: 10, frequency: '1x Daily' },
+        { name: 'Isometric Quad Sets', sets: 3, reps: 10, frequency: '2x Daily' },
+        { name: 'Heel Slides', sets: 2, reps: 10, frequency: '1x Daily' },
       ],
       patientGoals: ['Reduce Pain', 'Improve Mobility'],
-      activityRestrictions: ['Avoid Heavy Lifting'],
-      homeCareInstructions: 'Apply ice pack for 15 mins post home exercise routine.',
-      nextReviewDate: 'Nov 05, 2024',
-      nextReviewMilestone: 'Phase 2 Check',
-      patientEducation: { exerciseVideos: true, painManagementGuide: true },
+      activityRestrictions: ['Avoid Heavy Squats', 'Avoid High Impact Running'],
+      homeCareInstructions: 'Apply cold ice pack for 15 mins post home exercise routine twice daily.',
+      nextReviewDate: 'In 1 Week',
+      nextReviewMilestone: 'Phase 2 ROM Target (105°)',
+      patientEducation: { exerciseVideos: true, painManagementGuide: true, ergonomicsGuide: true },
     },
 
     // Step 5: Synthesis
     step5_synthesis: {
       conditionSummary: {
-        condition: 'Lower Back Pain',
-        mobility: 'Moderate restriction',
-        interventions: 'Manual Therapy, Pelvic Tilts focus',
-        nextPhase: 'Lumbar Stabilization Program initialization scheduled for next session.',
+        condition: 'Left Knee Patellofemoral Pain Syndrome',
+        mobility: 'Moderate flexion restriction (85°)',
+        interventions: 'Manual Therapy, Isometric Quad Strengthening',
+        nextPhase: 'Phase 2 active knee stabilization and closed-chain exercises.',
       },
-      clinicalImpression: 'Patient presents with significant reduction in localized tenderness over L4-L5.',
-      additionalNotes: '',
+      clinicalImpression: 'Patient shows consistent functional improvement with reduced inflammatory response.',
+      additionalNotes: 'Patient advised to adhere strictly to daily home exercise regimen.',
       progressStatus: 'Improved',
       goalStatus: 'Partially Achieved',
       complications: false,
       digitalSignature: {
         signedBy: user?.userId || 'th_1',
-        therapistName: 'Dr. Ananya Iyer',
-        registrationNumber: 'Reg #PT-3821',
-        clinicName: 'Downtown Clinic',
+        therapistName: therapistDisplayName,
+        registrationNumber: therapistRegNumber,
+        clinicName: clinicDisplayName,
         signedAt: null,
       },
     },
@@ -122,21 +139,22 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
     step6_reports: {
       attachedReports: [
         {
-          title: 'MRI_Lumbar_Spine.pdf',
-          category: 'MRI',
-          hospital: 'Manipal Hospital',
-          doctorName: 'Dr. Satish Kumar',
+          title: 'MRI_Knee_Joint_Left.pdf',
+          category: 'MRI Scan',
+          hospital: 'OneMedical Diagnostic Hub',
+          doctorName: therapistDisplayName,
+          date: 'Aug 18, 2026',
         },
       ],
       nextVisit: {
         required: true,
-        date: 'Nov 05, 2024',
+        date: 'In 1 Week',
         time: '10:30 AM',
-        consultationType: 'In-person',
-        clinic: 'Downtown Clinic',
-        sessionObjectives: ['Pain Reassessment', 'ROM Assessment', 'Progress Review'],
+        consultationType: 'In-person Clinic',
+        clinic: clinicDisplayName,
+        sessionObjectives: ['Pain Reassessment', 'ROM Check (105° Target)', 'Load Progression'],
         automatedReminders: { medication: true, exercise: true, hydration: true },
-        referralNotes: 'No Referral',
+        referralNotes: 'No Referral Needed',
         nextVisitChecklist: { reviewPainScore: true, reviewExerciseCompliance: true, reviewReports: true },
       },
     },
@@ -153,7 +171,7 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ appointmentId }),
+          body: JSON.stringify({ appointmentId, patientName: initialPatientName }),
         });
         const json = await res.json();
         if (json.success && json.data) {
@@ -228,9 +246,9 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          therapistName: 'Dr. Ananya Iyer',
-          registrationNumber: 'Reg #PT-3821',
-          clinicName: 'Downtown Clinic',
+          therapistName: therapistDisplayName,
+          registrationNumber: therapistRegNumber,
+          clinicName: clinicDisplayName,
         }),
       });
       const json = await res.json();
@@ -257,6 +275,14 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
       });
       const json = await res.json();
       if (json.success) {
+        if (showInAppNotification) {
+          showInAppNotification({
+            title: 'Consultation Finalized & Signed',
+            message: `Encounter for ${initialPatientName} documented. Treatment plan published to patient app.`,
+            type: 'consultation.completed',
+            category: 'CLINICAL ENCOUNTER',
+          });
+        }
         Alert.alert('Encounter Finalized', 'Clinical consultation record submitted to patient permanent records.', [
           { text: 'OK', onPress: () => navigation.navigate('TherapistHome') },
         ]);
@@ -287,6 +313,26 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
     }
   };
 
+  // Calculation of ROM Restriction
+  const calculateRestriction = (measured, maxDegrees = 110) => {
+    const pct = (measured / maxDegrees) * 100;
+    if (pct >= 95) return 'NORMAL';
+    if (pct >= 80) return 'MILD';
+    if (pct >= 60) return 'MODERATE';
+    return 'SEVERE';
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#003D9B" />
+        <Text style={{ marginTop: 12, fontSize: 13, color: '#64748b', fontWeight: '600' }}>
+          Loading clinical consultation draft...
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Top Bar Header */}
@@ -314,20 +360,26 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
 
         <View style={styles.stepSegmentsRow}>
           {[1, 2, 3, 4, 5, 6].map((st) => (
-            <View
+            <TouchableOpacity
               key={st}
               style={[
                 styles.stepSegment,
                 st <= currentStep && styles.stepSegmentActive,
                 st === currentStep && styles.stepSegmentCurrent,
               ]}
+              onPress={() => {
+                setCurrentStep(st);
+                autosave(currentStep, st);
+              }}
             />
           ))}
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* ========================================================================= */}
         {/* STEP 1: PREPARATION & CHIEF COMPLAINT */}
+        {/* ========================================================================= */}
         {currentStep === 1 && (
           <View style={styles.stepCardContainer}>
             {/* Patient Header Chip */}
@@ -337,10 +389,10 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
               </View>
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.pillPatientName}>{initialPatientName}</Text>
-                <Text style={styles.pillPatientSub}>28y, Female • Follow-up</Text>
+                <Text style={styles.pillPatientSub}>32y, Male • Follow-up Consultation</Text>
               </View>
               <View style={styles.conditionChip}>
-                <Text style={styles.conditionChipText}>ACL Recovery</Text>
+                <Text style={styles.conditionChipText}>Knee Rehabilitation</Text>
               </View>
             </View>
 
@@ -361,22 +413,80 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
                   placeholder="What is the patient's main concern today?"
                   placeholderTextColor="#94a3b8"
                 />
-                <TouchableOpacity style={styles.dictateMicBtn}>
-                  <Ionicons name="mic" size={16} color="#ffffff" />
-                </TouchableOpacity>
+              </View>
+
+              {/* Quick Prompt Tags */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                {['+ Knee Pain', '+ Lower Back Stiffness', '+ Post-Op Follow-up', '+ Neck Spasm'].map((tag) => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.quickTagBtn}
+                    onPress={() => {
+                      const clean = tag.replace('+ ', '');
+                      const curr = consultationData.step1_preparation.chiefComplaint;
+                      const updated = curr ? `${curr}, ${clean}` : clean;
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step1_preparation: { ...prev.step1_preparation, chiefComplaint: updated },
+                      }));
+                    }}
+                  >
+                    <Text style={styles.quickTagText}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
 
-            {/* Pain Assessment (VNRS) */}
+            {/* Pain Assessment VNRS (0 - 10) */}
             <View style={styles.inputSection}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.fieldLabel}>PAIN ASSESSMENT (VNRS)</Text>
-                <Text style={styles.painValHighlight}>{consultationData.step1_preparation.painScore} / 10</Text>
+                <View style={[
+                  styles.painScoreBadge,
+                  consultationData.step1_preparation.painScore >= 7
+                    ? { backgroundColor: '#fee2e2' }
+                    : consultationData.step1_preparation.painScore >= 4
+                    ? { backgroundColor: '#fef3c7' }
+                    : { backgroundColor: '#f0fdf4' }
+                ]}>
+                  <Text style={[
+                    styles.painValHighlight,
+                    consultationData.step1_preparation.painScore >= 7
+                      ? { color: '#dc2626' }
+                      : consultationData.step1_preparation.painScore >= 4
+                      ? { color: '#b45309' }
+                      : { color: '#16a34a' }
+                  ]}>
+                    {consultationData.step1_preparation.painScore} / 10
+                  </Text>
+                </View>
               </View>
 
-              {/* Slider Pills */}
+              {/* VNRS 0-10 Buttons */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 4 }}>
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                  const isSel = consultationData.step1_preparation.painScore === num;
+                  return (
+                    <TouchableOpacity
+                      key={num}
+                      style={[styles.numScoreBtn, isSel && styles.numScoreBtnActive]}
+                      onPress={() =>
+                        setConsultationData((prev) => ({
+                          ...prev,
+                          step1_preparation: { ...prev.step1_preparation, painScore: num },
+                        }))
+                      }
+                    >
+                      <Text style={[styles.numScoreText, isSel && styles.numScoreTextActive]}>{num}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Pain Type Multi-select */}
+              <Text style={[styles.fieldLabel, { marginTop: 6 }]}>PAIN CHARACTERISTICS</Text>
               <View style={styles.painPillOptionsRow}>
-                {['Sharp', 'Dull', 'Radiating', 'Burning', 'Stiffness'].map((type) => {
+                {['Sharp', 'Dull', 'Radiating', 'Burning', 'Stiffness', 'Throbbing', 'Aching'].map((type) => {
                   const isSel = consultationData.step1_preparation.painType.includes(type);
                   return (
                     <TouchableOpacity
@@ -405,28 +515,76 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.fieldLabel}>PAIN LOCATION</Text>
                 <View style={styles.frontBackToggle}>
-                  <TouchableOpacity style={styles.toggleSideActive}>
-                    <Text style={styles.toggleSideTextActive}>Front</Text>
+                  <TouchableOpacity
+                    style={consultationData.step1_preparation.painLocation.region === 'Front' ? styles.toggleSideActive : styles.toggleSide}
+                    onPress={() =>
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step1_preparation: {
+                          ...prev.step1_preparation,
+                          painLocation: { ...prev.step1_preparation.painLocation, region: 'Front' },
+                        },
+                      }))
+                    }
+                  >
+                    <Text style={consultationData.step1_preparation.painLocation.region === 'Front' ? styles.toggleSideTextActive : styles.toggleSideText}>Front</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.toggleSide}>
-                    <Text style={styles.toggleSideText}>Back</Text>
+                  <TouchableOpacity
+                    style={consultationData.step1_preparation.painLocation.region === 'Back' ? styles.toggleSideActive : styles.toggleSide}
+                    onPress={() =>
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step1_preparation: {
+                          ...prev.step1_preparation,
+                          painLocation: { ...prev.step1_preparation.painLocation, region: 'Back' },
+                        },
+                      }))
+                    }
+                  >
+                    <Text style={consultationData.step1_preparation.painLocation.region === 'Back' ? styles.toggleSideTextActive : styles.toggleSideText}>Back</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               <View style={styles.anatomicalBox}>
-                <Ionicons name="body" size={90} color="#003D9B" style={{ opacity: 0.8 }} />
+                <Ionicons name="body" size={90} color="#003D9B" style={{ opacity: 0.85 }} />
                 <View style={styles.selectedJointPill}>
-                  <Text style={styles.selectedJointText}>Selected: Left Knee</Text>
+                  <Text style={styles.selectedJointText}>
+                    Selected: {consultationData.step1_preparation.painLocation.bodyPart} ({consultationData.step1_preparation.painLocation.region})
+                  </Text>
                 </View>
               </View>
+
+              {/* Joint Chips */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginTop: 6 }}>
+                {['Left Knee', 'Right Knee', 'Lower Back', 'Cervical Spine', 'Left Shoulder', 'Right Shoulder', 'Left Ankle', 'Right Ankle', 'Hip'].map((joint) => {
+                  const isSel = consultationData.step1_preparation.painLocation.bodyPart === joint;
+                  return (
+                    <TouchableOpacity
+                      key={joint}
+                      style={[styles.jointChip, isSel && styles.jointChipActive]}
+                      onPress={() =>
+                        setConsultationData((prev) => ({
+                          ...prev,
+                          step1_preparation: {
+                            ...prev.step1_preparation,
+                            painLocation: { ...prev.step1_preparation.painLocation, bodyPart: joint },
+                          },
+                        }))
+                      }
+                    >
+                      <Text style={[styles.jointChipText, isSel && styles.jointChipTextActive]}>{joint}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             {/* Session Goals */}
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>SESSION GOAL</Text>
               <View style={styles.goalsWrapRow}>
-                {['Reduce Pain', 'Improve Mobility', 'Strength Training', 'Post Surgery'].map((goal) => {
+                {['Reduce Pain', 'Improve Mobility', 'Strength Training', 'Post Surgery', 'Functional Gait'].map((goal) => {
                   const isSel = consultationData.step1_preparation.sessionGoals.includes(goal);
                   return (
                     <TouchableOpacity
@@ -455,12 +613,13 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>QUICK OBSERVATIONS</Text>
               <View style={styles.observationsGrid}>
-                {['swelling', 'inflammation', 'limitedRom', 'muscleTight'].map((obsKey) => {
+                {['swelling', 'inflammation', 'limitedRom', 'muscleTight', 'tenderness'].map((obsKey) => {
                   const labels = {
                     swelling: 'Swelling',
                     inflammation: 'Inflammation',
                     limitedRom: 'Limited ROM',
                     muscleTight: 'Muscle Tight',
+                    tenderness: 'Tenderness',
                   };
                   const isChecked = consultationData.step1_preparation.observations[obsKey];
                   return (
@@ -494,42 +653,93 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* ========================================================================= */}
         {/* STEP 2: ASSESSMENT & VITALS */}
+        {/* ========================================================================= */}
         {currentStep === 2 && (
           <View style={styles.stepCardContainer}>
-            {/* Vitals 2x2 Grid */}
+            {/* Vitals 2x2 Grid with Interactive Quick Edit */}
             <View style={styles.inputSection}>
-              <Text style={styles.fieldLabel}>VITAL SIGNS</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.fieldLabel}>VITAL SIGNS</Text>
+                <TouchableOpacity onPress={() => setVitalsModalVisible(true)}>
+                  <Text style={styles.changeJointLink}>Edit Vitals</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.vitalsGrid}>
-                <View style={styles.vitalCard}>
+                <TouchableOpacity style={styles.vitalCard} onPress={() => setVitalsModalVisible(true)}>
                   <Text style={styles.vitalCardLabel}>Blood Pressure</Text>
                   <Text style={styles.vitalCardValue}>{consultationData.step2_assessment.vitals.bp} mmHg</Text>
-                </View>
-                <View style={styles.vitalCard}>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.vitalCard} onPress={() => setVitalsModalVisible(true)}>
                   <Text style={styles.vitalCardLabel}>Heart Rate</Text>
                   <Text style={styles.vitalCardValue}>{consultationData.step2_assessment.vitals.hr} bpm</Text>
-                </View>
-                <View style={styles.vitalCard}>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.vitalCard} onPress={() => setVitalsModalVisible(true)}>
                   <Text style={styles.vitalCardLabel}>Temp</Text>
                   <Text style={styles.vitalCardValue}>{consultationData.step2_assessment.vitals.temp} °F</Text>
-                </View>
-                <View style={styles.vitalCard}>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.vitalCard} onPress={() => setVitalsModalVisible(true)}>
                   <Text style={styles.vitalCardLabel}>SpO2</Text>
                   <Text style={styles.vitalCardValue}>{consultationData.step2_assessment.vitals.spo2} %</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
 
             {/* Pain Reassessment Movement vs Rest */}
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>PAIN REASSESSMENT</Text>
-              <View style={styles.sliderRow}>
-                <Text style={styles.sliderRowLabel}>During Movement</Text>
-                <Text style={styles.sliderValBadge}>{consultationData.step2_assessment.painMovement} / 10</Text>
-              </View>
-              <View style={styles.sliderRow}>
-                <Text style={styles.sliderRowLabel}>At Rest</Text>
-                <Text style={styles.sliderValBadge}>{consultationData.step2_assessment.painRest} / 10</Text>
+              
+              <View style={{ gap: 10 }}>
+                <View>
+                  <View style={styles.sliderRow}>
+                    <Text style={styles.sliderRowLabel}>During Movement</Text>
+                    <Text style={styles.sliderValBadge}>{consultationData.step2_assessment.painMovement} / 10</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                    {[0, 2, 4, 6, 8, 10].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.smallPill, consultationData.step2_assessment.painMovement === v && styles.smallPillActive]}
+                        onPress={() =>
+                          setConsultationData((prev) => ({
+                            ...prev,
+                            step2_assessment: { ...prev.step2_assessment, painMovement: v },
+                          }))
+                        }
+                      >
+                        <Text style={[styles.smallPillText, consultationData.step2_assessment.painMovement === v && styles.smallPillTextActive]}>
+                          {v}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View>
+                  <View style={styles.sliderRow}>
+                    <Text style={styles.sliderRowLabel}>At Rest</Text>
+                    <Text style={styles.sliderValBadge}>{consultationData.step2_assessment.painRest} / 10</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
+                    {[0, 2, 4, 6, 8, 10].map((v) => (
+                      <TouchableOpacity
+                        key={v}
+                        style={[styles.smallPill, consultationData.step2_assessment.painRest === v && styles.smallPillActive]}
+                        onPress={() =>
+                          setConsultationData((prev) => ({
+                            ...prev,
+                            step2_assessment: { ...prev.step2_assessment, painRest: v },
+                          }))
+                        }
+                      >
+                        <Text style={[styles.smallPillText, consultationData.step2_assessment.painRest === v && styles.smallPillTextActive]}>
+                          {v}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -537,29 +747,101 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             <View style={styles.inputSection}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.fieldLabel}>RANGE OF MOTION (ROM)</Text>
-                <Text style={styles.changeJointLink}>Change Joint</Text>
+                <TouchableOpacity onPress={() => setJointPickerVisible(true)}>
+                  <Text style={styles.changeJointLink}>Change Joint</Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.romCard}>
-                <View style={styles.romHeaderRow}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="accessibility" size={16} color="#003D9B" />
-                    <Text style={styles.romJointName}>Knee</Text>
+              {consultationData.step2_assessment.structuredRom.map((romItem, idx) => (
+                <View key={idx} style={styles.romCard}>
+                  <View style={styles.romHeaderRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="accessibility" size={16} color="#003D9B" />
+                      <Text style={styles.romJointName}>{romItem.joint}</Text>
+                    </View>
+                    <Text style={styles.romSub}>
+                      Flexion: {romItem.flexionDegrees}° • Extension: {romItem.extensionDegrees}°
+                    </Text>
                   </View>
-                  <Text style={styles.romSub}>Flexion: 110° • Extension: 0°</Text>
-                </View>
 
-                <View style={styles.romBadgesRow}>
-                  <View style={styles.measuredRomBadge}>
-                    <Text style={styles.measuredRomLabel}>MEASURED</Text>
-                    <Text style={styles.measuredRomValue}>85°</Text>
-                  </View>
-                  <View style={styles.restrictionBadge}>
-                    <Text style={styles.restrictionLabel}>RESTRICTION</Text>
-                    <Text style={styles.restrictionValue}>MODERATE</Text>
+                  <View style={styles.romBadgesRow}>
+                    <View style={styles.measuredRomBadge}>
+                      <Text style={styles.measuredRomLabel}>MEASURED</Text>
+                      <Text style={styles.measuredRomValue}>{romItem.measuredDegrees}°</Text>
+                      
+                      {/* Stepper Buttons */}
+                      <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity
+                          style={styles.stepAngleBtn}
+                          onPress={() => {
+                            const newDeg = Math.max(0, romItem.measuredDegrees - 5);
+                            const newRest = calculateRestriction(newDeg, romItem.flexionDegrees);
+                            const updated = [...consultationData.step2_assessment.structuredRom];
+                            updated[idx] = { ...romItem, measuredDegrees: newDeg, restriction: newRest };
+                            setConsultationData((prev) => ({
+                              ...prev,
+                              step2_assessment: { ...prev.step2_assessment, structuredRom: updated },
+                            }));
+                          }}
+                        >
+                          <Text style={styles.stepAngleBtnText}>-5°</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.stepAngleBtn}
+                          onPress={() => {
+                            const newDeg = Math.min(romItem.flexionDegrees, romItem.measuredDegrees + 5);
+                            const newRest = calculateRestriction(newDeg, romItem.flexionDegrees);
+                            const updated = [...consultationData.step2_assessment.structuredRom];
+                            updated[idx] = { ...romItem, measuredDegrees: newDeg, restriction: newRest };
+                            setConsultationData((prev) => ({
+                              ...prev,
+                              step2_assessment: { ...prev.step2_assessment, structuredRom: updated },
+                            }));
+                          }}
+                        >
+                          <Text style={styles.stepAngleBtnText}>+5°</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={[
+                      styles.restrictionBadge,
+                      romItem.restriction === 'NORMAL'
+                        ? { backgroundColor: '#f0fdf4' }
+                        : romItem.restriction === 'MILD'
+                        ? { backgroundColor: '#eff6ff' }
+                        : romItem.restriction === 'MODERATE'
+                        ? { backgroundColor: '#fef3c7' }
+                        : { backgroundColor: '#fee2e2' }
+                    ]}>
+                      <Text style={[
+                        styles.restrictionLabel,
+                        romItem.restriction === 'NORMAL'
+                          ? { color: '#16a34a' }
+                          : romItem.restriction === 'MILD'
+                          ? { color: '#0284c7' }
+                          : romItem.restriction === 'MODERATE'
+                          ? { color: '#b45309' }
+                          : { color: '#dc2626' }
+                      ]}>
+                        RESTRICTION
+                      </Text>
+                      <Text style={[
+                        styles.restrictionValue,
+                        romItem.restriction === 'NORMAL'
+                          ? { color: '#16a34a' }
+                          : romItem.restriction === 'MILD'
+                          ? { color: '#0284c7' }
+                          : romItem.restriction === 'MODERATE'
+                          ? { color: '#b45309' }
+                          : { color: '#dc2626' }
+                      ]}>
+                        {romItem.restriction}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
+              ))}
             </View>
 
             {/* Muscle Strength */}
@@ -568,46 +850,96 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
               <View style={styles.strengthRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <Ionicons name="expand" size={16} color="#003D9B" />
-                  <Text style={styles.strengthMuscleText}>Quadriceps</Text>
+                  <Text style={styles.strengthMuscleText}>Quadriceps & Hamstrings</Text>
                 </View>
-                <View style={styles.strengthSelector}>
-                  <Text style={styles.strengthSelectorText}>3/5</Text>
-                  <Ionicons name="chevron-down" size={14} color="#64748b" />
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  {['1/5', '2/5', '3/5', '4/5', '5/5'].map((grade) => {
+                    const isSel = consultationData.step2_assessment.muscleStrength === grade;
+                    return (
+                      <TouchableOpacity
+                        key={grade}
+                        style={[styles.gradeBtn, isSel && styles.gradeBtnActive]}
+                        onPress={() =>
+                          setConsultationData((prev) => ({
+                            ...prev,
+                            step2_assessment: { ...prev.step2_assessment, muscleStrength: grade },
+                          }))
+                        }
+                      >
+                        <Text style={[styles.gradeBtnText, isSel && styles.gradeBtnTextActive]}>{grade}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             </View>
 
-            {/* Special Tests */}
+            {/* Special Tests Toggle */}
             <View style={styles.inputSection}>
-              <Text style={styles.fieldLabel}>SPECIAL TESTS</Text>
-              <View style={styles.specialTestRow}>
-                <Text style={styles.testName}>Lachman Test</Text>
-                <View style={[styles.testBadge, { backgroundColor: '#fee2e2' }]}>
-                  <Text style={[styles.testBadgeText, { color: '#dc2626' }]}>POSITIVE</Text>
-                </View>
-              </View>
-              <View style={styles.specialTestRow}>
-                <Text style={styles.testName}>Straight Leg Raise</Text>
-                <View style={[styles.testBadge, { backgroundColor: '#f1f5f9' }]}>
-                  <Text style={[styles.testBadgeText, { color: '#64748b' }]}>NEGATIVE</Text>
-                </View>
-              </View>
+              <Text style={styles.fieldLabel}>SPECIAL TESTS (TAP TO TOGGLE)</Text>
+              {consultationData.step2_assessment.specialTests.map((t, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.specialTestRow}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    const newRes = t.result === 'POSITIVE' ? 'NEGATIVE' : 'POSITIVE';
+                    const updated = [...consultationData.step2_assessment.specialTests];
+                    updated[idx] = { ...t, result: newRes };
+                    setConsultationData((prev) => ({
+                      ...prev,
+                      step2_assessment: { ...prev.step2_assessment, specialTests: updated },
+                    }));
+                  }}
+                >
+                  <Text style={styles.testName}>{t.name}</Text>
+                  <View style={[
+                    styles.testBadge,
+                    t.result === 'POSITIVE' ? { backgroundColor: '#fee2e2' } : { backgroundColor: '#f1f5f9' }
+                  ]}>
+                    <Text style={[
+                      styles.testBadgeText,
+                      t.result === 'POSITIVE' ? { color: '#dc2626' } : { color: '#64748b' }
+                    ]}>
+                      {t.result}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         )}
 
+        {/* ========================================================================= */}
         {/* STEP 3: TREATMENT & EXERCISES */}
+        {/* ========================================================================= */}
         {currentStep === 3 && (
           <View style={styles.stepCardContainer}>
             {/* Treatment Modalities */}
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>TREATMENT MODALITIES</Text>
               <View style={styles.modalitiesRow}>
-                {['Manual Therapy', 'Stretching', 'IFT', 'Heat Therapy', 'Dry Needling'].map((mod) => (
-                  <View key={mod} style={styles.modalityChip}>
-                    <Text style={styles.modalityChipText}>{mod}</Text>
-                  </View>
-                ))}
+                {['Manual Therapy', 'Stretching', 'IFT', 'Heat Therapy', 'Dry Needling', 'TENS', 'Ultrasound', 'Cryotherapy'].map((mod) => {
+                  const isSel = consultationData.step3_treatment.modalities.includes(mod);
+                  return (
+                    <TouchableOpacity
+                      key={mod}
+                      style={[styles.modalityChip, isSel && styles.modalityChipActive]}
+                      onPress={() => {
+                        const exists = consultationData.step3_treatment.modalities.includes(mod);
+                        const updated = exists
+                          ? consultationData.step3_treatment.modalities.filter((m) => m !== mod)
+                          : [...consultationData.step3_treatment.modalities, mod];
+                        setConsultationData((prev) => ({
+                          ...prev,
+                          step3_treatment: { ...prev.step3_treatment, modalities: updated },
+                        }));
+                      }}
+                    >
+                      <Text style={[styles.modalityChipText, isSel && styles.modalityChipTextActive]}>{mod}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
 
@@ -615,7 +947,9 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             <View style={styles.inputSection}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.fieldLabel}>EXERCISES PERFORMED</Text>
-                <Text style={styles.addLink}>+ Add New</Text>
+                <TouchableOpacity onPress={() => setAddExerciseModalVisible(true)}>
+                  <Text style={styles.addLink}>+ Add New</Text>
+                </TouchableOpacity>
               </View>
 
               {consultationData.step3_treatment.exercisesPerformed.map((ex, idx) => (
@@ -626,7 +960,17 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
                       Sets: {ex.sets} • Reps: {ex.reps} • Hold: {ex.holdSec}s
                     </Text>
                   </View>
-                  <Ionicons name="create-outline" size={18} color="#003D9B" />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const updated = consultationData.step3_treatment.exercisesPerformed.filter((_, i) => i !== idx);
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step3_treatment: { ...prev.step3_treatment, exercisesPerformed: updated },
+                      }));
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -661,10 +1005,30 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
                 ))}
               </View>
             </View>
+
+            {/* Treatment Remarks */}
+            <View style={styles.inputSection}>
+              <Text style={styles.fieldLabel}>TREATMENT REMARKS</Text>
+              <TextInput
+                style={styles.textAreaInput}
+                multiline
+                value={consultationData.step3_treatment.treatmentRemarks}
+                onChangeText={(txt) =>
+                  setConsultationData((prev) => ({
+                    ...prev,
+                    step3_treatment: { ...prev.step3_treatment, treatmentRemarks: txt },
+                  }))
+                }
+                placeholder="Notes on manual therapy or tolerance..."
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
           </View>
         )}
 
+        {/* ========================================================================= */}
         {/* STEP 4: RECOVERY PROGRAM & HOME CARE */}
+        {/* ========================================================================= */}
         {currentStep === 4 && (
           <View style={styles.stepCardContainer}>
             {/* Recovery Program */}
@@ -674,17 +1038,44 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
                 <Ionicons name="fitness" size={20} color="#003D9B" />
                 <View style={{ flex: 1, marginLeft: 10 }}>
                   <Text style={styles.programTitleText}>{consultationData.step4_recovery.programName}</Text>
-                  <Text style={styles.programSubText}>Phase 2: Active Home Routine</Text>
+                  <Text style={styles.programSubText}>{consultationData.step4_recovery.nextReviewMilestone}</Text>
                 </View>
-                <Ionicons name="create-outline" size={18} color="#64748b" />
               </View>
+              
+              {/* Program Selector Pills */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginTop: 4 }}>
+                {['Post-ACL Knee Rehabilitation', 'Lumbar Spine Stabilization', 'Cervical Spine Care', 'Rotator Cuff Protocol'].map((pName) => (
+                  <TouchableOpacity
+                    key={pName}
+                    style={[
+                      styles.quickTagBtn,
+                      consultationData.step4_recovery.programName === pName && { backgroundColor: '#003D9B', borderColor: '#003D9B' }
+                    ]}
+                    onPress={() =>
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step4_recovery: { ...prev.step4_recovery, programName: pName },
+                      }))
+                    }
+                  >
+                    <Text style={[
+                      styles.quickTagText,
+                      consultationData.step4_recovery.programName === pName && { color: '#ffffff' }
+                    ]}>
+                      {pName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
             {/* Home Exercises */}
             <View style={styles.inputSection}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={styles.fieldLabel}>HOME EXERCISES</Text>
-                <Text style={styles.addLink}>+ Add Exercise</Text>
+                <TouchableOpacity onPress={() => setAddHomeExerciseModalVisible(true)}>
+                  <Text style={styles.addLink}>+ Add Exercise</Text>
+                </TouchableOpacity>
               </View>
 
               {consultationData.step4_recovery.homeExercises.map((ex, idx) => (
@@ -698,7 +1089,17 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
                       {ex.sets} Sets • {ex.reps} Reps • {ex.frequency}
                     </Text>
                   </View>
-                  <Ionicons name="ellipsis-vertical" size={16} color="#94a3b8" />
+                  <TouchableOpacity
+                    onPress={() => {
+                      const updated = consultationData.step4_recovery.homeExercises.filter((_, i) => i !== idx);
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step4_recovery: { ...prev.step4_recovery, homeExercises: updated },
+                      }));
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -707,35 +1108,100 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>PATIENT EDUCATION</Text>
               <View style={styles.educationToggleRow}>
-                <Text style={styles.educationToggleLabel}>Exercise Videos</Text>
-                <Switch value={true} trackColor={{ true: '#003D9B' }} />
+                <Text style={styles.educationToggleLabel}>Exercise Videos in Patient App</Text>
+                <Switch
+                  value={consultationData.step4_recovery.patientEducation.exerciseVideos}
+                  onValueChange={(v) =>
+                    setConsultationData((prev) => ({
+                      ...prev,
+                      step4_recovery: {
+                        ...prev.step4_recovery,
+                        patientEducation: { ...prev.step4_recovery.patientEducation, exerciseVideos: v },
+                      },
+                    }))
+                  }
+                  trackColor={{ true: '#003D9B' }}
+                />
               </View>
               <View style={styles.educationToggleRow}>
-                <Text style={styles.educationToggleLabel}>Pain Management Guide</Text>
-                <Switch value={true} trackColor={{ true: '#003D9B' }} />
+                <Text style={styles.educationToggleLabel}>Pain Management & Ice Guide</Text>
+                <Switch
+                  value={consultationData.step4_recovery.patientEducation.painManagementGuide}
+                  onValueChange={(v) =>
+                    setConsultationData((prev) => ({
+                      ...prev,
+                      step4_recovery: {
+                        ...prev.step4_recovery,
+                        patientEducation: { ...prev.step4_recovery.patientEducation, painManagementGuide: v },
+                      },
+                    }))
+                  }
+                  trackColor={{ true: '#003D9B' }}
+                />
               </View>
+            </View>
+
+            {/* Home Care Instructions */}
+            <View style={styles.inputSection}>
+              <Text style={styles.fieldLabel}>HOME CARE INSTRUCTIONS</Text>
+              <TextInput
+                style={styles.textAreaInput}
+                multiline
+                value={consultationData.step4_recovery.homeCareInstructions}
+                onChangeText={(txt) =>
+                  setConsultationData((prev) => ({
+                    ...prev,
+                    step4_recovery: { ...prev.step4_recovery, homeCareInstructions: txt },
+                  }))
+                }
+                placeholder="Instructions for ice pack, rest, posture..."
+                placeholderTextColor="#94a3b8"
+              />
             </View>
           </View>
         )}
 
+        {/* ========================================================================= */}
         {/* STEP 5: SYNTHESIS & DIGITAL SIGN-OFF */}
+        {/* ========================================================================= */}
         {currentStep === 5 && (
           <View style={styles.stepCardContainer}>
-            {/* Session Synthesis 2x2 */}
+            {/* Session Synthesis */}
             <View style={styles.inputSection}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.fieldLabel}>SESSION SYNTHESIS</Text>
-                <Text style={styles.addLink}>Edit</Text>
-              </View>
+              <Text style={styles.fieldLabel}>SESSION SYNTHESIS</Text>
 
               <View style={styles.synthesisGrid}>
                 <View style={styles.synthesisCell}>
                   <Text style={styles.synthesisCellLab}>CONDITION</Text>
-                  <Text style={styles.synthesisCellVal}>Lower Back Pain</Text>
+                  <TextInput
+                    style={styles.synthesisCellInput}
+                    value={consultationData.step5_synthesis.conditionSummary.condition}
+                    onChangeText={(txt) =>
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step5_synthesis: {
+                          ...prev.step5_synthesis,
+                          conditionSummary: { ...prev.step5_synthesis.conditionSummary, condition: txt },
+                        },
+                      }))
+                    }
+                  />
                 </View>
                 <View style={styles.synthesisCell}>
                   <Text style={styles.synthesisCellLab}>MOBILITY</Text>
-                  <Text style={styles.synthesisCellVal}>Moderate restriction</Text>
+                  <TextInput
+                    style={styles.synthesisCellInput}
+                    value={consultationData.step5_synthesis.conditionSummary.mobility}
+                    onChangeText={(txt) =>
+                      setConsultationData((prev) => ({
+                        ...prev,
+                        step5_synthesis: {
+                          ...prev.step5_synthesis,
+                          conditionSummary: { ...prev.step5_synthesis.conditionSummary, mobility: txt },
+                        },
+                      }))
+                    }
+                  />
                 </View>
               </View>
             </View>
@@ -744,7 +1210,7 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>PROGRESS STATUS</Text>
               <View style={styles.progressRow}>
-                {['Much Improved', 'Improved', 'No Significant Change'].map((st) => (
+                {['Much Improved', 'Improved', 'No Significant Change', 'Worsened'].map((st) => (
                   <TouchableOpacity
                     key={st}
                     style={[
@@ -771,52 +1237,125 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
               </View>
             </View>
 
+            {/* Clinical Impression */}
+            <View style={styles.inputSection}>
+              <Text style={styles.fieldLabel}>CLINICAL IMPRESSION NOTES</Text>
+              <TextInput
+                style={styles.textAreaInput}
+                multiline
+                value={consultationData.step5_synthesis.clinicalImpression}
+                onChangeText={(txt) =>
+                  setConsultationData((prev) => ({
+                    ...prev,
+                    step5_synthesis: { ...prev.step5_synthesis, clinicalImpression: txt },
+                  }))
+                }
+                placeholder="Summary impression for this encounter..."
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
             {/* Digital Signature Card */}
             <View style={styles.signatureCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons name="shield-checkmark" size={20} color="#003D9B" />
                 <View>
-                  <Text style={styles.signTherapistName}>Dr. Ananya Iyer</Text>
-                  <Text style={styles.signRegNum}>Reg #PT-3821 • Downtown Clinic</Text>
+                  <Text style={styles.signTherapistName}>{therapistDisplayName}</Text>
+                  <Text style={styles.signRegNum}>Reg #{therapistRegNumber} • {clinicDisplayName}</Text>
                 </View>
               </View>
 
               <View style={styles.signatureCanvasBox}>
-                <Text style={styles.signatureCanvasText}>Ananya Iyer</Text>
+                <Text style={styles.signatureCanvasText}>{therapistDisplayName}</Text>
               </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={styles.signTimestamp}>Timestamp: 14:38 IST</Text>
-                <Text style={styles.signOfficial}>Digital Sign-off</Text>
+                <Text style={styles.signTimestamp}>Saved & Sealed electronically</Text>
+                <Text style={styles.signOfficial}>Digital Sign-off ✓</Text>
               </View>
             </View>
           </View>
         )}
 
+        {/* ========================================================================= */}
         {/* STEP 6: REPORTS & NEXT VISIT SCHEDULING */}
+        {/* ========================================================================= */}
         {currentStep === 6 && (
           <View style={styles.stepCardContainer}>
             {/* Reports Section */}
             <View style={styles.inputSection}>
-              <Text style={styles.fieldLabel}>TODAY'S REPORTS</Text>
-              <View style={styles.reportDocCard}>
-                <Ionicons name="document-attach" size={24} color="#dc2626" />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.reportDocTitle}>MRI_Lumbar_Spine.pdf</Text>
-                  <Text style={styles.reportDocSub}>MRI • 2.5 MB • Today, 10:30 AM</Text>
+              <Text style={styles.fieldLabel}>TODAY'S REPORTS & ATTACHMENTS</Text>
+              {consultationData.step6_reports.attachedReports.map((rep, idx) => (
+                <View key={idx} style={styles.reportDocCard}>
+                  <Ionicons name="document-attach" size={24} color="#dc2626" />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.reportDocTitle}>{rep.title}</Text>
+                    <Text style={styles.reportDocSub}>{rep.category} • {rep.hospital} • {rep.date}</Text>
+                  </View>
                 </View>
-              </View>
+              ))}
             </View>
 
             {/* Next Visit Scheduling */}
             <View style={styles.inputSection}>
               <Text style={styles.fieldLabel}>SCHEDULE NEXT VISIT</Text>
+              
+              {/* Quick Date Chips */}
+              <Text style={[styles.fieldLabel, { marginTop: 4 }]}>RECOMMENDED TIMELINE</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {['In 3 Days', 'In 1 Week', 'In 2 Weeks', 'In 1 Month'].map((dt) => {
+                  const isSel = consultationData.step6_reports.nextVisit.date === dt;
+                  return (
+                    <TouchableOpacity
+                      key={dt}
+                      style={[styles.smallPill, isSel && styles.smallPillActive]}
+                      onPress={() =>
+                        setConsultationData((prev) => ({
+                          ...prev,
+                          step6_reports: {
+                            ...prev.step6_reports,
+                            nextVisit: { ...prev.step6_reports.nextVisit, date: dt },
+                          },
+                        }))
+                      }
+                    >
+                      <Text style={[styles.smallPillText, isSel && styles.smallPillTextActive]}>{dt}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Next Visit Card */}
               <View style={styles.nextVisitCard}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={styles.nextVisitDateLabel}>Date: Nov 05, 2024</Text>
-                  <Text style={styles.nextVisitTimeLabel}>Time: 10:30 AM</Text>
+                  <Text style={styles.nextVisitDateLabel}>Date: {consultationData.step6_reports.nextVisit.date}</Text>
+                  <Text style={styles.nextVisitTimeLabel}>Time: {consultationData.step6_reports.nextVisit.time}</Text>
                 </View>
-                <Text style={styles.nextVisitTypeLabel}>Consultation: In-person • Downtown Clinic</Text>
+                <Text style={styles.nextVisitTypeLabel}>
+                  Consultation: {consultationData.step6_reports.nextVisit.consultationType} • {consultationData.step6_reports.nextVisit.clinic}
+                </Text>
+              </View>
+
+              {/* Automated Reminders */}
+              <Text style={[styles.fieldLabel, { marginTop: 8 }]}>AUTOMATED NOTIFICATIONS</Text>
+              <View style={styles.educationToggleRow}>
+                <Text style={styles.educationToggleLabel}>Exercise Reminders (Daily)</Text>
+                <Switch
+                  value={consultationData.step6_reports.nextVisit.automatedReminders.exercise}
+                  onValueChange={(v) =>
+                    setConsultationData((prev) => ({
+                      ...prev,
+                      step6_reports: {
+                        ...prev.step6_reports,
+                        nextVisit: {
+                          ...prev.step6_reports.nextVisit,
+                          automatedReminders: { ...prev.step6_reports.nextVisit.automatedReminders, exercise: v },
+                        },
+                      },
+                    }))
+                  }
+                  trackColor={{ true: '#003D9B' }}
+                />
               </View>
             </View>
           </View>
@@ -851,6 +1390,269 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
           )}
         </View>
       </ScrollView>
+
+      {/* ========================================================================= */}
+      {/* MODAL: EDIT VITALS */}
+      {/* ========================================================================= */}
+      <Modal visible={vitalsModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <Text style={styles.modalTitle}>Update Vital Signs</Text>
+
+            <Text style={styles.modalInputLabel}>Blood Pressure (mmHg)</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={consultationData.step2_assessment.vitals.bp}
+              onChangeText={(v) =>
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step2_assessment: { ...prev.step2_assessment, vitals: { ...prev.step2_assessment.vitals, bp: v } },
+                }))
+              }
+            />
+
+            <Text style={styles.modalInputLabel}>Heart Rate (bpm)</Text>
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              value={String(consultationData.step2_assessment.vitals.hr)}
+              onChangeText={(v) =>
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step2_assessment: { ...prev.step2_assessment, vitals: { ...prev.step2_assessment.vitals, hr: parseInt(v) || 72 } },
+                }))
+              }
+            />
+
+            <Text style={styles.modalInputLabel}>Temperature (°F)</Text>
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              value={String(consultationData.step2_assessment.vitals.temp)}
+              onChangeText={(v) =>
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step2_assessment: { ...prev.step2_assessment, vitals: { ...prev.step2_assessment.vitals, temp: parseFloat(v) || 98.6 } },
+                }))
+              }
+            />
+
+            <Text style={styles.modalInputLabel}>SpO2 (%)</Text>
+            <TextInput
+              style={styles.modalInput}
+              keyboardType="numeric"
+              value={String(consultationData.step2_assessment.vitals.spo2)}
+              onChangeText={(v) =>
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step2_assessment: { ...prev.step2_assessment, vitals: { ...prev.step2_assessment.vitals, spo2: parseInt(v) || 98 } },
+                }))
+              }
+            />
+
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={() => setVitalsModalVisible(false)}>
+              <Text style={styles.modalSaveBtnText}>Save Vitals</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: CHANGE JOINT */}
+      {/* ========================================================================= */}
+      <Modal visible={jointPickerVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <Text style={styles.modalTitle}>Select Joint For ROM</Text>
+            {[
+              { joint: 'Knee', movement: 'Flexion', max: 110, ext: 0 },
+              { joint: 'Shoulder', movement: 'Flexion', max: 180, ext: 0 },
+              { joint: 'Lumbar Spine', movement: 'Flexion', max: 60, ext: 0 },
+              { joint: 'Cervical Spine', movement: 'Rotation', max: 80, ext: 0 },
+              { joint: 'Ankle', movement: 'Dorsiflexion', max: 20, ext: 0 },
+            ].map((j) => (
+              <TouchableOpacity
+                key={j.joint}
+                style={styles.jointPickerItem}
+                onPress={() => {
+                  const updated = [
+                    {
+                      joint: j.joint,
+                      movement: j.movement,
+                      extensionDegrees: j.ext,
+                      flexionDegrees: j.max,
+                      measuredDegrees: Math.round(j.max * 0.75),
+                      restriction: 'MODERATE',
+                    },
+                  ];
+                  setConsultationData((prev) => ({
+                    ...prev,
+                    step2_assessment: { ...prev.step2_assessment, structuredRom: updated },
+                  }));
+                  setJointPickerVisible(false);
+                }}
+              >
+                <Text style={styles.jointPickerItemText}>{j.joint} ({j.movement})</Text>
+                <Text style={{ fontSize: 11, color: '#64748b' }}>Normal: {j.max}°</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[styles.modalSaveBtn, { backgroundColor: '#64748b', marginTop: 10 }]} onPress={() => setJointPickerVisible(false)}>
+              <Text style={styles.modalSaveBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADD PERFORMED EXERCISE */}
+      {/* ========================================================================= */}
+      <Modal visible={addExerciseModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <Text style={styles.modalTitle}>Add Performed Exercise</Text>
+
+            <Text style={styles.modalInputLabel}>Exercise Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Wall Squats"
+              value={newExerciseForm.name}
+              onChangeText={(v) => setNewExerciseForm((prev) => ({ ...prev, name: v }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Sets</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  value={newExerciseForm.sets}
+                  onChangeText={(v) => setNewExerciseForm((prev) => ({ ...prev, sets: v }))}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Reps</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  value={newExerciseForm.reps}
+                  onChangeText={(v) => setNewExerciseForm((prev) => ({ ...prev, reps: v }))}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Hold (s)</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  value={newExerciseForm.holdSec}
+                  onChangeText={(v) => setNewExerciseForm((prev) => ({ ...prev, holdSec: v }))}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.modalSaveBtn}
+              onPress={() => {
+                if (!newExerciseForm.name.trim()) {
+                  Alert.alert('Required', 'Please enter exercise name');
+                  return;
+                }
+                const updated = [
+                  ...consultationData.step3_treatment.exercisesPerformed,
+                  {
+                    name: newExerciseForm.name.trim(),
+                    sets: parseInt(newExerciseForm.sets) || 3,
+                    reps: parseInt(newExerciseForm.reps) || 10,
+                    holdSec: parseInt(newExerciseForm.holdSec) || 30,
+                  },
+                ];
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step3_treatment: { ...prev.step3_treatment, exercisesPerformed: updated },
+                }));
+                setNewExerciseForm({ name: '', sets: '3', reps: '10', holdSec: '30' });
+                setAddExerciseModalVisible(false);
+              }}
+            >
+              <Text style={styles.modalSaveBtnText}>Add to Performed List</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* MODAL: ADD HOME EXERCISE */}
+      {/* ========================================================================= */}
+      <Modal visible={addHomeExerciseModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentCard}>
+            <Text style={styles.modalTitle}>Add Prescribed Home Exercise</Text>
+
+            <Text style={styles.modalInputLabel}>Exercise Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. Quad Sets"
+              value={newHomeExForm.name}
+              onChangeText={(v) => setNewHomeExForm((prev) => ({ ...prev, name: v }))}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Sets</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  value={newHomeExForm.sets}
+                  onChangeText={(v) => setNewHomeExForm((prev) => ({ ...prev, sets: v }))}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalInputLabel}>Reps</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  keyboardType="numeric"
+                  value={newHomeExForm.reps}
+                  onChangeText={(v) => setNewHomeExForm((prev) => ({ ...prev, reps: v }))}
+                />
+              </View>
+            </View>
+
+            <Text style={styles.modalInputLabel}>Frequency</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g. 2x Daily"
+              value={newHomeExForm.frequency}
+              onChangeText={(v) => setNewHomeExForm((prev) => ({ ...prev, frequency: v }))}
+            />
+
+            <TouchableOpacity
+              style={styles.modalSaveBtn}
+              onPress={() => {
+                if (!newHomeExForm.name.trim()) {
+                  Alert.alert('Required', 'Please enter exercise name');
+                  return;
+                }
+                const updated = [
+                  ...consultationData.step4_recovery.homeExercises,
+                  {
+                    name: newHomeExForm.name.trim(),
+                    sets: parseInt(newHomeExForm.sets) || 2,
+                    reps: parseInt(newHomeExForm.reps) || 10,
+                    frequency: newHomeExForm.frequency.trim() || '2x Daily',
+                  },
+                ];
+                setConsultationData((prev) => ({
+                  ...prev,
+                  step4_recovery: { ...prev.step4_recovery, homeExercises: updated },
+                }));
+                setNewHomeExForm({ name: '', sets: '2', reps: '10', frequency: '2x Daily' });
+                setAddHomeExerciseModalVisible(false);
+              }}
+            >
+              <Text style={styles.modalSaveBtnText}>Add to Home Protocol</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -933,23 +1735,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: 12,
-    paddingRight: 40,
     fontSize: 13,
     color: '#0f172a',
     minHeight: 70,
   },
-  dictateMicBtn: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#003D9B',
+  quickTagBtn: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  quickTagText: { fontSize: 11, fontWeight: '700', color: '#003D9B' },
+  painScoreBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  painValHighlight: { fontSize: 13, fontWeight: '900' },
+  numScoreBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
-  painValHighlight: { fontSize: 14, fontWeight: '900', color: '#003D9B' },
+  numScoreBtnActive: { backgroundColor: '#003D9B', borderColor: '#003D9B' },
+  numScoreText: { fontSize: 12, fontWeight: '800', color: '#475569' },
+  numScoreTextActive: { color: '#ffffff' },
   painPillOptionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   painTypePill: {
     paddingHorizontal: 10,
@@ -986,6 +1799,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   selectedJointText: { fontSize: 11, fontWeight: '800', color: '#0369a1' },
+  jointChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  jointChipActive: { backgroundColor: '#003D9B', borderColor: '#003D9B' },
+  jointChipText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  jointChipTextActive: { color: '#ffffff' },
 
   // Goals & Obs
   goalsWrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -1022,6 +1846,18 @@ const styles = StyleSheet.create({
   sliderRowLabel: { fontSize: 12, fontWeight: '700', color: '#475569' },
   sliderValBadge: { fontSize: 13, fontWeight: '900', color: '#003D9B' },
   changeJointLink: { fontSize: 11, fontWeight: '700', color: '#003D9B' },
+  smallPill: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallPillActive: { backgroundColor: '#003D9B' },
+  smallPillText: { fontSize: 11, fontWeight: '700', color: '#475569' },
+  smallPillTextActive: { color: '#ffffff' },
+
   romCard: { backgroundColor: '#f8fafc', borderRadius: 10, padding: 12, gap: 10 },
   romHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   romJointName: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
@@ -1030,32 +1866,37 @@ const styles = StyleSheet.create({
   measuredRomBadge: { flex: 1, backgroundColor: '#e0f2fe', padding: 8, borderRadius: 8, alignItems: 'center' },
   measuredRomLabel: { fontSize: 9, fontWeight: '800', color: '#0369a1' },
   measuredRomValue: { fontSize: 14, fontWeight: '900', color: '#0369a1', marginTop: 2 },
-  restrictionBadge: { flex: 1, backgroundColor: '#fee2e2', padding: 8, borderRadius: 8, alignItems: 'center' },
-  restrictionLabel: { fontSize: 9, fontWeight: '800', color: '#dc2626' },
-  restrictionValue: { fontSize: 14, fontWeight: '900', color: '#dc2626', marginTop: 2 },
+  stepAngleBtn: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+  },
+  stepAngleBtnText: { fontSize: 10, fontWeight: '800', color: '#0369a1' },
+  restrictionBadge: { flex: 1, padding: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  restrictionLabel: { fontSize: 9, fontWeight: '800' },
+  restrictionValue: { fontSize: 14, fontWeight: '900', marginTop: 2 },
 
   strengthRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   strengthMuscleText: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
-  strengthSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  strengthSelectorText: { fontSize: 12, fontWeight: '800', color: '#0f172a' },
+  gradeBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#f1f5f9' },
+  gradeBtnActive: { backgroundColor: '#003D9B' },
+  gradeBtnText: { fontSize: 11, fontWeight: '800', color: '#475569' },
+  gradeBtnTextActive: { color: '#ffffff' },
 
-  specialTestRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  specialTestRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   testName: { fontSize: 13, fontWeight: '700', color: '#334155' },
   testBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   testBadgeText: { fontSize: 10, fontWeight: '800' },
 
   // Step 3 Treatment
   modalitiesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  modalityChip: { backgroundColor: '#003D9B', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
-  modalityChipText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+  modalityChip: { backgroundColor: '#f1f5f9', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  modalityChipActive: { backgroundColor: '#003D9B' },
+  modalityChipText: { color: '#475569', fontSize: 11, fontWeight: '700' },
+  modalityChipTextActive: { color: '#ffffff' },
   addLink: { fontSize: 11, fontWeight: '700', color: '#003D9B' },
   performedExerciseCard: {
     flexDirection: 'row',
@@ -1112,10 +1953,11 @@ const styles = StyleSheet.create({
   synthesisGrid: { flexDirection: 'row', gap: 8 },
   synthesisCell: { flex: 1, backgroundColor: '#f8fafc', padding: 10, borderRadius: 8 },
   synthesisCellLab: { fontSize: 9, fontWeight: '800', color: '#94a3b8' },
-  synthesisCellVal: { fontSize: 12, fontWeight: '800', color: '#0f172a', marginTop: 2 },
-  progressRow: { flexDirection: 'row', gap: 6 },
+  synthesisCellInput: { fontSize: 12, fontWeight: '800', color: '#0f172a', marginTop: 2, padding: 0 },
+  progressRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   progressBtn: {
     flex: 1,
+    minWidth: '45%',
     backgroundColor: '#f1f5f9',
     paddingVertical: 8,
     borderRadius: 8,
@@ -1160,7 +2002,7 @@ const styles = StyleSheet.create({
   },
   reportDocTitle: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
   reportDocSub: { fontSize: 11, color: '#64748b' },
-  nextVisitCard: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, gap: 4 },
+  nextVisitCard: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, gap: 4, marginTop: 6 },
   nextVisitDateLabel: { fontSize: 12, fontWeight: '800', color: '#0f172a' },
   nextVisitTimeLabel: { fontSize: 12, fontWeight: '800', color: '#003D9B' },
   nextVisitTypeLabel: { fontSize: 11, color: '#64748b' },
@@ -1189,4 +2031,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryContinueText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContentCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    gap: 8,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a', marginBottom: 6 },
+  modalInputLabel: { fontSize: 10, fontWeight: '800', color: '#64748b', marginTop: 4 },
+  modalInput: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  modalSaveBtn: {
+    backgroundColor: '#003D9B',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  modalSaveBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
+  jointPickerItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  jointPickerItemText: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
 });

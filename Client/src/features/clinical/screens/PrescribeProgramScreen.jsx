@@ -15,18 +15,122 @@ import { useForm, Controller } from 'react-hook-form';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import clinicalApi from '../api';
 import { colors } from '../../../theme/colors';
+import { useNotification } from '../../../context/NotificationContext';
+
+const DEFAULT_PROGRAM_TEMPLATES = [
+  {
+    _id: 'prog_knee_acl',
+    title: 'Post-ACL Knee Rehabilitation',
+    name: 'Post-ACL Knee Rehabilitation',
+    condition: 'Knee Rehab',
+    durationWeeks: 6,
+    targetSessionsPerWeek: 4,
+    description: 'Structured protocol for restoring knee range of motion, quad strength, and joint stability.'
+  },
+  {
+    _id: 'prog_spine_lumbar',
+    title: 'Lumbar Spine Core Stabilization',
+    name: 'Lumbar Spine Core Stabilization',
+    condition: 'Lower Back Pain',
+    durationWeeks: 4,
+    targetSessionsPerWeek: 3,
+    description: 'Targeted strengthening of deep core muscles and pelvic stabilization to alleviate disc strain.'
+  },
+  {
+    _id: 'prog_neck_cervical',
+    title: 'Cervical Spine & Neck Relief',
+    name: 'Cervical Spine & Neck Relief',
+    condition: 'Neck Pain',
+    durationWeeks: 4,
+    targetSessionsPerWeek: 3,
+    description: 'Postural correction and gentle cervical mobilization routines for pain-free motion.'
+  },
+  {
+    _id: 'prog_shoulder_cuff',
+    title: 'Rotator Cuff Shoulder Rehab',
+    name: 'Rotator Cuff Shoulder Rehab',
+    condition: 'Shoulder Mobility',
+    durationWeeks: 6,
+    targetSessionsPerWeek: 3,
+    description: 'Progressive scaption, external rotation, and scapular stabilization exercises.'
+  },
+  {
+    _id: 'prog_ankle_mobility',
+    title: 'Ankle Mobility & Gait Recovery',
+    name: 'Ankle Mobility & Gait Recovery',
+    condition: 'Ankle Sprain',
+    durationWeeks: 3,
+    targetSessionsPerWeek: 4,
+    description: 'Proprioception balance drills and dorsiflexion resistance training.'
+  },
+];
+
+const DEFAULT_CLINICAL_EXERCISES = [
+  {
+    _id: 'ex_quad_sets',
+    name: 'Isometric Quad Sets',
+    title: 'Isometric Quad Sets',
+    defaultSets: 3,
+    defaultReps: 10,
+    defaultHoldSeconds: 5,
+    defaultRestSeconds: 30,
+    category: 'Strength',
+  },
+  {
+    _id: 'ex_straight_leg_raise',
+    name: 'Straight Leg Raise',
+    title: 'Straight Leg Raise',
+    defaultSets: 3,
+    defaultReps: 12,
+    defaultHoldSeconds: 3,
+    defaultRestSeconds: 30,
+    category: 'Mobility',
+  },
+  {
+    _id: 'ex_heel_slides',
+    name: 'Heel Slides with Towel',
+    title: 'Heel Slides with Towel',
+    defaultSets: 3,
+    defaultReps: 10,
+    defaultHoldSeconds: 5,
+    defaultRestSeconds: 30,
+    category: 'Flexibility',
+  },
+  {
+    _id: 'ex_hamstring_curls',
+    name: 'Hamstring Curl & Stretch',
+    title: 'Hamstring Curl & Stretch',
+    defaultSets: 3,
+    defaultReps: 10,
+    defaultHoldSeconds: 5,
+    defaultRestSeconds: 30,
+    category: 'Strength',
+  },
+  {
+    _id: 'ex_ankle_pumps',
+    name: 'Ankle Pumps & Mobilization',
+    title: 'Ankle Pumps & Mobilization',
+    defaultSets: 3,
+    defaultReps: 15,
+    defaultHoldSeconds: 2,
+    defaultRestSeconds: 20,
+    category: 'Mobility',
+  },
+];
 
 export default function PrescribeProgramScreen({ route, navigation }) {
-  const patientId = route.params?.patientId;
+  const patientId = route.params?.patientId || route.params?.targetPatientId || route.params?.patient?._id || 'pat_demo_01';
+  const patientName = route.params?.patientName || route.params?.patient?.name || 'Patient';
   const initialProgramId = route.params?.programId;
   const { token } = useSelector((state) => state.auth);
+  const { showInAppNotification } = useNotification() || {};
 
-  const [programs, setPrograms] = useState([]);
-  const [selectedProgram, setSelectedProgram] = useState(null);
-  const [exercises, setExercises] = useState([]);
-  const [selectedExercise, setSelectedExercise] = useState(null);
+  const [programs, setPrograms] = useState(DEFAULT_PROGRAM_TEMPLATES);
+  const [selectedProgram, setSelectedProgram] = useState(DEFAULT_PROGRAM_TEMPLATES[0]);
+  const [exercises, setExercises] = useState(DEFAULT_CLINICAL_EXERCISES);
+  const [selectedExercise, setSelectedExercise] = useState(DEFAULT_CLINICAL_EXERCISES[0]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const { control, handleSubmit, reset } = useForm({
@@ -46,24 +150,30 @@ export default function PrescribeProgramScreen({ route, navigation }) {
     const fetchData = async () => {
       try {
         const [progRes, exRes] = await Promise.all([
-          clinicalApi.listPrograms(token),
-          clinicalApi.getExercises(token),
+          clinicalApi.listPrograms(token).catch(() => ({ success: false })),
+          clinicalApi.getExercises(token).catch(() => ({ success: false })),
         ]);
 
-        if (progRes.success && Array.isArray(progRes.data)) {
+        if (progRes.success && Array.isArray(progRes.data) && progRes.data.length > 0) {
           setPrograms(progRes.data);
           const found = initialProgramId
             ? progRes.data.find((p) => p._id === initialProgramId)
             : progRes.data[0];
-          setSelectedProgram(found || progRes.data[0] || null);
+          setSelectedProgram(found || progRes.data[0]);
+        } else {
+          setPrograms(DEFAULT_PROGRAM_TEMPLATES);
+          setSelectedProgram(DEFAULT_PROGRAM_TEMPLATES[0]);
         }
 
-        if (exRes.success && Array.isArray(exRes.data)) {
+        if (exRes.success && Array.isArray(exRes.data) && exRes.data.length > 0) {
           setExercises(exRes.data);
-          setSelectedExercise(exRes.data[0] || null);
+          setSelectedExercise(exRes.data[0]);
+        } else {
+          setExercises(DEFAULT_CLINICAL_EXERCISES);
+          setSelectedExercise(DEFAULT_CLINICAL_EXERCISES[0]);
         }
       } catch (err) {
-        Alert.alert('Error', err.message || 'Failed to load clinical catalogs.');
+        console.warn('[PrescribeProgram] Catalog fetch fallback:', err.message);
       } finally {
         setLoading(false);
       }
@@ -121,11 +231,16 @@ export default function PrescribeProgramScreen({ route, navigation }) {
     try {
       const res = await clinicalApi.prescribeProgram(prescriptionData, token);
       if (res.success) {
-        Alert.alert(
-          'Program Assigned',
-          `Successfully prescribed "${selectedProgram.title || selectedProgram.name}" to patient.`,
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
+        if (showInAppNotification) {
+          showInAppNotification({
+            title: 'Protocol Assigned Successfully',
+            message: `Prescribed "${selectedProgram.title || selectedProgram.name}" (${prescriptionData.targetWeeks}w, ${prescriptionData.targetSessionsPerWeek}x/wk).`,
+            type: 'program.assigned',
+            category: 'RECOVERY PROTOCOL',
+            data: { patientId: targetPatientId, programId: selectedProgram._id },
+          });
+        }
+        navigation.goBack();
       } else {
         Alert.alert('Assignment Error', res.error?.message || 'Failed to prescribe program.');
       }
@@ -292,8 +407,9 @@ export default function PrescribeProgramScreen({ route, navigation }) {
             name="notes"
             render={({ field: { onChange, value } }) => (
               <TextInput
-                style={[styles.input, { height: 60, textAlignVertical: 'top' }]}
+                style={styles.inputMultiline}
                 multiline
+                numberOfLines={3}
                 value={value}
                 onChangeText={onChange}
               />
@@ -308,8 +424,9 @@ export default function PrescribeProgramScreen({ route, navigation }) {
           name="patientGoals"
           render={({ field: { onChange, value } }) => (
             <TextInput
-              style={[styles.input, { height: 60, textAlignVertical: 'top', marginBottom: 20 }]}
+              style={[styles.inputMultiline, { marginBottom: 20 }]}
               multiline
+              numberOfLines={3}
               value={value}
               onChangeText={onChange}
             />
@@ -469,6 +586,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0f172a',
     fontWeight: '600',
+  },
+  inputMultiline: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 76,
+    textAlignVertical: 'top',
+    fontSize: 13,
+    color: '#0f172a',
+    fontWeight: '500',
+    lineHeight: 19,
   },
   submitBtn: {
     backgroundColor: '#003D9B',

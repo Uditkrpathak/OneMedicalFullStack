@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector } from 'react-redux';
 import clinicalApi from '../api';
+import { useNotification } from '../../../context/NotificationContext';
 
 const CATEGORIES = [
   { id: 'MRI_SCAN', label: 'MRI Scan', icon: 'scan-outline' },
@@ -36,6 +37,7 @@ const CATEGORY_PRESETS = {
 
 export default function AddMedicalRecordScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
+  const { showInAppNotification } = useNotification() || {};
   const patientId = route?.params?.patientId || route?.params?.userId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
 
   const [title, setTitle] = useState('');
@@ -147,6 +149,14 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
 
       const res = await clinicalApi.createMedicalRecord(payload, token);
       if (res.success) {
+        if (showInAppNotification) {
+          showInAppNotification({
+            title: 'Medical Record Uploaded & Encrypted',
+            message: `"${title.trim()}" has been safely stored in your health vault.`,
+            type: 'record.uploaded',
+            category: 'MEDICAL VAULT',
+          });
+        }
         Alert.alert(
           'Vault Updated',
           'Medical record safely uploaded and encrypted in your personal vault.',

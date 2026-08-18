@@ -13,10 +13,13 @@ import { useSelector } from 'react-redux';
 import paymentApi from '../api';
 import appointmentApi from '../../appointments/api';
 
+import { useNotification } from '../../../context/NotificationContext';
+
 const { width } = Dimensions.get('window');
 
 export default function PaymentMockScreen({ route, navigation }) {
   const { token } = useSelector((state) => state.auth);
+  const { showInAppNotification } = useNotification() || {};
   const appointmentId = route.params?.appointmentId;
   const gatewayOrderId = route.params?.gatewayOrderId;
 
@@ -61,6 +64,16 @@ export default function PaymentMockScreen({ route, navigation }) {
         }, token);
 
         if (verifyRes.success) {
+          if (showInAppNotification) {
+            showInAppNotification({
+              title: 'Payment Confirmed & Verified',
+              message: `₹${amountRupees} payment captured. GST Tax Invoice issued.`,
+              type: 'payment.paid',
+              category: 'PAYMENT SUCCESS',
+              data: { appointmentId },
+            });
+          }
+
           navigation.replace('AppointmentConfirmed', {
             appointmentId,
             appointment: route.params?.appointment,

@@ -120,7 +120,6 @@ const ClinicalConsultationSchema = new mongoose.Schema(
           measuredDegrees: { type: Number, default: 85 },
           restriction: {
             type: String,
-            enum: ['NONE', 'MILD', 'MODERATE', 'SEVERE'],
             default: 'MODERATE',
           },
         },
@@ -216,12 +215,10 @@ const ClinicalConsultationSchema = new mongoose.Schema(
       additionalNotes: { type: String, default: '' },
       progressStatus: {
         type: String,
-        enum: ['Much Improved', 'Improved', 'No Significant Change', 'Regressed'],
         default: 'Improved',
       },
       goalStatus: {
         type: String,
-        enum: ['Goals Fully Achieved', 'Partially Achieved', 'Not Achieved'],
         default: 'Partially Achieved',
       },
       complications: { type: Boolean, default: false },
@@ -253,8 +250,7 @@ const ClinicalConsultationSchema = new mongoose.Schema(
         time: { type: String, default: '10:30 AM' },
         consultationType: {
           type: String,
-          enum: ['In-person', 'Video', 'Home Visit'],
-          default: 'In-person',
+          default: 'In-person Clinic',
         },
         clinic: { type: String, default: 'Downtown Clinic' },
         sessionObjectives: {

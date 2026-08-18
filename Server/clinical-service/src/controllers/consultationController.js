@@ -90,17 +90,29 @@ export const getTherapistDashboard = async (req, res) => {
       const diffMs = apptTime.getTime() - now.getTime();
       const minutesUntil = Math.max(0, Math.round(diffMs / (60 * 1000)));
 
+      let timeUntilFormatted = 'Ready to start';
+      if (diffMs > 0) {
+        if (minutesUntil < 60) {
+          timeUntilFormatted = `In ${minutesUntil} mins`;
+        } else {
+          const hrs = Math.floor(minutesUntil / 60);
+          const mins = minutesUntil % 60;
+          timeUntilFormatted = mins > 0 ? `In ${hrs}h ${mins}m` : `In ${hrs} hours`;
+        }
+      }
+
       nextAppointment = {
         id: nextApptDoc._id,
         patientName: nextApptDoc.patientName || 'Patient',
         patientAge: nextApptDoc.patientAge || (nextApptDoc.patientGender === 'Female' ? 28 : 32),
         gender: nextApptDoc.patientGender || 'Patient',
-        condition: nextApptDoc.serviceName || nextApptDoc.chiefComplaint || 'Physical Rehabilitation',
+        condition: nextApptDoc.serviceName || nextApptDoc.serviceType?.replace(/_/g, ' ') || nextApptDoc.chiefComplaint || 'Physical Rehabilitation',
         startTime: nextApptDoc.startTime,
         timeFormatted: apptTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }),
         minutesUntil,
-        visitType: nextApptDoc.appointmentType || 'clinic_visit',
-        roomNumber: nextApptDoc.roomNumber || (nextApptDoc.appointmentType === 'telehealth' ? 'TELEHEALTH' : 'ROOM 204B'),
+        timeUntilFormatted,
+        visitType: nextApptDoc.appointmentType || nextApptDoc.appointmentPlace || 'clinic_visit',
+        roomNumber: nextApptDoc.roomNumber || (nextApptDoc.appointmentPlace === 'VIDEO' || nextApptDoc.appointmentType === 'telehealth' ? 'TELEHEALTH' : 'ROOM 204B'),
         status: nextApptDoc.status,
       };
     }
