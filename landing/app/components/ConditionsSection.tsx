@@ -1,7 +1,17 @@
 'use client';
 
 import React from 'react';
-import { Activity, ArrowRight } from 'lucide-react';
+import {
+  Accessibility,
+  User,
+  Dumbbell,
+  Activity,
+  Layers,
+  Sparkles,
+  Brain,
+  Stethoscope,
+  ArrowRight,
+} from 'lucide-react';
 
 interface ConditionsSectionProps {
   onOpenBooking: () => void;
@@ -13,119 +23,138 @@ export default function ConditionsSection({ onOpenBooking }: ConditionsSectionPr
       id: 'back',
       title: 'Back Pain',
       desc: 'Specialized care for lumbar and thoracic relief using advanced spinal mobilization.',
-      iconBg: 'bg-emerald-50 text-emerald-600',
+      icon: Accessibility,
+      iconBg: 'bg-[#e6fbf2]',
+      iconColor: 'text-[#00687B]',
     },
     {
       id: 'neck',
       title: 'Neck Pain',
       desc: 'Restore mobility and reduce tension through targeted manual therapy and postural correction.',
-      iconBg: 'bg-teal-50 text-teal-600',
+      icon: User,
+      iconBg: 'bg-[#e0f7f6]',
+      iconColor: 'text-[#00687B]',
     },
     {
       id: 'sports',
       title: 'Sports Injuries',
       desc: 'Rapid recovery for athletes of all levels to get you back in the game safely and stronger.',
-      iconBg: 'bg-emerald-50 text-emerald-600',
+      icon: Dumbbell,
+      iconBg: 'bg-[#e6fbf2]',
+      iconColor: 'text-[#50C878]',
     },
     {
       id: 'knee',
       title: 'Knee Pain',
       desc: 'Targeted therapy for joint stability, strength, and biomechanical optimization.',
-      iconBg: 'bg-teal-50 text-teal-600',
+      icon: Activity,
+      iconBg: 'bg-[#e0f7f6]',
+      iconColor: 'text-[#00687B]',
     },
     {
       id: 'shoulder',
       title: 'Shoulder Pain',
       desc: 'Improving range of motion and functional health through specialized rotator cuff care.',
-      iconBg: 'bg-emerald-50 text-emerald-600',
+      icon: Layers,
+      iconBg: 'bg-[#e6fbf2]',
+      iconColor: 'text-[#50C878]',
     },
     {
       id: 'arthritis',
       title: 'Arthritis',
       desc: 'Managing inflammation and enhancing quality of life through gentle movement and education.',
-      iconBg: 'bg-teal-50 text-teal-600',
+      icon: Sparkles,
+      iconBg: 'bg-[#e0f7f6]',
+      iconColor: 'text-[#00687B]',
     },
     {
       id: 'stroke',
       title: 'Stroke Recovery',
-      desc: 'Neurological support for faster skill recovery and neuroplasticity enhancement.',
-      iconBg: 'bg-emerald-50 text-emerald-600',
+      desc: 'Neurological support for motor skill recovery and neuroplasticity enhancement.',
+      icon: Brain,
+      iconBg: 'bg-[#e6fbf2]',
+      iconColor: 'text-[#50C878]',
     },
     {
       id: 'post-surgery',
       title: 'Post-Surgery',
       desc: 'Guided rehabilitation for optimal healing and regaining strength after surgical procedures.',
-      iconBg: 'bg-teal-50 text-teal-600',
+      icon: Stethoscope,
+      iconBg: 'bg-[#e0f7f6]',
+      iconColor: 'text-[#50C878]',
     },
   ];
 
   return (
-    <section id="services" className="py-8 sm:py-12 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+    <section id="services" className="py-12 sm:py-16 bg-white relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
         {/* Header */}
-        <div className="max-w-2xl mx-auto space-y-1.5 mb-8">
-          <div className="text-[10.5px] font-bold uppercase tracking-widest text-[#003D9B]">
-            Clinical Excellence
+        <div className="max-w-2xl mx-auto space-y-2 mb-10">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#50C878]">
+            CLINICAL EXCELLENCE
           </div>
-          <h2 className="text-2xl sm:text-[32px] font-bold text-[#051A3E] tracking-tight">
+          <h2 className="text-2xl sm:text-[34px] font-bold text-[#051A3E] tracking-tight">
             Conditions We Treat
           </h2>
-          <p className="text-xs sm:text-[13px] text-slate-500 leading-relaxed max-w-lg mx-auto font-normal">
+          <p className="text-xs sm:text-[13.5px] text-slate-500 leading-relaxed max-w-xl mx-auto font-normal">
             Personalized treatment plans for pain relief and rehabilitation. We leverage
             evidence-based practices to restore your body&apos;s natural harmony.
           </p>
         </div>
 
         {/* 8 Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
-          {conditions.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white rounded-2xl p-5 border border-slate-100 shadow-2xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
-            >
-              <div>
-                <div
-                  className={`w-8 h-8 rounded-xl ${item.iconBg} flex items-center justify-center mb-3 group-hover:scale-105 transition-transform`}
-                >
-                  <Activity size={15} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left max-w-6xl mx-auto">
+          {conditions.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.id}
+                className="bg-white rounded-[24px] sm:rounded-[28px] p-6 border border-slate-100/90 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
+              >
+                <div>
+                  <div
+                    className={`w-10 h-10 rounded-full ${item.iconBg} ${item.iconColor} flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}
+                  >
+                    <Icon size={18} />
+                  </div>
+
+                  <h3 className="text-base font-bold text-[#051A3E] mb-1.5">
+                    {item.title}
+                  </h3>
+                  <p className="text-[12px] text-slate-500 leading-relaxed mb-4 font-normal">
+                    {item.desc}
+                  </p>
                 </div>
 
-                <h3 className="text-[14px] font-bold text-[#051A3E] mb-1">
-                  {item.title}
-                </h3>
-                <p className="text-[11.5px] text-slate-500 leading-relaxed mb-3.5 font-normal">
-                  {item.desc}
-                </p>
+                <button
+                  onClick={onOpenBooking}
+                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#00687B] hover:text-[#004e5d] group/btn transition-colors"
+                >
+                  <span>Learn More</span>
+                  <ArrowRight
+                    size={12}
+                    className="group-hover/btn:translate-x-1 transition-transform"
+                  />
+                </button>
               </div>
-
-              <button
-                onClick={onOpenBooking}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#003D9B] hover:text-[#002e75] group/btn transition-colors"
-              >
-                <span>Learn More</span>
-                <ArrowRight
-                  size={12}
-                  className="group-hover/btn:translate-x-0.5 transition-transform"
-                />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Bottom Banner */}
-        <div className="mt-8 bg-slate-50/80 rounded-2xl p-4 sm:p-5 border border-slate-200/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
-          <div className="space-y-0.5">
-            <h4 className="text-xs sm:text-sm font-bold text-[#051A3E]">
+        <div className="mt-10 bg-white rounded-[28px] sm:rounded-full py-4 sm:py-4.5 px-6 sm:px-8 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-6 sm:gap-8 text-left max-w-3xl mx-auto">
+          <div>
+            <h4 className="text-base sm:text-[17px] font-bold text-[#051A3E] tracking-tight">
               Not seeing your condition listed?
             </h4>
-            <p className="text-[11.5px] text-slate-500 font-normal">
+            <p className="text-xs sm:text-[12.5px] text-slate-500 font-normal mt-0.5">
               We treat a wide range of musculoskeletal and neurological issues.
             </p>
           </div>
 
           <button
             onClick={onOpenBooking}
-            className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-4 py-2 rounded-full text-xs font-bold shadow-2xs hover:shadow-xs transition-all shrink-0"
+            className="bg-[#50C878] hover:bg-[#43b76a] active:scale-98 text-white px-6 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs sm:text-[13px] font-bold shadow-md shadow-emerald-500/25 transition-all shrink-0"
           >
             Speak with a Specialist
           </button>
@@ -134,3 +163,4 @@ export default function ConditionsSection({ onOpenBooking }: ConditionsSectionPr
     </section>
   );
 }
+

@@ -26,7 +26,7 @@ export default function HeroSection({
           {/* Left Column: Exact Figma 579.6px Typography & Pill Badges */}
           <div className="lg:col-span-5 space-y-4 text-left">
             {/* Eyebrow */}
-            <div className="text-[11px] font-extrabold uppercase tracking-widest text-[#003D9B]">
+            <div className="text-[11px] font-extrabold uppercase tracking-widest text-[#00687B]">
               Personalized Physiotherapy
             </div>
 
