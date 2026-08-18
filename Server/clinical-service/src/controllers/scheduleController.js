@@ -493,18 +493,25 @@ export const getConsultationQueue = async (req, res) => {
       isDeleted: false
     };
 
-    if (status) {
+    if (status && status !== 'All' && status !== 'ALL') {
       filter.status = status;
     } else {
-      filter.status = { $in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'SCHEDULED', 'confirmed', 'in_progress', 'completed', 'scheduled'] };
+      filter.status = {
+        $in: [
+          'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED',
+          'RESCHEDULED', 'SCHEDULED', 'HELD',
+          'confirmed', 'checked_in', 'in_progress', 'completed', 'scheduled', 'held'
+        ]
+      };
     }
 
     if (date) {
-      const startOfDay = new Date(`${date}T00:00:00.000Z`);
-      const endOfDay = new Date(`${date}T23:59:59.999Z`);
+      // Calculate exact IST day start and end
+      const startOfDay = new Date(`${date}T00:00:00+05:30`);
+      const endOfDay = new Date(`${date}T23:59:59.999+05:30`);
       filter.$or = [
-        { appointmentDate: { $gte: startOfDay, $lte: endOfDay } },
         { startTime: { $gte: startOfDay, $lte: endOfDay } },
+        { appointmentDate: { $gte: startOfDay, $lte: endOfDay } },
       ];
     }
 
@@ -526,22 +533,35 @@ export const getConsultationQueue = async (req, res) => {
       const patientName = appt.patientName || u?.name || `Patient ${String(appt.patientId).slice(-4)}`;
       const timeStr = appt.startTime
         ? new Date(appt.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
-        : (appt.appointmentTime || appt.time || '09:00 AM');
+        : (appt.appointmentTime || appt.time || '10:00 AM');
+      const isTelehealth = appt.appointmentType === 'telehealth' || appt.appointmentPlace === 'VIDEO' || appt.appointmentPlace === 'telehealth' || appt.serviceType === 'online_consultation';
 
       return {
         appointmentId: appt._id,
         id: appt._id,
+        _id: appt._id,
         patient: {
           id: appt.patientId,
           name: patientName,
           phone: appt.patientPhone || u?.phoneNumber || u?.phone || '',
         },
+        patientName,
+        patientPhone: appt.patientPhone || u?.phoneNumber || u?.phone || '',
         scheduledAt: appt.startTime || appt.appointmentDate,
+        startTime: appt.startTime,
+        endTime: appt.endTime,
         time: timeStr,
-        condition: appt.serviceName || appt.chiefComplaint || 'Physical Rehabilitation',
-        status: appt.status,
-        consultationType: appt.appointmentType === 'telehealth' || appt.appointmentPlace === 'VIDEO' ? 'VIDEO' : 'CLINIC',
-        roomReady: ['CONFIRMED', 'IN_PROGRESS', 'confirmed', 'in_progress'].includes(appt.status),
+        condition: appt.serviceName || appt.serviceType?.replace(/_/g, ' ') || appt.chiefComplaint || 'Physical Rehabilitation',
+        serviceType: appt.serviceType,
+        appointmentPlace: appt.appointmentPlace || 'CLINIC',
+        paymentStatus: appt.paymentStatus || 'PENDING',
+        amount: appt.amount || 0,
+        status: appt.status || 'CONFIRMED',
+        sessionStatus: appt.sessionStatus || 'NOT_STARTED',
+        attendanceOutcome: appt.attendanceOutcome || null,
+        consultationType: isTelehealth ? 'VIDEO' : 'CLINIC',
+        type: isTelehealth ? 'telehealth' : 'clinic_visit',
+        roomReady: ['CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'confirmed', 'checked_in', 'in_progress'].includes(appt.status),
         roomId: appt._id.toString(),
         createdAt: appt.createdAt,
       };
@@ -553,7 +573,7 @@ export const getConsultationQueue = async (req, res) => {
         total: formattedQueue.length,
         appointments: formattedQueue,
       },
-      // Backward compatible array
+      // Backward compatible arrays
       appointments: formattedQueue,
     });
   } catch (err) {

@@ -394,18 +394,27 @@ export const getMyAppointments = async (req, res) => {
       if (from) filter.startTime.$gte = new Date(from);
       if (to) filter.startTime.$lte = new Date(to);
     } else if (view === 'upcoming') {
-      filter.status = { $in: ['CONFIRMED', 'confirmed', 'HELD', 'held', 'PENDING', 'pending'] };
-      // Include appointments from the beginning of today onwards
-      const startOfToday = new Date(now);
-      startOfToday.setHours(0, 0, 0, 0);
-      filter.startTime = { $gte: startOfToday };
+      filter.status = {
+        $in: [
+          'CONFIRMED', 'confirmed',
+          'CHECKED_IN', 'checked_in',
+          'IN_PROGRESS', 'in_progress',
+          'HELD', 'held',
+          'RESCHEDULED', 'rescheduled',
+          'PENDING', 'pending'
+        ]
+      };
+      // Include appointments from the beginning of today onwards (IST)
+      const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      const startOfTodayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - 5.5 * 60 * 60 * 1000);
+      filter.startTime = { $gte: startOfTodayIST };
     } else if (view === 'past') {
       filter.$or = [
-        { status: { $in: ['COMPLETED', 'completed', 'NO_SHOW', 'no_show'] } },
-        { status: { $in: ['CONFIRMED', 'confirmed'] }, endTime: { $lt: now } }
+        { status: { $in: ['COMPLETED', 'completed', 'NO_SHOW', 'no_show', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE'] } },
+        { status: { $in: ['CONFIRMED', 'confirmed', 'CHECKED_IN', 'IN_PROGRESS'] }, endTime: { $lt: now } }
       ];
     } else if (view === 'cancelled') {
-      filter.status = { $in: ['CANCELLED', 'cancelled', 'EXPIRED', 'expired'] };
+      filter.status = { $in: ['CANCELLED', 'cancelled', 'EXPIRED', 'expired', 'PAYMENT_EXPIRED', 'payment_expired'] };
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -872,10 +881,9 @@ export const getAppointmentsDashboard = async (req, res) => {
     } = req.query;
 
     const now = new Date();
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(now);
-    endOfToday.setHours(23, 59, 59, 999);
+    const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    const startOfToday = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - 5.5 * 60 * 60 * 1000);
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     // 1. Fetch ALL non-deleted appointments to compute authoritative summary metrics
     const allAppts = await Appointment.find({ isDeleted: false }).sort({ startTime: -1 }).lean();

@@ -30,3 +30,24 @@ export const getAppointmentInternal = async (appointmentId) => {
   return json.success ? (json.data?.appointment || json.data) : null;
 };
 
+// Called after payment failure/cancellation — tells clinical service to release held slot
+export const cancelAppointmentInternal = async (appointmentId, reason) => {
+  const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+  try {
+    const res = await fetch(`${CLINICAL_URL}/appointments/${appointmentId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-key': internalKey,
+        'x-user-role': 'clinic_admin',
+        'x-user-id': 'system'
+      },
+      body: JSON.stringify({ reason: reason || 'Payment failed or declined.' }),
+    });
+    return await res.json();
+  } catch (err) {
+    console.warn('[cancelAppointmentInternal] Warning:', err.message);
+    return null;
+  }
+};
+

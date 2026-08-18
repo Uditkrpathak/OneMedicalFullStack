@@ -172,14 +172,20 @@ export const renderNotificationContent = ({
 
     case 'payment.failed':
       return {
-        title: 'Payment Failed ⚠️',
-        message: `Payment for booking #${data.appointmentId || ''} could not be processed. Please retry.`,
+        title: isTherapist ? '⚠️ Patient Payment Failed' : 'Payment Failed ⚠️',
+        message: isTherapist
+          ? `Payment for consultation #${data.appointmentId || ''} with ${data.patientName || 'Patient'} failed. Slot hold will be released.`
+          : `Payment for booking #${data.appointmentId || ''} could not be processed (${data.reason || 'Declined'}). Please retry.`,
         email: {
-          subject: 'Payment Failed — OneMedical',
-          text: `Your payment for booking #${data.appointmentId} was unsuccessful. Please retry payment in the app.`,
-          html: `<p>Your payment attempt was unsuccessful. Please update your payment method in the app.</p>`,
+          subject: isTherapist ? 'Notice: Patient Payment Failed — OneMedical' : 'Payment Failed — OneMedical',
+          text: isTherapist
+            ? `Hello Dr. ${data.therapistName || ''},\n\nPayment for appointment #${data.appointmentId} with ${data.patientName} failed (${data.reason || 'Declined'}). The appointment hold has been released.`
+            : `Hello ${data.patientName || ''},\n\nYour payment for booking #${data.appointmentId} was unsuccessful. Please retry payment in the OneMedical app.`,
+          html: `<p>${isTherapist ? `Payment for appointment #${data.appointmentId} with ${data.patientName} failed.` : `Your payment for booking #${data.appointmentId} was unsuccessful.`}</p>`,
         },
-        sms: `OneMedical Alert: Payment failed for booking #${data.appointmentId}. Please open app to complete booking.`,
+        sms: isTherapist
+          ? `OneMedical Alert: Payment for appointment #${data.appointmentId} with ${data.patientName} failed.`
+          : `OneMedical Alert: Payment failed for booking #${data.appointmentId}. Please open app to complete booking.`,
       };
 
     case 'telehealth.call_starting':
