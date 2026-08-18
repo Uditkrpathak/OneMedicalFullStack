@@ -24,6 +24,7 @@ const UserSchema = new mongoose.Schema({
   isPhoneVerified: { type: Boolean, default: false },
   isEmailVerified: { type: Boolean, default: false },
   isActive:      { type: Boolean, default: true },
+  status:        { type: String, enum: ['active', 'pending', 'rejected', 'suspended'], default: 'active' },
   isProfileCompleted: { type: Boolean, default: false },
   savedTherapists: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   notificationPreferences: {

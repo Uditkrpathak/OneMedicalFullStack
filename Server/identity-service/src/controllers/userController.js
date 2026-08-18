@@ -775,6 +775,15 @@ export const verifyTherapistAdmin = async (req, res) => {
     const profile = await TherapistProfile.findOneAndUpdate({ $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] }, updates, { new: true });
     if (!profile) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
 
+    // Synchronize User record status and active state
+    if (profile.userId) {
+      const userStatus = status === 'verified' ? 'active' : (status === 'rejected' ? 'rejected' : (status === 'suspended' ? 'suspended' : 'pending'));
+      await User.findByIdAndUpdate(profile.userId, {
+        status: userStatus,
+        isActive: status === 'verified',
+      });
+    }
+
     // Create Audit Log
     if (adminId && mongoose.isValidObjectId(adminId)) {
       try {

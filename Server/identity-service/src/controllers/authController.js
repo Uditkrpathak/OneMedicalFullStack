@@ -60,17 +60,17 @@ const normalizePhone = (phone) => {
 const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'onemedical_jwt_access_secret_production_2026';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'onemedical_jwt_refresh_secret_production_2026';
 
-const issueTokens = async (userId, role) => {
+const issueTokens = async (userId, role, status = 'active') => {
   const familyId = uuidv4();
 
   const accessToken = jwt.sign(
-    { userId, role },
+    { userId, role, status },
     JWT_ACCESS_SECRET,
     { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '7d' }
   );
 
   const refreshToken = jwt.sign(
-    { userId, role, familyId },
+    { userId, role, status, familyId },
     JWT_REFRESH_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d' }
   );
@@ -159,20 +159,26 @@ export const requestOtp = async (req, res) => {
     
     let user = await User.findOne(query);
 
-    // 3. If existing therapist, check verification and active status
+    // 3. Status and Role Enforcement
     if (user && user.role === 'therapist') {
-      if (!user.isActive) {
-        return res.status(403).json({ success: false, error: { code: 'ACCOUNT_INACTIVE', message: 'Therapist account is deactivated.' } });
-      }
       const therapistProfile = await TherapistProfile.findOne({
         $or: [{ userId: user._id }, { userId: user._id.toString() }]
       });
       const isVerified = therapistProfile && (therapistProfile.verificationStatus === 'verified' || therapistProfile.isVerified === true);
-      if (!isVerified) {
-        return res.status(403).json({ success: false, error: { code: 'THERAPIST_NOT_VERIFIED', message: 'Therapist account is not verified. Please contact the administrator.' } });
+
+      if (user.status === 'rejected' || therapistProfile?.verificationStatus === 'rejected') {
+        return res.status(403).json({ success: false, error: { code: 'THERAPIST_REJECTED', message: 'Therapist account application was rejected by clinic administration.' } });
       }
-    } else if (user && !user.isActive) {
-      return res.status(403).json({ success: false, error: { code: 'ACCOUNT_INACTIVE', message: 'Account is deactivated.' } });
+
+      if (!isVerified || user.status === 'pending' || therapistProfile?.verificationStatus === 'pending' || therapistProfile?.verificationStatus === 'under_review') {
+        return res.status(403).json({ success: false, error: { code: 'THERAPIST_APPROVAL_PENDING', message: 'Therapist account is awaiting administrator approval. You will receive an alert once verified.' } });
+      }
+
+      if (user.status === 'suspended' || !user.isActive) {
+        return res.status(403).json({ success: false, error: { code: 'ACCOUNT_SUSPENDED', message: 'Therapist account has been suspended or deactivated.' } });
+      }
+    } else if (user && (!user.isActive || user.status === 'suspended' || user.status === 'rejected')) {
+      return res.status(403).json({ success: false, error: { code: 'ACCOUNT_INACTIVE', message: 'Account is deactivated or suspended.' } });
     }
 
     // 4. Challenge Lock Enforcements (Wait for 15-minute lock expiration)
@@ -312,18 +318,25 @@ export const verifyOtp = async (req, res) => {
     }
 
     // 4. Re-check therapist verification and account active status upon verification
-    if (!user.isActive) {
-      return res.status(403).json({ success: false, error: { code: 'ACCOUNT_INACTIVE', message: 'Account is deactivated.' } });
-    }
-
     if (user.role === 'therapist') {
       const therapistProfile = await TherapistProfile.findOne({
         $or: [{ userId: user._id }, { userId: user._id.toString() }]
       });
       const isVerified = therapistProfile && (therapistProfile.verificationStatus === 'verified' || therapistProfile.isVerified === true);
-      if (!isVerified) {
-        return res.status(403).json({ success: false, error: { code: 'THERAPIST_NOT_VERIFIED', message: 'Therapist account is not verified or has been suspended.' } });
+
+      if (user.status === 'rejected' || therapistProfile?.verificationStatus === 'rejected') {
+        return res.status(403).json({ success: false, error: { code: 'THERAPIST_REJECTED', message: 'Therapist account application was rejected by clinic administration.' } });
       }
+
+      if (!isVerified || user.status === 'pending' || therapistProfile?.verificationStatus === 'pending' || therapistProfile?.verificationStatus === 'under_review') {
+        return res.status(403).json({ success: false, error: { code: 'THERAPIST_APPROVAL_PENDING', message: 'Therapist account is awaiting administrator approval. You cannot log in until approved.' } });
+      }
+
+      if (user.status === 'suspended' || !user.isActive) {
+        return res.status(403).json({ success: false, error: { code: 'ACCOUNT_SUSPENDED', message: 'Therapist account has been suspended.' } });
+      }
+    } else if (!user.isActive || user.status === 'suspended' || user.status === 'rejected') {
+      return res.status(403).json({ success: false, error: { code: 'ACCOUNT_INACTIVE', message: 'Account is deactivated or suspended.' } });
     }
 
     // Consume challenge on success
@@ -333,8 +346,8 @@ export const verifyOtp = async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
-    // Issue tokens strictly from database-verified user ID and role
-    const { accessToken, refreshToken } = await issueTokens(user._id.toString(), user.role);
+    // Issue tokens strictly from database-verified user ID, role, and status
+    const { accessToken, refreshToken } = await issueTokens(user._id.toString(), user.role, user.status || 'active');
 
     res.json({ success: true, data: { accessToken, refreshToken, user: user.toSafeObject() } });
   } catch (err) {

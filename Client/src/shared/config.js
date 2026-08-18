@@ -33,25 +33,26 @@ const hasDevServer = Boolean(
   )?.value
 );
 
-// If running as standalone APK or no active local Metro server detected, use Cloud Gateway
-const isRunningInExpoGoDev = __DEV__ && hasDevServer && Constants.appOwnership === 'expo';
-
-export const API_HOST = getHostIp();
+// Configuration for Live Cloud Deploy vs Local Dev
+// Set USE_LOCAL_DEV to true only if running local microservices on localhost:5000
+const USE_LOCAL_DEV = false;
 
 export const PROD_GATEWAY_URL = 'https://onemedical-v2-gateway.onrender.com';
 
-export const API_BASE_URL = isRunningInExpoGoDev
+export const API_HOST = getHostIp();
+
+export const API_BASE_URL = USE_LOCAL_DEV
   ? `http://${API_HOST}:5000/api/v1`
   : `${PROD_GATEWAY_URL}/api/v1`;
 
 export const API_URL = API_BASE_URL;
 
-export const SOCKET_URL = isRunningInExpoGoDev
+export const SOCKET_URL = USE_LOCAL_DEV
   ? `http://${API_HOST}:5000`
   : PROD_GATEWAY_URL;
 
 console.log(
-  `[Config] Resolved API Base URL: ${API_BASE_URL} (ExpoGoDev: ${isRunningInExpoGoDev})`
+  `[Config] Resolved API Base URL: ${API_BASE_URL} (Cloud Production: ${!USE_LOCAL_DEV})`
 );
 
 export default {
@@ -59,4 +60,5 @@ export default {
   API_BASE_URL,
   API_URL,
   SOCKET_URL,
+  PROD_GATEWAY_URL,
 };
