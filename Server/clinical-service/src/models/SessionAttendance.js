@@ -79,6 +79,9 @@ const SessionAttendanceSchema = new mongoose.Schema({
     idempotencyKey: { type: String, index: true },
   },
 
+  // Concurrency & Versioning
+  version: { type: Number, default: 1 },
+
   // Metadata
   isResolvedByAdmin: { type: Boolean, default: false },
   adminNotes:        { type: String },
@@ -88,6 +91,7 @@ const SessionAttendanceSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 SessionAttendanceSchema.index({ therapistId: 1, outcome: 1, createdAt: -1 });
+SessionAttendanceSchema.index({ therapistId: 1, scheduledStart: -1 });
 SessionAttendanceSchema.index({ patientId: 1, createdAt: -1 });
 
 const SessionAttendance = mongoose.model('SessionAttendance', SessionAttendanceSchema);

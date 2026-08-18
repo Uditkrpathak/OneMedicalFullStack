@@ -2,6 +2,7 @@ import Appointment from '../models/Appointment.js';
 import SessionAttendance from '../models/SessionAttendance.js';
 import Notification from '../models/Notification.js';
 import { publishEvent } from '../utils/rabbitmq.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 // Format helper in Indian Standard Time (Asia/Kolkata)
 const formatISTDate = (date) => {
@@ -345,6 +346,7 @@ export const reconcileSessionAttendance = async () => {
             reconciledAt: now,
             refundProtected,
           },
+          $inc: { version: 1 },
         },
         { new: true }
       );
@@ -429,6 +431,7 @@ export const reconcileSessionAttendance = async () => {
             reconciliationStatus: 'PROCESSED',
             reconciledAt: now,
           },
+          $inc: { version: 1 },
         },
         { new: true }
       );

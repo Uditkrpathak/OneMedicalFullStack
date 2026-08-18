@@ -45,23 +45,12 @@ const AppointmentSchema = new mongoose.Schema({
     enum: [
       'HELD',
       'CONFIRMED',
-      'RESCHEDULE_REQUESTED',
       'RESCHEDULED',
       'CHECKED_IN',
       'IN_PROGRESS',
       'COMPLETED',
-      'CANCELLED_BY_PATIENT',
-      'CANCELLED_BY_DOCTOR',
-      'CANCELLED_BY_CLINIC',
       'CANCELLED',
       'EXPIRED',
-      'NO_SHOW',
-      'PROVIDER_NO_SHOW',
-      'PATIENT_NO_SHOW',
-      'NO_ATTENDANCE',
-      'TECHNICAL_FAILURE',
-      'DOCUMENTATION_PENDING',
-      'DOCUMENTED',
     ],
     default: 'HELD',
     index: true,
@@ -150,6 +139,9 @@ const AppointmentSchema = new mongoose.Schema({
   completedAt: { type: Date },
   cancelledAt: { type: Date },
 
+  // ─── Concurrency & Versioning ──────────────────────────────────────────
+  version: { type: Number, default: 1 },
+
   // ─── Session ──────────────────────────────────────────────────────────────
   sessionSummary: { type: String },
 
@@ -161,14 +153,14 @@ const AppointmentSchema = new mongoose.Schema({
   },
   isDeleted: { type: Boolean, default: false },
 
-}, { timestamps: true });
+}, { timestamps: true, optimisticConcurrency: false });
 
 // ─── Indexes ──────────────────────────────────────────────────────────────────
-// IMPORTANT: These are QUERY PERFORMANCE indexes only.
-// Double-booking prevention is enforced by: (1) Redis distributed lock per slot,
-// (2) atomic MongoDB findOne conflict check before create. Both required.
-AppointmentSchema.index({ therapistId: 1, startTime: 1 });
+AppointmentSchema.index({ therapistId: 1, startTime: -1 });
 AppointmentSchema.index({ patientId: 1, startTime: -1 });
+AppointmentSchema.index({ status: 1, startTime: 1 });
+AppointmentSchema.index({ paymentStatus: 1, startTime: 1 });
+AppointmentSchema.index({ reconciliationStatus: 1, startTime: 1 });
 AppointmentSchema.index({ status: 1, holdExpiresAt: 1 });  // used by expiry cron
 
 const Appointment = mongoose.model('Appointment', AppointmentSchema);

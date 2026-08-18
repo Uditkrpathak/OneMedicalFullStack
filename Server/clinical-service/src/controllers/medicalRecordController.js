@@ -319,6 +319,16 @@ export const getMedicalRecordById = async (req, res) => {
       }
     }
 
+    // Record immutable audit entry
+    logAudit({
+      actorId: requesterId,
+      actorRole: requesterRole,
+      action: 'MEDICAL_RECORD_VIEWED',
+      resourceType: 'MedicalRecord',
+      resourceId: record._id,
+      req
+    });
+
     // Generate fresh 300s presigned download URL
     const presigned = await storageProvider.createDownloadUrl(record.storageKey || record.s3Key || record.fileKey, 300);
 

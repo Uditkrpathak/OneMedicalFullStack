@@ -81,6 +81,7 @@ MedicalRecordSchema.pre('save', function (next) {
 });
 
 MedicalRecordSchema.index({ patientId: 1, category: 1, recordDate: -1 });
+MedicalRecordSchema.index({ patientId: 1, createdAt: -1 });
 MedicalRecordSchema.index({ patientId: 1, isDeleted: 1 });
 
 const MedicalRecord = mongoose.model('MedicalRecord', MedicalRecordSchema);

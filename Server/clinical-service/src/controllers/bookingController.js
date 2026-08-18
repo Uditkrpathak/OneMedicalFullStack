@@ -5,6 +5,8 @@ import TherapistSchedule from '../models/TherapistSchedule.js';
 import { acquireSlotLock, releaseSlotLock } from '../utils/redis.js';
 import { publishEvent } from '../utils/rabbitmq.js';
 import { resolveTherapistIds } from '../utils/therapistHelper.js';
+import { assertAppointmentTransition } from '../utils/stateTransitions.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -1237,18 +1239,46 @@ export const patientCheckIn = async (req, res) => {
       });
     }
 
-    appt.patientCheckedInAt = now;
-    appt.patientJoinedAt = now;
-    appt.sessionStatus = 'WAITING';
-    if (appt.status === 'CONFIRMED') {
-      appt.status = 'CHECKED_IN';
+    const previousStatus = appt.status;
+    const targetStatus = appt.status === 'CONFIRMED' ? 'CHECKED_IN' : appt.status;
+    assertAppointmentTransition(previousStatus, targetStatus);
+
+    const updatedAppt = await Appointment.findOneAndUpdate(
+      { _id: id, version: appt.version || 1 },
+      {
+        $set: {
+          patientCheckedInAt: now,
+          patientJoinedAt: now,
+          sessionStatus: 'WAITING',
+          status: targetStatus,
+        },
+        $inc: { version: 1 }
+      },
+      { new: true }
+    );
+
+    if (!updatedAppt) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'CONCURRENCY_CONFLICT', message: 'Appointment was modified concurrently. Please refresh.' }
+      });
     }
-    await appt.save();
+
+    logAudit({
+      actorId: userId,
+      actorRole: 'patient',
+      action: 'PATIENT_CHECK_IN',
+      resourceType: 'Appointment',
+      resourceId: updatedAppt._id,
+      beforeState: { status: previousStatus },
+      afterState: { status: targetStatus, sessionStatus: 'WAITING' },
+      req
+    });
 
     await publishEvent('appointment.patient_checked_in', {
-      appointmentId: appt._id,
-      patientId: appt.patientId,
-      therapistId: appt.therapistId,
+      appointmentId: updatedAppt._id,
+      patientId: updatedAppt.patientId,
+      therapistId: updatedAppt.therapistId,
       timestamp: now.toISOString(),
     });
 
@@ -1256,12 +1286,12 @@ export const patientCheckIn = async (req, res) => {
       success: true,
       data: {
         message: 'Checked in successfully. Please wait for your therapist to join.',
-        appointment: appt,
+        appointment: updatedAppt,
       },
     });
   } catch (err) {
     console.error('[patientCheckIn] Error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    res.status(err.statusCode || 500).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
@@ -1271,11 +1301,16 @@ export const therapistJoinSession = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.headers['x-user-id'];
+    const userRole = req.headers['x-user-role'];
     const now = new Date();
 
     const appt = await Appointment.findById(id);
     if (!appt || appt.isDeleted) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+
+    if (userRole === 'therapist' && appt.therapistId !== userId) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You are not assigned to this appointment session.' } });
     }
 
     // Telehealth Upfront Payment Enforcement
@@ -1290,16 +1325,45 @@ export const therapistJoinSession = async (req, res) => {
       });
     }
 
-    appt.therapistJoinedAt = now;
-    appt.startedAt = appt.startedAt || now;
-    appt.sessionStatus = 'IN_PROGRESS';
-    appt.status = 'IN_PROGRESS';
-    await appt.save();
+    const previousStatus = appt.status;
+    assertAppointmentTransition(previousStatus, 'IN_PROGRESS');
+
+    const updatedAppt = await Appointment.findOneAndUpdate(
+      { _id: id, version: appt.version || 1 },
+      {
+        $set: {
+          therapistJoinedAt: now,
+          startedAt: appt.startedAt || now,
+          sessionStatus: 'IN_PROGRESS',
+          status: 'IN_PROGRESS',
+        },
+        $inc: { version: 1 }
+      },
+      { new: true }
+    );
+
+    if (!updatedAppt) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'CONCURRENCY_CONFLICT', message: 'Appointment was modified concurrently. Please refresh.' }
+      });
+    }
+
+    logAudit({
+      actorId: userId,
+      actorRole: userRole || 'therapist',
+      action: 'THERAPIST_JOIN_SESSION',
+      resourceType: 'Appointment',
+      resourceId: updatedAppt._id,
+      beforeState: { status: previousStatus },
+      afterState: { status: 'IN_PROGRESS', sessionStatus: 'IN_PROGRESS' },
+      req
+    });
 
     await publishEvent('clinical.consultation_started', {
-      appointmentId: appt._id,
-      patientId: appt.patientId,
-      therapistId: appt.therapistId,
+      appointmentId: updatedAppt._id,
+      patientId: updatedAppt.patientId,
+      therapistId: updatedAppt.therapistId,
       timestamp: now.toISOString(),
     });
 
@@ -1307,12 +1371,12 @@ export const therapistJoinSession = async (req, res) => {
       success: true,
       data: {
         message: 'Joined consultation successfully.',
-        appointment: appt,
+        appointment: updatedAppt,
       },
     });
   } catch (err) {
     console.error('[therapistJoinSession] Error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    res.status(err.statusCode || 500).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });
   }
 };
 

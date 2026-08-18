@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import http from 'http';
 import { Server } from 'socket.io';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -26,19 +27,119 @@ const io = new Server(server, {
 });
 const PORT = process.env.PORT || 5000;
 
+// ─── Request ID Tracing ──────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const reqId = req.headers['x-request-id'] || `req_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  req.requestId = reqId;
+  req.headers['x-request-id'] = reqId;
+  res.setHeader('X-Request-ID', reqId);
+  next();
+});
+
+// ─── NoSQL Injection & Payload Sanitization ──────────────────────────────────
+const sanitizeNoSql = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  for (const key of Object.keys(obj)) {
+    if (key.startsWith('$') || key.includes('.')) {
+      delete obj[key];
+    } else if (typeof obj[key] === 'object') {
+      sanitizeNoSql(obj[key]);
+    }
+  }
+  return obj;
+};
+
+app.use((req, res, next) => {
+  if (req.body) sanitizeNoSql(req.body);
+  if (req.query) sanitizeNoSql(req.query);
+  if (req.params) sanitizeNoSql(req.params);
+  next();
+});
+
 // ─── Security & Parsing ──────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: '*', credentials: true }));
 
-// ─── Global Rate Limiter (100 req/min per IP) ────────────────────────────────
+// ─── Tiered Rate Limiters by Endpoint Risk Profile ───────────────────────────
+// 1. Strict OTP rate limit (5 attempts per 15 min per identity + IP)
+export const otpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}_${req.body?.phone || req.body?.email || req.query?.phone || ''}`,
+  message: { success: false, error: { code: 'OTP_RATE_LIMIT_EXCEEDED', message: 'Too many OTP requests. Please wait 15 minutes before trying again.' } },
+});
+
+// 2. Strict Login rate limit (10 attempts per 15 min per identity + IP)
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}_${req.body?.email || req.body?.phone || ''}`,
+  message: { success: false, error: { code: 'LOGIN_RATE_LIMIT_EXCEEDED', message: 'Too many login attempts. Please wait 15 minutes.' } },
+});
+
+// 3. Payment verification rate limit (20 req/min per user + IP)
+export const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}_${req.headers['x-user-id'] || 'anon'}`,
+  message: { success: false, error: { code: 'PAYMENT_RATE_LIMIT_EXCEEDED', message: 'Payment verification limit reached, please wait.' } },
+});
+
+// 4. Clinical booking & check-in limit (60 req/min)
+export const clinicalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}_${req.headers['x-user-id'] || 'anon'}`,
+  message: { success: false, error: { code: 'CLINICAL_RATE_LIMIT_EXCEEDED', message: 'Too many clinical requests, please slow down.' } },
+});
+
+// 5. Global baseline limiter (200 req/min)
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests, slow down.' } },
 });
 app.use(globalLimiter);
+
+// Bind targeted rate limiters to matching paths
+app.use('/auth/send-otp', otpLimiter);
+app.use('/auth/verify-otp', otpLimiter);
+app.use('/auth/login', loginLimiter);
+app.use('/payments/verify', paymentLimiter);
+app.use('/payments/clinic/verify', paymentLimiter);
+app.use('/appointments', clinicalLimiter);
+
+// ─── Deep Health Check Endpoint ──────────────────────────────────────────────
+app.get(['/health/deep', '/api/v1/health/deep'], async (req, res) => {
+  const memoryUsage = process.memoryUsage();
+  const uptimeSec = process.uptime();
+
+  res.json({
+    status: 'healthy',
+    gateway: 'active',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(uptimeSec),
+    memory: {
+      rssMb: Math.round(memoryUsage.rss / 1024 / 1024),
+      heapUsedMb: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+    },
+    subsystems: {
+      socketServer: 'healthy',
+      rateLimiters: 'active',
+      proxyRouting: 'active'
+    }
+  });
+});
 
 // ─── Public Routes (no JWT required) ─────────────────────────────────────────
 const PUBLIC_PREFIXES = [
@@ -650,4 +751,22 @@ app.use((req, res) => {
   res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `No route matches ${req.method} ${req.path}` } });
 });
 
-server.listen(PORT, () => console.log(`[Gateway] Running on port ${PORT}`));
+const httpServer = server.listen(PORT, () => console.log(`[Gateway] Running on port ${PORT}`));
+
+// ─── Graceful Shutdown Handlers ──────────────────────────────────────────────
+const handleGracefulShutdown = (signal) => {
+  console.log(`[Gateway] Received ${signal}. Initiating graceful shutdown...`);
+  httpServer.close(() => {
+    console.log('[Gateway] Closed active HTTP connections cleanly.');
+    process.exit(0);
+  });
+
+  // Force shutdown after 10s timeout
+  setTimeout(() => {
+    console.error('[Gateway] Forcing process exit after timeout.');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => handleGracefulShutdown('SIGINT'));

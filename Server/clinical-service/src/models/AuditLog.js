@@ -1,43 +1,27 @@
 import mongoose from 'mongoose';
 
 const AuditLogSchema = new mongoose.Schema({
-  actorId: {
-    type: String, // String representation of the User ObjectId (from claims)
-    required: true,
-  },
-  action: {
-    type: String,
-    required: true,
-  },
-  resourceType: {
-    type: String,
-    required: true,
-  },
-  resourceId: {
-    type: String,
-    required: true,
-  },
-  ipAddress: {
-    type: String,
-  },
-  userAgent: {
-    type: String,
-  },
-  metadata: {
-    type: mongoose.Schema.Types.Mixed,
-  },
-}, { timestamps: { createdAt: true, updatedAt: false } }); // Append-only (no updates)
-
-// Prevent updates on AuditLog Schema
-AuditLogSchema.pre('save', function (next) {
-  if (!this.isNew) {
-    return next(new Error('Audit logs are append-only and cannot be updated.'));
-  }
-  next();
+  actorId:      { type: String, required: true, index: true },
+  actorRole:    { type: String, enum: ['patient', 'therapist', 'admin', 'system'], required: true },
+  action:       { type: String, required: true, index: true },
+  resourceType: { type: String, required: true, index: true },
+  resourceId:   { type: String, required: true, index: true },
+  beforeState:  { type: mongoose.Schema.Types.Mixed },
+  afterState:   { type: mongoose.Schema.Types.Mixed },
+  reason:       { type: String },
+  requestId:    { type: String, index: true },
+  ipAddress:    { type: String },
+  userAgent:    { type: String },
+  previousHash: { type: String, default: '0000000000000000000000000000000000000000000000000000000000000000' },
+  currentHash:  { type: String, index: true },
+  timestamp:    { type: Date, default: Date.now, index: true }
+}, {
+  timestamps: false,
+  versionKey: false
 });
 
-AuditLogSchema.index({ actorId: 1 });
-AuditLogSchema.index({ createdAt: -1 });
+AuditLogSchema.index({ resourceType: 1, resourceId: 1, timestamp: -1 });
+AuditLogSchema.index({ actorId: 1, timestamp: -1 });
+AuditLogSchema.index({ currentHash: 1 });
 
-const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
-export default AuditLog;
+export default mongoose.model('AuditLog', AuditLogSchema);
