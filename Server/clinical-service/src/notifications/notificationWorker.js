@@ -8,7 +8,7 @@ const QUEUE = 'clinical-service.notification.queue';
 /**
  * Normalizes legacy event payloads into the standard event envelope if required
  */
-const normalizeEnvelope = (routingKey, payload) => {
+export const normalizeEnvelope = (routingKey, payload) => {
   if (payload.eventId && payload.recipients && Array.isArray(payload.recipients)) {
     return payload;
   }

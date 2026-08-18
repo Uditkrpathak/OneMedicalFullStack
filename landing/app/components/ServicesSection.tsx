@@ -64,7 +64,7 @@ export default function ServicesSection({ onOpenBooking }: ServicesSectionProps)
               className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-100 shadow-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
             >
               <div>
-                <div className="rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 aspect-[16/10] bg-slate-100">
+                <div className="rounded-xl sm:rounded-2xl overflow-hidden mb-3.5 h-36 sm:h-44 w-full bg-slate-100">
                   <img
                     src={item.image}
                     alt={item.title}

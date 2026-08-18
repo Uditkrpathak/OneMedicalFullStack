@@ -16,15 +16,27 @@ export const connectRabbitMQ = async () => {
 };
 
 export const publishEvent = async (routingKey, payload) => {
-  if (!channel) return;
+  if (channel) {
+    try {
+      channel.publish(
+        'onemedical.events',
+        routingKey,
+        Buffer.from(JSON.stringify(payload)),
+        { persistent: true }
+      );
+      return;
+    } catch (err) {
+      console.error('[Clinical] Event publish error via RabbitMQ, falling back to in-memory:', err.message);
+    }
+  }
+
+  // Graceful in-process direct notification processing when RabbitMQ is offline/unprovisioned
   try {
-    channel.publish(
-      'onemedical.events',
-      routingKey,
-      Buffer.from(JSON.stringify(payload)),
-      { persistent: true }
-    );
-  } catch (err) {
-    console.error('[Clinical] Event publish error:', err.message);
+    const { processNotificationEvent } = await import('../notifications/notificationManager.js');
+    const { normalizeEnvelope } = await import('../notifications/notificationWorker.js');
+    const envelope = normalizeEnvelope(routingKey, payload);
+    await processNotificationEvent(envelope);
+  } catch (directErr) {
+    console.error('[Clinical] Direct in-memory event dispatch error:', directErr.message);
   }
 };

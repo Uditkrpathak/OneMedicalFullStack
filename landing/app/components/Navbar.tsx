@@ -82,14 +82,7 @@ export default function Navbar({ onOpenBooking }: NavbarProps) {
 
           {/* Action CTAs */}
           <div className="hidden sm:flex items-center gap-4">
-            <a
-              href="http://localhost:5173/login"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[13px] font-medium text-slate-700 hover:text-[#003D9B] transition-colors"
-            >
-              Login
-            </a>
+
             <button
               onClick={onOpenBooking}
               className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-4 py-2 rounded-full text-[12.5px] font-bold shadow-xs hover:shadow-md transition-all duration-150"
