@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { restoreSession } from '../../features/auth/authSlice';
 
 // Import Onboarding & Auth Screens
 import WelcomeScreen from '../../features/auth/screens/WelcomeScreen';
@@ -193,10 +194,16 @@ function TherapistTabs() {
 }
 
 export default function AppNavigator() {
-  const { isAuthenticated, user } = useSelector(state => state.auth);
+  const dispatch = useDispatch();
+  const { isAuthenticated, user, isRestored } = useSelector(state => state.auth);
 
-  // If user is already authenticated & profile is completed, skip onboarding!
-  const isProfileDone = user?.isProfileCompleted;
+  useEffect(() => {
+    dispatch(restoreSession());
+  }, [dispatch]);
+
+  if (!isRestored) {
+    return null; // Brief splash load while restoring session from AsyncStorage
+  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -216,10 +223,10 @@ export default function AppNavigator() {
       ) : (
         <>
           {/* Main Role-Based App */}
-          {user?.role === 'patient' ? (
-            <Stack.Screen name="PatientHome" component={PatientTabs} />
-          ) : (
+          {user?.role === 'therapist' ? (
             <Stack.Screen name="TherapistHome" component={TherapistTabs} />
+          ) : (
+            <Stack.Screen name="PatientHome" component={PatientTabs} />
           )}
 
           <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} />
