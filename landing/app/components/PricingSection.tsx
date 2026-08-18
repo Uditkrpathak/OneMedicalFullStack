@@ -81,7 +81,7 @@ export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         {/* Header */}
         <div className="max-w-2xl mx-auto space-y-2 mb-10">
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#003D9B]">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#00687B]">
             PRECISION RECOVERY
           </div>
           <h2 className="text-2xl sm:text-[34px] font-bold text-[#051A3E] tracking-tight">
@@ -98,11 +98,10 @@ export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
           {plans.map((plan) => (
             <div
               key={plan.id}
-              className={`rounded-[28px] sm:rounded-[32px] p-7 sm:p-8 transition-all duration-300 flex flex-col justify-between relative ${
-                plan.featured
-                  ? 'bg-white border-2 border-blue-100/90 shadow-xl shadow-blue-500/10 lg:-translate-y-1.5'
-                  : 'bg-white border border-slate-200/80 shadow-xs hover:shadow-md hover:-translate-y-0.5'
-              }`}
+              className={`rounded-[28px] sm:rounded-[32px] p-7 sm:p-8 transition-all duration-300 flex flex-col justify-between relative ${plan.featured
+                ? 'bg-white border-2 border-blue-100/90 shadow-xl shadow-blue-500/10 lg:-translate-y-1.5'
+                : 'bg-white border border-slate-200/80 shadow-xs hover:shadow-md hover:-translate-y-0.5'
+                }`}
             >
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -120,9 +119,8 @@ export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
 
                 <div className="flex items-baseline gap-1 pb-5 mb-6">
                   <span
-                    className={`text-3xl sm:text-[32px] font-black tracking-tight ${
-                      plan.featured ? 'text-[#003D9B]' : 'text-[#051A3E]'
-                    }`}
+                    className={`text-3xl sm:text-[32px] font-black tracking-tight ${plan.featured ? 'text-[#003D9B]' : 'text-[#051A3E]'
+                      }`}
                   >
                     {plan.price}
                   </span>
@@ -135,24 +133,21 @@ export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
                   {plan.features.map((feat, idx) => (
                     <li
                       key={idx}
-                      className={`flex items-start gap-2.5 text-[12.5px] ${
-                        !feat.included ? 'text-slate-400' : 'text-slate-700'
-                      }`}
+                      className={`flex items-start gap-2.5 text-[12.5px] ${!feat.included ? 'text-slate-400' : 'text-slate-700'
+                        }`}
                     >
                       {feat.included ? (
                         <CheckCircle2
                           size={17}
-                          className={`shrink-0 mt-0.5 ${
-                            plan.featured ? 'text-[#003D9B]' : 'text-teal-700'
-                          }`}
+                          className={`shrink-0 mt-0.5 ${plan.featured ? 'text-[#003D9B]' : 'text-teal-700'
+                            }`}
                         />
                       ) : (
                         <CircleOff size={16} className="text-slate-300 shrink-0 mt-0.5" />
                       )}
                       <span
-                        className={`leading-snug ${
-                          feat.highlight ? 'font-bold text-slate-900' : 'font-normal'
-                        }`}
+                        className={`leading-snug ${feat.highlight ? 'font-bold text-slate-900' : 'font-normal'
+                          }`}
                       >
                         {feat.text}
                       </span>
@@ -163,11 +158,10 @@ export default function PricingSection({ onOpenBooking }: PricingSectionProps) {
 
               <button
                 onClick={() => onOpenBooking(plan.name)}
-                className={`w-full py-3 rounded-full text-xs font-bold transition-all active:scale-98 ${
-                  plan.featured
-                    ? 'bg-[#003D9B] hover:bg-[#002e75] text-white shadow-md shadow-blue-900/20 py-3.5'
-                    : 'bg-white hover:bg-slate-50 text-[#003D9B] border border-blue-200/80 hover:border-blue-300'
-                }`}
+                className={`w-full py-3 rounded-full text-xs font-bold transition-all active:scale-98 ${plan.featured
+                  ? 'bg-[#003D9B] hover:bg-[#002e75] text-white shadow-md shadow-blue-900/20 py-3.5'
+                  : 'bg-white hover:bg-slate-50 text-[#003D9B] border border-blue-200/80 hover:border-blue-300'
+                  }`}
               >
                 {plan.ctaText}
               </button>

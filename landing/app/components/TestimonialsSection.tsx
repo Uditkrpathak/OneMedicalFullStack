@@ -1,7 +1,15 @@
 'use client';
 
 import React from 'react';
-import { ArrowRight, RotateCcw } from 'lucide-react';
+import {
+  ArrowRight,
+  Briefcase,
+  Accessibility,
+  Dumbbell,
+  LineChart,
+  Sparkles,
+  ShieldCheck,
+} from 'lucide-react';
 
 interface TestimonialsSectionProps {
   onOpenBooking: () => void;
@@ -18,9 +26,9 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
       avatar:
         'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=160',
       milestones: [
-        { label: 'Surgery', icon: '1' },
-        { label: 'Mobility', icon: '2' },
-        { label: 'Full Strength', icon: '3' },
+        { label: 'Surgery', icon: Briefcase },
+        { label: 'Mobility', icon: Accessibility },
+        { label: 'Full Strength', icon: Dumbbell },
       ],
       quote:
         'The precision of the treatment plan gave me my life back. I am now back on the field, stronger than ever.',
@@ -34,117 +42,108 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
       avatar:
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=160',
       milestones: [
-        { label: 'Assessment', icon: '1' },
-        { label: 'Core Stability', icon: '2' },
-        { label: 'Pain Free', icon: '3' },
+        { label: 'Assessment', icon: LineChart },
+        { label: 'Core Stability', icon: Accessibility },
+        { label: 'Pain Free', icon: Sparkles },
       ],
       quote:
         'I had forgotten what it felt like to live without pain. One Medical changed my perspective on recovery.',
     },
-    {
-      id: 'rahul',
-      name: 'Rahul, 36',
-      condition: 'Shoulder Impingement',
-      duration: '6 Weeks',
-      improvement: '92%',
-      avatar:
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=160',
-      milestones: [
-        { label: 'Diagnosis', icon: '1' },
-        { label: 'Rotator Cuff', icon: '2' },
-        { label: 'Full Motion', icon: '3' },
-      ],
-      quote:
-        'Exceptional care and biometric tracking made every session count. Highly recommended for athletes.',
-    },
   ];
 
   return (
-    <section id="stories" className="pt-4 pb-8 sm:pt-6 sm:pb-10 bg-white relative overflow-hidden">
+    <section id="stories" className="py-12 sm:py-16 bg-white relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        {/* Header with Minimal Spacing */}
-        <div className="max-w-2xl mx-auto space-y-1 mb-6">
-          <div className="text-[10.5px] font-extrabold uppercase tracking-widest text-[#003D9B]">
-            Success Stories
+        {/* Header */}
+        <div className="max-w-2xl mx-auto space-y-2 mb-12">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-[#00687B]">
+            SUCCESS STORIES
           </div>
-          <h2 className="text-2xl sm:text-[30px] font-bold text-[#051A3E] tracking-tight">
+          <h2 className="text-2xl sm:text-[34px] font-bold text-[#051A3E] tracking-tight">
             Stories of Resilience
           </h2>
-          <p className="text-xs sm:text-[13px] text-slate-500 leading-relaxed font-normal">
+          <p className="text-xs sm:text-[13.5px] text-slate-500 leading-relaxed font-normal">
             Real journeys of recovery and clinical excellence.
           </p>
         </div>
 
-        {/* 3 Large Stories Cards Filling the Screen Width Naturally */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-left max-w-7xl mx-auto mb-6">
+        {/* 2 Large Story Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left max-w-5xl mx-auto mb-12">
           {stories.map((story) => (
             <div
               key={story.id}
-              className="bg-slate-50/70 rounded-[32px] p-6 sm:p-7 border border-slate-100/90 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between"
+              className="bg-white rounded-[32px] sm:rounded-[36px] p-8 sm:p-9 border border-slate-100/90 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between"
             >
               <div>
                 {/* Header Profile */}
-                <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center gap-4 mb-6">
                   <img
                     src={story.avatar}
                     alt={story.name}
-                    className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-2xs"
+                    className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm"
                   />
                   <div>
-                    <h3 className="text-[15px] font-bold text-[#051A3E]">
+                    <h3 className="text-lg font-bold text-[#051A3E]">
                       {story.name}
                     </h3>
-                    <div className="flex items-center gap-1 text-[11px] font-semibold text-[#003D9B]">
-                      <RotateCcw size={11} />
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-[#00687B] mt-0.5">
+                      <ShieldCheck size={13} />
                       <span>{story.condition}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Duration & Improvement */}
-                <div className="grid grid-cols-2 gap-3 pb-3 border-b border-slate-200/70 mb-4">
+                {/* Duration & Improvement Stats */}
+                <div className="grid grid-cols-2 gap-4 pb-6 mb-6">
                   <div>
-                    <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">
-                      Duration
+                    <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      DURATION
                     </div>
-                    <div className="text-lg font-bold text-[#003D9B] mt-0.5">
+                    <div className="text-2xl font-extrabold text-[#003D9B] mt-1">
                       {story.duration}
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider">
-                      Improvement
+                    <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+                      IMPROVEMENT
                     </div>
-                    <div className="text-lg font-bold text-teal-600 mt-0.5">
+                    <div className="text-2xl font-extrabold text-[#00687B] mt-1">
                       {story.improvement}
                     </div>
                   </div>
                 </div>
 
                 {/* Milestones Stepper */}
-                <div className="mb-4">
-                  <div className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                <div className="mb-6">
+                  <div className="text-xs font-semibold text-slate-600 mb-4">
                     Recovery Milestones
                   </div>
-                  <div className="relative flex items-center justify-between">
-                    <div className="absolute top-1/2 left-3 right-3 -translate-y-1/2 h-0.5 bg-blue-100 -z-0" />
+                  <div className="relative flex items-center justify-between px-2">
+                    {/* Connecting Line */}
+                    <div className="absolute top-3.5 left-6 right-6 h-[1.5px] bg-blue-100 -z-0" />
 
-                    {story.milestones.map((m, idx) => (
-                      <div key={idx} className="relative z-10 flex flex-col items-center">
-                        <div className="w-6 h-6 rounded-full bg-[#003D9B] text-white text-[10px] font-bold flex items-center justify-center shadow-2xs">
-                          {m.icon}
+                    {story.milestones.map((m, idx) => {
+                      const StepIcon = m.icon;
+                      return (
+                        <div key={idx} className="relative z-10 flex flex-col items-center">
+                          <div className="w-7 h-7 rounded-full bg-[#003D9B] text-white flex items-center justify-center shadow-xs">
+                            <StepIcon size={13} />
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-600 mt-2 text-center whitespace-nowrap">
+                            {m.label}
+                          </span>
                         </div>
-                        <span className="text-[10px] font-medium text-slate-600 mt-1 text-center whitespace-nowrap">
-                          {m.label}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Quote */}
-                <div className="relative pl-3.5 italic text-[12px] text-slate-600 leading-relaxed border-l-2 border-[#003D9B]">
-                  &ldquo;{story.quote}&rdquo;
+                <div className="pt-2">
+                  <div className="text-blue-300 text-xl font-serif leading-none mb-1">“</div>
+                  <p className="italic text-[12.5px] text-slate-600 leading-relaxed font-normal">
+                    &ldquo;{story.quote}&rdquo;
+                  </p>
                 </div>
               </div>
             </div>
@@ -152,19 +151,20 @@ export default function TestimonialsSection({ onOpenBooking }: TestimonialsSecti
         </div>
 
         {/* CTA */}
-        <div className="space-y-1">
+        <div className="space-y-2.5">
           <button
             onClick={onOpenBooking}
-            className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-md shadow-blue-900/15 hover:shadow-lg transition-all inline-flex items-center gap-1.5"
+            className="bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white px-6 sm:px-7 py-2.5 sm:py-3 rounded-full text-xs font-semibold shadow-md shadow-blue-950/20 hover:shadow-lg transition-all inline-flex items-center gap-1.5"
           >
             <span>Start Your Story</span>
-            <ArrowRight size={13} />
+            <ArrowRight size={12} />
           </button>
           <div className="text-[11.5px] text-slate-500 font-normal">
-            Join 10,000+ patients who found their mobility again.
+            Join 15,000+ patients who found their mobility again.
           </div>
         </div>
       </div>
     </section>
   );
 }
+
