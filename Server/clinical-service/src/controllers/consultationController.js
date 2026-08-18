@@ -6,10 +6,11 @@ import AuditLog from '../models/AuditLog.js';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import clinicalProcessor from '../notifications/clinicalProcessor.js';
+import { resolveTherapistIds, fetchUsersByIds } from '../utils/therapistHelper.js';
 
 /**
  * GET /api/v1/therapists/me/dashboard
- * Aggregated therapist dashboard with zero hardcoded numbers
+ * Aggregated therapist dashboard with dynamic data and linked ID resolution
  */
 export const getTherapistDashboard = async (req, res) => {
   try {
@@ -20,6 +21,9 @@ export const getTherapistDashboard = async (req, res) => {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Therapist identity required' } });
     }
 
+    // Resolve all linked therapist IDs (user ID + profile ID)
+    const therapistIds = await resolveTherapistIds(therapistId);
+
     // Start of today and end of today
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -27,15 +31,38 @@ export const getTherapistDashboard = async (req, res) => {
 
     // Fetch all appointments for this therapist
     const allAppointments = await Appointment.find({
-      therapistId,
-      status: { $nin: ['CANCELLED', 'REJECTED'] },
+      therapistId: { $in: therapistIds },
+      status: { $nin: ['CANCELLED', 'REJECTED', 'cancelled', 'rejected'] },
+      isDeleted: { $ne: true },
     })
-      .sort({ startTime: 1 })
+      .sort({ startTime: 1, scheduledDate: 1 })
       .lean();
+
+    // Enrich missing patient names/ages from Identity service
+    const patientIds = Array.from(new Set(allAppointments.map((a) => a.patientId).filter(Boolean)));
+    const users = await fetchUsersByIds(patientIds);
+    const userMap = new Map();
+    users.forEach((u) => {
+      const uId = u._id?.toString() || u.id?.toString() || u.userId?.toString();
+      if (uId) userMap.set(uId, u);
+    });
+
+    allAppointments.forEach((a) => {
+      const u = a.patientId ? userMap.get(a.patientId.toString()) : null;
+      if (!a.patientName || a.patientName === 'Patient') {
+        a.patientName = u?.name || 'Verified Patient';
+      }
+      if (!a.patientAge && (u?.age || u?.profile?.age)) {
+        a.patientAge = u.age || u.profile.age;
+      }
+      if (!a.patientGender && (u?.gender || u?.profile?.gender)) {
+        a.patientGender = u.gender || u.profile.gender;
+      }
+    });
 
     // Today's appointments (or recent appointments if today has none in dev/seed)
     let todaysAppointments = allAppointments.filter((a) => {
-      const apptDate = new Date(a.startTime);
+      const apptDate = new Date(a.startTime || a.scheduledDate);
       return apptDate >= startOfDay && apptDate <= endOfDay;
     });
 
@@ -45,20 +72,21 @@ export const getTherapistDashboard = async (req, res) => {
 
     const totalCount = todaysAppointments.length || allAppointments.length || 0;
     const completedCount = todaysAppointments.filter((a) =>
-      ['COMPLETED', 'DOCUMENTED', 'DOCUMENTATION_PENDING'].includes(a.status)
+      ['COMPLETED', 'DOCUMENTED', 'DOCUMENTATION_PENDING', 'completed', 'documented'].includes(a.status)
     ).length;
     const remainingCount = Math.max(0, totalCount - completedCount);
     const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
     // Determine next appointment (only pending / in-progress appointments)
     const nextApptDoc =
-      todaysAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD'].includes(a.status)) ||
-      allAppointments.find((a) => new Date(a.startTime) > now && ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD'].includes(a.status)) ||
+      todaysAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
+      allAppointments.find((a) => new Date(a.startTime) > now && ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
+      allAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
       null;
 
     let nextAppointment = null;
     if (nextApptDoc) {
-      const apptTime = new Date(nextApptDoc.startTime);
+      const apptTime = new Date(nextApptDoc.startTime || nextApptDoc.scheduledDate || now);
       const diffMs = apptTime.getTime() - now.getTime();
       const minutesUntil = Math.max(0, Math.round(diffMs / (60 * 1000)));
 
@@ -79,12 +107,17 @@ export const getTherapistDashboard = async (req, res) => {
 
     // Pending tasks based on actual data
     const pendingDocumentationCount = allAppointments.filter((a) =>
-      ['DOCUMENTATION_PENDING'].includes(a.status)
+      ['DOCUMENTATION_PENDING', 'IN_PROGRESS', 'in_progress'].includes(a.status)
     ).length;
 
     // Active programs count
     const activeProgramsCount = await PatientProgram.countDocuments({
+      $or: [
+        { therapistId: { $in: therapistIds } },
+        { assignedBy: { $in: therapistIds } },
+      ],
       status: 'active',
+      isDeleted: false,
     }).catch(() => 0);
 
     // Daily Timeline
@@ -103,12 +136,19 @@ export const getTherapistDashboard = async (req, res) => {
       };
     });
 
+    // Resolve Therapist Name
+    let therapistDisplayName = req.user?.name;
+    if (!therapistDisplayName || therapistDisplayName === 'Therapist' || therapistDisplayName.trim() === '') {
+      const tUser = userMap.get(therapistId.toString()) || (await fetchUsersByIds([therapistId]))[0];
+      if (tUser?.name) therapistDisplayName = tUser.name;
+    }
+
     res.json({
       success: true,
       data: {
         therapist: {
           id: therapistId,
-          name: req.user?.name || 'Dr. Sagar Patil',
+          name: therapistDisplayName || 'Dr. Specialist',
           regNumber: 'PT-3821',
         },
         overview: {
@@ -119,7 +159,7 @@ export const getTherapistDashboard = async (req, res) => {
           nextAppointment,
         },
         pendingTasks: {
-          pendingDocumentationCount: pendingDocumentationCount,
+          pendingDocumentationCount,
           pendingReportReviewsCount: 0,
           pendingProgramUpdatesCount: 0,
         },
@@ -156,8 +196,9 @@ export const getAppointmentClinicalContext = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found' } });
     }
 
-    // Authorization check
-    const isTherapistAssigned = appointment.therapistId?.toString() === userId;
+    // Authorization check with linked therapist IDs
+    const therapistIds = await resolveTherapistIds(userId);
+    const isTherapistAssigned = therapistIds.includes(appointment.therapistId?.toString()) || appointment.therapistId?.toString() === userId;
     const isPatient = appointment.patientId?.toString() === userId;
     const isAdmin = ['clinic_admin', 'super_admin'].includes(userRole);
 

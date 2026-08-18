@@ -4,6 +4,7 @@ import AppointmentReschedule from '../models/AppointmentReschedule.js';
 import TherapistSchedule from '../models/TherapistSchedule.js';
 import { acquireSlotLock, releaseSlotLock } from '../utils/redis.js';
 import { publishEvent } from '../utils/rabbitmq.js';
+import { resolveTherapistIds } from '../utils/therapistHelper.js';
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -368,7 +369,9 @@ export const getMyAppointments = async (req, res) => {
       filter.patientId = userId ? userId.toString() : undefined;
     } else if (userRole === 'therapist') {
       if (patientId) filter.patientId = patientId.toString();
-      filter.therapistId = (therapistId || userId)?.toString();
+      const targetTherapistId = therapistId || userId;
+      const targetIds = await resolveTherapistIds(targetTherapistId);
+      filter.therapistId = { $in: targetIds };
     } else {
       if (patientId) filter.patientId = patientId.toString();
       if (therapistId) {

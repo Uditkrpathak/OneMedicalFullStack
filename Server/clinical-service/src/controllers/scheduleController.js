@@ -7,6 +7,7 @@ import SessionLog from '../models/SessionLog.js';
 import PainAssessment from '../models/PainAssessment.js';
 import { hasActiveCareRelationship } from '../utils/careRelationship.js';
 import { calculateTherapistAvailableSlots, DEFAULT_WEEKLY_WORKING_HOURS } from '../utils/availabilityEngine.js';
+import { resolveTherapistIds, fetchUsersByIds } from '../utils/therapistHelper.js';
 
 // ─── 1. GET MY SCHEDULE (THERAPIST) ───────────────────────────────────────────
 export const getMySchedule = async (req, res) => {
@@ -22,7 +23,8 @@ export const getMySchedule = async (req, res) => {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only therapists can access schedule management.' } });
     }
 
-    let schedule = await TherapistSchedule.findOne({ therapistId: requesterId.toString() });
+    const therapistIds = await resolveTherapistIds(requesterId);
+    let schedule = await TherapistSchedule.findOne({ therapistId: { $in: therapistIds } });
 
     if (!schedule) {
       // Initialize default schedule
@@ -262,18 +264,7 @@ export const getAssignedPatientsRoster = async (req, res) => {
     }
 
     // Resolve all linked IDs for this therapist (User ID + TherapistProfile ID)
-    const therapistIds = [requesterId.toString()];
-    try {
-      if (mongoose.Types.ObjectId.isValid(requesterId)) {
-        const objId = new mongoose.Types.ObjectId(requesterId);
-        const identityDb = mongoose.connection.useDb('identity_db');
-        const therapistProf = await identityDb.collection('therapistprofiles').findOne({ $or: [{ _id: objId }, { userId: objId }] });
-        if (therapistProf) {
-          if (therapistProf._id) therapistIds.push(therapistProf._id.toString());
-          if (therapistProf.userId) therapistIds.push(therapistProf.userId.toString());
-        }
-      }
-    } catch (e) {}
+    const therapistIds = await resolveTherapistIds(requesterId);
 
     // Find all patients with active care relationship
     const [assignedPrograms, appointments] = await Promise.all([
@@ -284,7 +275,7 @@ export const getAssignedPatientsRoster = async (req, res) => {
       Appointment.find({
         therapistId: { $in: therapistIds },
         isDeleted: false,
-      }).sort({ scheduledDate: -1, createdAt: -1 }).lean()
+      }).sort({ startTime: -1, scheduledDate: -1, createdAt: -1 }).lean()
     ]);
 
     const patientMap = new Map();
@@ -299,14 +290,14 @@ export const getAssignedPatientsRoster = async (req, res) => {
             userId: pId,
             name: a.patientName || '',
             phone: a.patientPhone || '',
-            condition: a.serviceName || a.service || a.category || a.notes || '',
+            condition: a.serviceName || a.service || a.category || a.chiefComplaint || a.notes || '',
             appointmentsCount: 0,
-            lastSessionDate: a.scheduledDate || a.date || a.createdAt,
+            lastSessionDate: a.startTime || a.scheduledDate || a.date || a.createdAt,
           });
         }
         patientMap.get(pId).appointmentsCount += 1;
-        if (!patientMap.get(pId).condition && (a.serviceName || a.service)) {
-          patientMap.get(pId).condition = a.serviceName || a.service;
+        if (!patientMap.get(pId).condition && (a.serviceName || a.service || a.chiefComplaint)) {
+          patientMap.get(pId).condition = a.serviceName || a.service || a.chiefComplaint;
         }
       }
     });
@@ -358,31 +349,21 @@ export const getAssignedPatientsRoster = async (req, res) => {
       });
     }
 
-    // Batch fetch real patient profiles from identity_db
+    // Batch fetch real patient profiles from identity service / DB
     const allPatientIds = Array.from(patientMap.keys());
-    const validObjIds = allPatientIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
-
-    if (validObjIds.length > 0) {
+    if (allPatientIds.length > 0) {
       try {
-        const identityDb = mongoose.connection.useDb('identity_db');
-        const [users, patientProfiles] = await Promise.all([
-          identityDb.collection('users').find({ _id: { $in: validObjIds } }).toArray(),
-          identityDb.collection('patientprofiles').find({ $or: [{ _id: { $in: validObjIds } }, { userId: { $in: validObjIds } }] }).toArray(),
-        ]);
-
+        const users = await fetchUsersByIds(allPatientIds);
         const userMap = new Map();
-        users.forEach(u => userMap.set(u._id.toString(), u));
-
-        const profileMap = new Map();
-        patientProfiles.forEach(p => {
-          if (p._id) profileMap.set(p._id.toString(), p);
-          if (p.userId) profileMap.set(p.userId.toString(), p);
+        users.forEach(u => {
+          const uId = u._id?.toString() || u.id?.toString() || u.userId?.toString();
+          if (uId) userMap.set(uId, u);
         });
 
         // Merge real user data into patientMap
         for (const [pId, patientData] of patientMap.entries()) {
           const userDoc = userMap.get(pId);
-          const profDoc = profileMap.get(pId) || (userDoc ? profileMap.get(userDoc._id.toString()) : null);
+          const profDoc = userDoc?.profile || userDoc;
 
           const realName = userDoc?.name || profDoc?.name || patientData.name;
           const realPhone = userDoc?.phoneNumber || profDoc?.phone || profDoc?.phoneNumber || patientData.phone;
@@ -450,10 +431,13 @@ export const getPatientClinicalOverview = async (req, res) => {
       PainAssessment.find({ patientId: patientId.toString(), isDeleted: false }).sort({ date: -1, recordedAt: -1 }).limit(10).lean(),
       Appointment.find({
         patientId: patientId.toString(),
-        appointmentDate: { $gte: new Date() },
-        status: { $in: ['CONFIRMED', 'SCHEDULED', 'confirmed', 'scheduled'] },
+        $or: [
+          { startTime: { $gte: new Date() } },
+          { appointmentDate: { $gte: new Date() } }
+        ],
+        status: { $in: ['CONFIRMED', 'SCHEDULED', 'confirmed', 'scheduled', 'IN_PROGRESS'] },
         isDeleted: false
-      }).sort({ appointmentDate: 1, appointmentTime: 1 }).limit(3).lean()
+      }).sort({ startTime: 1, appointmentDate: 1, appointmentTime: 1 }).limit(3).lean()
     ]);
 
     const completedCount = activeProgram?.completedSessionsCount || sessionLogs.filter(s => s.status === 'completed').length;
@@ -503,8 +487,9 @@ export const getConsultationQueue = async (req, res) => {
     }
 
     const { date, status } = req.query;
+    const therapistIds = await resolveTherapistIds(requesterId);
     const filter = {
-      therapistId: requesterId.toString(),
+      therapistId: { $in: therapistIds },
       isDeleted: false
     };
 
@@ -517,29 +502,50 @@ export const getConsultationQueue = async (req, res) => {
     if (date) {
       const startOfDay = new Date(`${date}T00:00:00.000Z`);
       const endOfDay = new Date(`${date}T23:59:59.999Z`);
-      filter.appointmentDate = { $gte: startOfDay, $lte: endOfDay };
+      filter.$or = [
+        { appointmentDate: { $gte: startOfDay, $lte: endOfDay } },
+        { startTime: { $gte: startOfDay, $lte: endOfDay } },
+      ];
     }
 
     const appointments = await Appointment.find(filter)
-      .sort({ appointmentDate: 1, appointmentTime: 1, startTime: 1, createdAt: 1 })
+      .sort({ startTime: 1, appointmentDate: 1, appointmentTime: 1, createdAt: 1 })
       .lean();
 
-    const formattedQueue = appointments.map(appt => ({
-      appointmentId: appt._id,
-      id: appt._id,
-      patient: {
-        id: appt.patientId,
-        name: appt.patientName || `Patient ${String(appt.patientId).slice(-4)}`,
-        phone: appt.patientPhone || '',
-      },
-      scheduledAt: appt.appointmentDate,
-      time: appt.appointmentTime || appt.time || appt.startTime || '09:00',
-      status: appt.status,
-      consultationType: appt.consultationType || 'VIDEO',
-      roomReady: appt.status === 'CONFIRMED' || appt.status === 'IN_PROGRESS',
-      roomId: appt._id.toString(),
-      createdAt: appt.createdAt,
-    }));
+    // Enrich missing patient names
+    const patientIds = Array.from(new Set(appointments.map(a => a.patientId).filter(Boolean)));
+    const users = await fetchUsersByIds(patientIds);
+    const userMap = new Map();
+    users.forEach(u => {
+      const uId = u._id?.toString() || u.id?.toString() || u.userId?.toString();
+      if (uId) userMap.set(uId, u);
+    });
+
+    const formattedQueue = appointments.map(appt => {
+      const u = appt.patientId ? userMap.get(appt.patientId.toString()) : null;
+      const patientName = appt.patientName || u?.name || `Patient ${String(appt.patientId).slice(-4)}`;
+      const timeStr = appt.startTime
+        ? new Date(appt.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : (appt.appointmentTime || appt.time || '09:00 AM');
+
+      return {
+        appointmentId: appt._id,
+        id: appt._id,
+        patient: {
+          id: appt.patientId,
+          name: patientName,
+          phone: appt.patientPhone || u?.phoneNumber || u?.phone || '',
+        },
+        scheduledAt: appt.startTime || appt.appointmentDate,
+        time: timeStr,
+        condition: appt.serviceName || appt.chiefComplaint || 'Physical Rehabilitation',
+        status: appt.status,
+        consultationType: appt.appointmentType === 'telehealth' || appt.appointmentPlace === 'VIDEO' ? 'VIDEO' : 'CLINIC',
+        roomReady: ['CONFIRMED', 'IN_PROGRESS', 'confirmed', 'in_progress'].includes(appt.status),
+        roomId: appt._id.toString(),
+        createdAt: appt.createdAt,
+      };
+    });
 
     res.json({
       success: true,

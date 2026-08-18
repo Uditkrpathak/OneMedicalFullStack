@@ -35,43 +35,83 @@ export default function TherapistScheduleScreen({ navigation }) {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [consultTypeFilter, setConsultTypeFilter] = useState('ALL');
 
-  // Generate 7-day selector dates
-  const weekDays = [
-    { day: 'MON', date: '23', full: 'Monday, Oct 23' },
-    { day: 'TUE', date: '24', full: 'Tuesday, Oct 24' },
-    { day: 'WED', date: '25', full: 'Wednesday, Oct 25' },
-    { day: 'THU', date: '26', full: 'Thursday, Oct 26' },
-    { day: 'FRI', date: '27', full: 'Friday, Oct 27' },
-    { day: 'SAT', date: '28', full: 'Saturday, Oct 28' },
-    { day: 'SUN', date: '29', full: 'Sunday, Oct 29' },
-  ];
+  const generateWeekDays = () => {
+    const list = [];
+    const dayNames = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fullDayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now);
+      d.setDate(now.getDate() + i);
+      const iso = d.toISOString().split('T')[0];
+      list.push({
+        iso,
+        day: dayNames[d.getDay()],
+        date: String(d.getDate()),
+        full: `${fullDayNames[d.getDay()]}, ${monthNames[d.getMonth()]} ${d.getDate()}`,
+        isToday: i === 0,
+      });
+    }
+    return list;
+  };
+
+  const weekDays = generateWeekDays();
 
   const fetchSchedule = async () => {
     if (!token) return;
     try {
-      const res = await fetch(`${API_URL}/therapists/me/dashboard`, {
+      const selectedDay = weekDays[selectedDateIndex];
+      const query = selectedDay?.iso ? `?date=${selectedDay.iso}` : '';
+
+      const res = await fetch(`${API_URL}/therapists/appointments/queue${query}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
-      if (json.success && json.data) {
-        const list = (json.data.dailyTimeline || []).map((a) => {
+
+      if (json.success && (json.data?.appointments || json.appointments) && (json.data?.appointments || json.appointments).length > 0) {
+        const queue = json.data?.appointments || json.appointments || [];
+        const list = queue.map((a) => {
           const status = a.status || 'CONFIRMED';
-          const type = a.appointmentType || (a.condition?.toLowerCase().includes('online') ? 'telehealth' : 'clinic_visit');
+          const type = a.consultationType === 'VIDEO' ? 'telehealth' : 'clinic_visit';
           return {
-            id: a.id || a._id,
-            time: a.time,
-            patientName: a.patientName,
+            id: a.id || a.appointmentId || a._id,
+            time: a.time || '10:00 AM',
+            patientName: a.patient?.name || a.patientName || 'Patient',
             condition: a.condition || 'Physical Rehabilitation',
-            sessionInfo: `${a.time} — 45m session`,
+            sessionInfo: `${a.time || '10:00 AM'} — 45m session`,
             status,
             type,
           };
         });
         setAppointments(list);
       } else {
-        setAppointments([]);
+        // Fallback to dashboard daily timeline
+        const dashRes = await fetch(`${API_URL}/therapists/me/dashboard`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const dashJson = await dashRes.json();
+        if (dashJson.success && dashJson.data?.dailyTimeline) {
+          const list = dashJson.data.dailyTimeline.map((a) => {
+            const status = a.status || 'CONFIRMED';
+            const type = a.appointmentType || 'clinic_visit';
+            return {
+              id: a.id || a._id,
+              time: a.time || '10:00 AM',
+              patientName: a.patientName || 'Patient',
+              condition: a.condition || 'Physical Rehabilitation',
+              sessionInfo: `${a.time} — 45m session`,
+              status,
+              type,
+            };
+          });
+          setAppointments(list);
+        } else {
+          setAppointments([]);
+        }
       }
     } catch (err) {
+      console.warn('[TherapistSchedule] fetch error:', err.message);
       setAppointments([]);
     } finally {
       setLoading(false);
@@ -82,7 +122,7 @@ export default function TherapistScheduleScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       fetchSchedule();
-    }, [token])
+    }, [token, selectedDateIndex])
   );
 
   const onRefresh = () => {

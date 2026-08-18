@@ -55,25 +55,29 @@ export default function TherapistDashboardScreen({ navigation }) {
   };
 
   const overview = dashboardData?.overview || {
-    totalAppointments: 12,
-    completedAppointments: 4,
-    remainingAppointments: 8,
-    completionPercentage: 33,
+    totalAppointments: 0,
+    completedAppointments: 0,
+    remainingAppointments: 0,
+    completionPercentage: 0,
     nextAppointment: null,
   };
 
   const nextAppt = overview.nextAppointment;
   const pendingTasks = dashboardData?.pendingTasks || {
-    pendingDocumentationCount: 3,
-    pendingReportReviewsCount: 5,
-    pendingProgramUpdatesCount: 2,
+    pendingDocumentationCount: 0,
+    pendingReportReviewsCount: 0,
+    pendingProgramUpdatesCount: 0,
   };
   const dailyTimeline = dashboardData?.dailyTimeline || [];
   const metrics = dashboardData?.metrics || {
-    seenTodayCount: 4,
-    avgSessionDurationMins: 45,
-    activeProgramsCount: 18,
+    seenTodayCount: 0,
+    avgSessionDurationMins: 0,
+    activeProgramsCount: 0,
   };
+
+  const therapistDisplayName = user?.name || dashboardData?.therapist?.name || 'Doctor';
+  const therapistInitial = therapistDisplayName.replace(/^Dr\.?\s*/i, '').charAt(0).toUpperCase() || 'D';
+  const therapistFirstName = therapistDisplayName.replace(/^Dr\.?\s*/i, '').split(' ')[0] || 'Doctor';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -81,18 +85,16 @@ export default function TherapistDashboardScreen({ navigation }) {
       <View style={styles.topHeader}>
         <View style={styles.userProfileRow}>
           <View style={styles.avatarBox}>
-            <Text style={styles.avatarText}>
-              {user?.name ? user.name.replace(/^Dr\.?\s*/i, '').charAt(0).toUpperCase() : 'S'}
-            </Text>
+            <Text style={styles.avatarText}>{therapistInitial}</Text>
           </View>
           <View>
             <Text style={styles.greetingTitle}>
-              Good Morning, {user?.name ? user.name.replace(/^Dr\.?\s*/i, '').split(' ')[0] : 'Sagar'} 👋
+              Good Morning, {therapistFirstName} 👋
             </Text>
             <Text style={styles.greetingSub}>
               {overview.remainingAppointments === 0 && overview.completedAppointments > 0
                 ? `All ${overview.completedAppointments} Appointments Completed Today! 🎉`
-                : `Ready for your ${overview.remainingAppointments || overview.totalAppointments || 0} Appointments`}
+                : (overview.totalAppointments > 0 ? `Ready for your ${overview.remainingAppointments || overview.totalAppointments} Appointments` : 'No upcoming appointments scheduled today')}
             </Text>
           </View>
         </View>
@@ -107,6 +109,14 @@ export default function TherapistDashboardScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {loading && !dashboardData ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#003D9B" />
+          <Text style={{ marginTop: 12, color: '#64748b', fontSize: 13, fontWeight: '600' }}>
+            Loading specialist dashboard...
+          </Text>
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -396,6 +406,7 @@ export default function TherapistDashboardScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

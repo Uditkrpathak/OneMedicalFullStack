@@ -1,6 +1,7 @@
 import Appointment from '../models/Appointment.js';
 import PatientProgram from '../models/PatientProgram.js';
 import { logAudit } from './audit.js';
+import { resolveTherapistIds } from './therapistHelper.js';
 
 /**
  * Checks whether an active or valid care relationship exists between a therapist and a patient.
@@ -8,23 +9,23 @@ import { logAudit } from './audit.js';
 export const hasActiveCareRelationship = async (therapistId, patientId) => {
   if (!therapistId || !patientId) return false;
 
+  const therapistIds = await resolveTherapistIds(therapistId);
+
   // 1. Check if the therapist has any booked/confirmed/completed appointment with this patient
   const appointment = await Appointment.findOne({
-    therapistId: therapistId.toString(),
+    therapistId: { $in: therapistIds },
     patientId: patientId.toString(),
     status: { $in: ['CONFIRMED', 'HELD', 'COMPLETED', 'SCHEDULED', 'IN_PROGRESS', 'confirmed', 'completed', 'scheduled', 'in_progress', 'rescheduled', 'hold'] },
     isDeleted: false
-
   });
 
   if (appointment) return true;
 
-
   // 2. Check if therapist has an active or assigned PatientProgram for this patient
   const patientProgram = await PatientProgram.findOne({
     $or: [
-      { therapistId: therapistId.toString() },
-      { assignedBy: therapistId.toString() }
+      { therapistId: { $in: therapistIds } },
+      { assignedBy: { $in: therapistIds } }
     ],
     patientId: patientId.toString(),
     isDeleted: false
