@@ -1429,13 +1429,17 @@ export const publicBooking = async (req, res) => {
       });
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
+    // Extract last 10 digits regardless of +91, 91, 0, or spaces
+    const digitsOnly = phone.replace(/\D/g, '');
+    const cleanPhone = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+    if (cleanPhone.length !== 10) {
       return res.status(400).json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Please provide a valid 10-digit phone number.' },
+        error: { code: 'VALIDATION_ERROR', message: 'Please provide a valid 10-digit mobile number.' },
       });
     }
+
+    const formattedPhone = `+91 ${cleanPhone.slice(0, 5)} ${cleanPhone.slice(5)}`;
 
     // Resolve therapist info if provided
     let resolvedTherapistName = 'Specialist Team';
@@ -1460,7 +1464,7 @@ export const publicBooking = async (req, res) => {
     // Store consultation lead with status PENDING
     const lead = await ConsultationLead.create({
       name: name.trim(),
-      phone: phone.trim(),
+      phone: formattedPhone,
       email: email ? email.trim().toLowerCase() : '',
       therapistId: resolvedTherapistId,
       therapistName: resolvedTherapistName,
