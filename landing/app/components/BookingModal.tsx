@@ -19,10 +19,7 @@ interface BookingModalProps {
 }
 
 const DEFAULT_THERAPISTS: TherapistOption[] = [
-  { id: 'doc_arjun_mehta', name: 'Dr. Arjun Mehta', specialization: 'Senior Physiotherapist • 12 yrs exp' },
-  { id: 'doc_ananya_iyer', name: 'Dr. Ananya Iyer', specialization: 'Senior MSK • 8 yrs exp' },
-  { id: 'doc_priya_sharma', name: 'Dr. Priya Sharma', specialization: 'Neurological Specialist • 10 yrs exp' },
-  { id: 'doc_rohan_verma', name: 'Dr. Rohan Verma', specialization: 'Sports Lead • 14 yrs exp' },
+  { id: 'doc_ananya_sharma', name: 'Dr. Ananya Sharma', specialization: 'Senior Musculoskeletal & Sports Specialist • 10 yrs exp' },
 ];
 
 export default function BookingModal({

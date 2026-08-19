@@ -28,49 +28,16 @@ interface SpecialistsSectionProps {
 
 const DEFAULT_SPECIALISTS: SpecialistItem[] = [
   {
-    id: 'doc_arjun_mehta',
-    name: 'Dr. Arjun Mehta',
-    title: 'Senior Physiotherapist',
-    rating: '4.9',
-    exp: '12 years experience',
-    languages: 'English & Hindi',
-    availability: 'Next Available: Today',
-    topBadge: 'Top Specialist',
-    image:
-      'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
-  },
-  {
-    id: 'doc_ananya_iyer',
-    name: 'Dr. Ananya Iyer',
-    title: 'Senior MSK Physiotherapist',
-    rating: '4.8',
-    exp: '8 years experience',
-    languages: 'English & Tamil',
-    availability: 'Next Available: Tomorrow',
-    image:
-      'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
-  },
-  {
-    id: 'doc_priya_sharma',
-    name: 'Dr. Priya Sharma',
-    title: 'Neurological Specialist',
+    id: 'doc_ananya_sharma',
+    name: 'Dr. Ananya Sharma',
+    title: 'Senior Musculoskeletal Specialist',
     rating: '4.9',
     exp: '10 years experience',
-    languages: 'English & Hindi',
+    languages: 'English, Hindi & Kannada',
     availability: 'Next Available: Today',
+    topBadge: 'Lead Specialist',
     image:
       'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
-  },
-  {
-    id: 'doc_rohan_verma',
-    name: 'Dr. Rohan Verma',
-    title: 'Sports Rehabilitation Lead',
-    rating: '4.9',
-    exp: '14 years experience',
-    languages: 'English & Kannada',
-    availability: 'Next Available: Tomorrow',
-    image:
-      'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
   },
 ];
 
