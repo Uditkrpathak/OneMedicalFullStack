@@ -255,6 +255,10 @@ const makeServiceProxy = (target, pathPrefix) => {
     changeOrigin: true,
     pathRewrite: (path) => `${segment}${path}`,
     on: {
+      proxyReq: (proxyReq, req) => {
+        const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod';
+        proxyReq.setHeader('x-internal-key', internalKey);
+      },
       error: (err, req, res) => {
         console.error(`[Gateway] Proxy error → ${target}: ${err.message}`);
         if (!res.headersSent) {
@@ -279,6 +283,10 @@ const makeProxy = (target) =>
     target,
     changeOrigin: true,
     on: {
+      proxyReq: (proxyReq, req) => {
+        const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod';
+        proxyReq.setHeader('x-internal-key', internalKey);
+      },
       error: (err, req, res) => {
         console.error(`[Gateway] Proxy error → ${target}: ${err.message}`);
         if (!res.headersSent) {

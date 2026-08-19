@@ -3,13 +3,45 @@ import mongoose from 'mongoose';
 import Appointment from '../models/Appointment.js';
 import PatientProgram from '../models/PatientProgram.js';
 
+const isPublicClinicalRoute = (method, path, originalUrl) => {
+  if (method === 'OPTIONS') return true;
+  const p = (path || '').toLowerCase();
+  const orig = (originalUrl || '').toLowerCase();
+
+  const isPublicPath = (target) => {
+    return (
+      target === '/health' ||
+      target === '/healthz' ||
+      target === '/health/ready' ||
+      target.startsWith('/health/') ||
+      target === '/appointments/public-booking' ||
+      target === '/api/v1/appointments/public-booking' ||
+      target.startsWith('/availability') ||
+      target.startsWith('/api/v1/availability') ||
+      target === '/services' ||
+      target === '/api/v1/services'
+    );
+  };
+
+  return isPublicPath(p) || isPublicPath(orig);
+};
+
 export const authenticate = (req, res, next) => {
+  const isPublic = isPublicClinicalRoute(req.method, req.path, req.originalUrl);
+
   const authHeader = req.headers['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1]?.trim() : null;
+
+  if (isPublic) {
+    if (!token || token === 'null' || token === 'undefined') {
+      return next();
+    }
+  }
+
+  if (!token || token === 'null' || token === 'undefined') {
     return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header.' } });
   }
 
-  const token = authHeader.split(' ')[1];
   try {
     const accessSecret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'onemedical_jwt_access_secret_production_2026';
     let decoded;
@@ -29,6 +61,9 @@ export const authenticate = (req, res, next) => {
     req.headers['x-user-role'] = decoded.role;
     next();
   } catch (err) {
+    if (isPublic) {
+      return next();
+    }
     const isProd = process.env.NODE_ENV === 'production';
     const code = err.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
     const message = isProd
