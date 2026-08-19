@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Star,
   Clock,
@@ -10,60 +10,116 @@ import {
   Calendar,
 } from 'lucide-react';
 
-interface SpecialistsSectionProps {
-  onOpenBooking: (doctorName?: string) => void;
+interface SpecialistItem {
+  id: string;
+  name: string;
+  title: string;
+  rating: string;
+  exp: string;
+  languages: string;
+  availability: string;
+  topBadge?: string;
+  image: string;
 }
 
+interface SpecialistsSectionProps {
+  onOpenBooking: (doctorId?: string, doctorName?: string) => void;
+}
+
+const DEFAULT_SPECIALISTS: SpecialistItem[] = [
+  {
+    id: 'doc_arjun_mehta',
+    name: 'Dr. Arjun Mehta',
+    title: 'Senior Physiotherapist',
+    rating: '4.9',
+    exp: '12 years experience',
+    languages: 'English & Hindi',
+    availability: 'Next Available: Today',
+    topBadge: 'Top Specialist',
+    image:
+      'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
+  },
+  {
+    id: 'doc_ananya_iyer',
+    name: 'Dr. Ananya Iyer',
+    title: 'Senior MSK Physiotherapist',
+    rating: '4.8',
+    exp: '8 years experience',
+    languages: 'English & Tamil',
+    availability: 'Next Available: Tomorrow',
+    image:
+      'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
+  },
+  {
+    id: 'doc_priya_sharma',
+    name: 'Dr. Priya Sharma',
+    title: 'Neurological Specialist',
+    rating: '4.9',
+    exp: '10 years experience',
+    languages: 'English & Hindi',
+    availability: 'Next Available: Today',
+    image:
+      'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
+  },
+  {
+    id: 'doc_rohan_verma',
+    name: 'Dr. Rohan Verma',
+    title: 'Sports Rehabilitation Lead',
+    rating: '4.9',
+    exp: '14 years experience',
+    languages: 'English & Kannada',
+    availability: 'Next Available: Tomorrow',
+    image:
+      'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
+  },
+];
+
+const DEFAULT_DOCTOR_IMAGES = [
+  'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
+  'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
+  'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
+  'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
+];
+
 export default function SpecialistsSection({ onOpenBooking }: SpecialistsSectionProps) {
+  const [specialists, setSpecialists] = useState<SpecialistItem[]>(DEFAULT_SPECIALISTS);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  const specialists = [
-    {
-      id: 1,
-      name: 'Dr. Arjun Mehta',
-      title: 'Senior Physiotherapist',
-      rating: '4.9',
-      exp: '12 years experience',
-      languages: 'English & Hindi',
-      availability: 'Next Available: Today',
-      topBadge: 'Top Available',
-      image:
-        'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
-    },
-    {
-      id: 2,
-      name: 'Dr. Ananya Iyer',
-      title: 'Senior MSK Physiotherapist',
-      rating: '4.8',
-      exp: '8 years experience',
-      languages: 'English & Tamil',
-      availability: 'Next Available: Tomorrow',
-      image:
-        'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
-    },
-    {
-      id: 3,
-      name: 'Dr. Priya Sharma',
-      title: 'Neurological Specialist',
-      rating: '4.9',
-      exp: '10 years experience',
-      languages: 'English & Hindi',
-      availability: 'Next Available: Wednesday',
-      image:
-        'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
-    },
-    {
-      id: 4,
-      name: 'Dr. Rohan Verma',
-      title: 'Sports Rehabilitation Lead',
-      rating: '4.9',
-      exp: '14 years experience',
-      languages: 'English & Kannada',
-      availability: 'Next Available: Thursday',
-      image:
-        'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
-    },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTherapists = async () => {
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+        const res = await fetch(`${backendUrl}/therapists`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
+          const mapped: SpecialistItem[] = data.data.map((t: any, idx: number) => ({
+            id: t._id || t.userId || `doc_${idx}`,
+            name: t.name || t.user?.name || 'Dr. Specialist',
+            title: t.specializations?.length
+              ? t.specializations.join(', ')
+              : t.bio || 'Physiotherapy Specialist',
+            rating: Number(t.ratingAvg || (4.8 + (idx % 3) * 0.1)).toFixed(1),
+            exp: `${t.experienceYears || (8 + (idx * 2))} years experience`,
+            languages: t.languages?.length ? t.languages.join(' & ') : 'English & Hindi',
+            availability: 'Next Available: Today',
+            topBadge: idx === 0 ? 'Top Specialist' : undefined,
+            image: t.profileImageUrl || t.avatarUrl || DEFAULT_DOCTOR_IMAGES[idx % DEFAULT_DOCTOR_IMAGES.length],
+          }));
+          setSpecialists(mapped);
+        }
+      } catch {
+        // Keep pristine fallback specialists
+      }
+    };
+
+    fetchTherapists();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleNext = () => {
     setCurrentIndex((prev) => (prev + 1) % specialists.length);
@@ -72,6 +128,15 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
   const handlePrev = () => {
     setCurrentIndex((prev) => (prev === 0 ? specialists.length - 1 : prev - 1));
   };
+
+  // Visible items based on current index
+  const visibleSpecialists = specialists.length <= 3
+    ? specialists
+    : [
+        specialists[currentIndex % specialists.length],
+        specialists[(currentIndex + 1) % specialists.length],
+        specialists[(currentIndex + 2) % specialists.length],
+      ];
 
   return (
     <section id="therapists" className="py-8 sm:py-12 bg-white relative">
@@ -93,17 +158,19 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
         {/* Carousel Wrapper */}
         <div className="relative">
           {/* Left Arrow */}
-          <button
-            onClick={handlePrev}
-            className="hidden lg:flex absolute -left-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 hover:text-[#003D9B] hover:scale-105 active:scale-95 items-center justify-center transition-all"
-            aria-label="Previous specialist"
-          >
-            <ChevronLeft size={16} />
-          </button>
+          {specialists.length > 3 && (
+            <button
+              onClick={handlePrev}
+              className="hidden lg:flex absolute -left-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 hover:text-[#003D9B] hover:scale-105 active:scale-95 items-center justify-center transition-all"
+              aria-label="Previous specialist"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          )}
 
           {/* Cards Grid / Display */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-left">
-            {specialists.slice(0, 3).map((doctor) => (
+            {visibleSpecialists.map((doctor) => (
               <div
                 key={doctor.id}
                 className="bg-white rounded-2xl p-4.5 border border-slate-100 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between group"
@@ -133,7 +200,7 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
                   <h3 className="text-[15px] font-bold text-[#051A3E]">
                     {doctor.name}
                   </h3>
-                  <div className="text-[11px] font-semibold text-[#003D9B] mb-2">
+                  <div className="text-[11px] font-semibold text-[#003D9B] mb-2 line-clamp-1">
                     {doctor.title}
                   </div>
 
@@ -145,7 +212,7 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Globe size={11} className="text-slate-400" />
-                      <span>{doctor.languages}</span>
+                      <span className="truncate">{doctor.languages}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-emerald-600 font-semibold">
                       <Calendar size={11} />
@@ -155,8 +222,8 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
                 </div>
 
                 <button
-                  onClick={() => onOpenBooking(doctor.name)}
-                  className="w-full py-2 rounded-xl bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white text-[11.5px] font-bold shadow-2xs transition-all"
+                  onClick={() => onOpenBooking(doctor.id, doctor.name)}
+                  className="w-full py-2 rounded-xl bg-[#003D9B] hover:bg-[#002e75] active:scale-98 text-white text-[11.5px] font-bold shadow-2xs transition-all cursor-pointer"
                 >
                   Book Session
                 </button>
@@ -165,13 +232,15 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
           </div>
 
           {/* Right Arrow */}
-          <button
-            onClick={handleNext}
-            className="hidden lg:flex absolute -right-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 hover:text-[#003D9B] hover:scale-105 active:scale-95 items-center justify-center transition-all"
-            aria-label="Next specialist"
-          >
-            <ChevronRight size={16} />
-          </button>
+          {specialists.length > 3 && (
+            <button
+              onClick={handleNext}
+              className="hidden lg:flex absolute -right-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-white border border-slate-200 shadow-sm text-slate-700 hover:text-[#003D9B] hover:scale-105 active:scale-95 items-center justify-center transition-all"
+              aria-label="Next specialist"
+            >
+              <ChevronRight size={16} />
+            </button>
+          )}
         </div>
 
         {/* Bottom Statistics Row */}

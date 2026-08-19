@@ -15,9 +15,17 @@ import {
   updateAppointmentStatus,
   patientCheckIn,
   therapistJoinSession,
+  publicBooking,
+  listConsultationLeads,
+  updateLeadStatus,
 } from '../controllers/bookingController.js';
 
 const router = express.Router();
+
+// ─── Public Landing Booking & Leads ───────────────────────────────────────────
+router.post('/appointments/public-booking',        publicBooking);        // Landing page booking form
+router.get('/appointments/leads',                 listConsultationLeads); // Consultation leads list
+router.patch('/appointments/leads/:id/status',     updateLeadStatus);     // Update lead status
 
 // ─── Authoritative Dashboard Aggregator ─────────────────────────────────────────
 router.get('/appointments/dashboard',              getAppointmentsDashboard);

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import Appointment from '../models/Appointment.js';
 import AppointmentReschedule from '../models/AppointmentReschedule.js';
 import TherapistSchedule from '../models/TherapistSchedule.js';
+import ConsultationLead from '../models/ConsultationLead.js';
 import { acquireSlotLock, releaseSlotLock } from '../utils/redis.js';
 import { publishEvent } from '../utils/rabbitmq.js';
 import { resolveTherapistIds } from '../utils/therapistHelper.js';
@@ -1393,6 +1394,190 @@ export const therapistJoinSession = async (req, res) => {
   } catch (err) {
     console.error('[therapistJoinSession] Error:', err);
     res.status(err.statusCode || 500).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+/**
+ * POST /appointments/public-booking
+ * Public web consultation lead / enquiry for landing page visitors
+ */
+export const publicBooking = async (req, res) => {
+  try {
+    const {
+      name,
+      phone,
+      email,
+      therapistId,
+      preferredDoctor,
+      serviceType = 'online',
+      date = '',
+      timeSlot = '',
+      notes = '',
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Full name is required.' },
+      });
+    }
+
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Phone number is required.' },
+      });
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Please provide a valid 10-digit phone number.' },
+      });
+    }
+
+    // Resolve therapist info if provided
+    let resolvedTherapistName = 'Specialist Team';
+    let resolvedTherapistId = null;
+
+    if (therapistId && therapistId !== 'undefined' && therapistId !== 'null') {
+      const therapistProfile = await fetchTherapistProfile(therapistId);
+      if (therapistProfile) {
+        resolvedTherapistName = therapistProfile.name || therapistProfile.user?.name || preferredDoctor || 'Dr. Specialist';
+        resolvedTherapistId = therapistProfile._id?.toString() || therapistProfile.userId?.toString() || therapistId;
+      } else if (preferredDoctor) {
+        resolvedTherapistName = preferredDoctor.includes('(') ? preferredDoctor.split('(')[0].trim() : preferredDoctor;
+        resolvedTherapistId = therapistId;
+      }
+    } else if (preferredDoctor) {
+      resolvedTherapistName = preferredDoctor.includes('(') ? preferredDoctor.split('(')[0].trim() : preferredDoctor;
+    }
+
+    const normService = (serviceType || '').toLowerCase();
+    const mode = normService === 'online' || normService === 'video' ? 'VIDEO' : normService === 'home' ? 'HOME' : 'CLINIC';
+
+    // Store consultation lead with status PENDING
+    const lead = await ConsultationLead.create({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email ? email.trim().toLowerCase() : '',
+      therapistId: resolvedTherapistId,
+      therapistName: resolvedTherapistName,
+      serviceType: 'INITIAL_ASSESSMENT',
+      appointmentPlace: mode,
+      preferredDate: date || '',
+      preferredTime: timeSlot || '',
+      notes: notes ? notes.trim() : '',
+      status: 'PENDING',
+      source: 'LANDING_PAGE',
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || '',
+      userAgent: req.headers['user-agent'] || '',
+    });
+
+    logAudit({
+      actorId: `lead_${cleanPhone.slice(-10)}`,
+      actorRole: 'patient',
+      action: 'PUBLIC_LANDING_LEAD_CREATED',
+      resourceType: 'ConsultationLead',
+      resourceId: lead._id,
+      afterState: {
+        status: 'PENDING',
+        patientName: lead.name,
+        therapistName: resolvedTherapistName,
+        preferredDate: date,
+        preferredTime: timeSlot,
+      },
+      req,
+    });
+
+    await publishEvent('clinical.consultation_lead_created', {
+      leadId: lead._id,
+      patientName: lead.name,
+      patientPhone: lead.phone,
+      patientEmail: lead.email,
+      therapistId: resolvedTherapistId,
+      therapistName: resolvedTherapistName,
+      preferredDate: date,
+      preferredTime: timeSlot,
+      source: 'landing_page',
+    }).catch(() => {});
+
+    res.status(201).json({
+      success: true,
+      message: 'Your consultation request has been received.',
+      data: {
+        leadId: lead._id,
+        patientName: lead.name,
+        therapistName: resolvedTherapistName,
+        preferredDate: lead.preferredDate,
+        preferredTime: lead.preferredTime,
+        appointmentPlace: lead.appointmentPlace,
+        status: 'PENDING',
+      },
+    });
+  } catch (err) {
+    console.error('[publicBooking] error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Unable to process consultation request. Please try again.' } });
+  }
+};
+
+/**
+ * GET /appointments/leads
+ * List landing page consultation leads (Staff / Admin)
+ */
+export const listConsultationLeads = async (req, res) => {
+  try {
+    const { status, search, limit = 50, page = 1 } = req.query;
+    const filter = {};
+    if (status && status !== 'All') filter.status = status;
+    if (search) {
+      const q = new RegExp(search, 'i');
+      filter.$or = [{ name: q }, { phone: q }, { email: q }, { therapistName: q }, { notes: q }];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [leads, total, pendingCount] = await Promise.all([
+      ConsultationLead.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      ConsultationLead.countDocuments(filter),
+      ConsultationLead.countDocuments({ status: 'PENDING' }),
+    ]);
+
+    res.json({
+      success: true,
+      data: leads,
+      summary: {
+        total,
+        pendingCount,
+      },
+      meta: { page: parseInt(page), limit: parseInt(limit), total },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+/**
+ * PATCH /appointments/leads/:id/status
+ * Update consultation lead status
+ */
+export const updateLeadStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    const lead = await ConsultationLead.findById(id);
+    if (!lead) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Consultation lead not found.' } });
+    }
+
+    if (status) lead.status = status;
+    if (notes) lead.notes = lead.notes ? `${lead.notes}\n[Update]: ${notes}` : notes;
+    await lead.save();
+
+    res.json({ success: true, data: lead });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 

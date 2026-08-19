@@ -5,7 +5,8 @@ import {
   Calendar, User, Plus, Search, Filter,
   Check, Bell, Upload, Download, List, Grid,
   ChevronDown, Send, Clock, Printer, FileText,
-  X, AlertCircle, CheckCircle2, ChevronRight, PlusCircle, RefreshCw
+  X, AlertCircle, CheckCircle2, ChevronRight, PlusCircle, RefreshCw,
+  Phone, Mail, Globe, ExternalLink, Sparkles, MessageSquare
 } from 'lucide-react';
 import { api } from '../../api/api.js';
 import { UserAvatar, Spinner, EmptyState } from '../../components/ui.jsx';
@@ -24,11 +25,14 @@ export default function AppointmentsPage() {
   });
 
   const [therapistsList, setTherapistsList] = useState([]);
+  const [leadsList, setLeadsList] = useState([]);
+  const [leadsSummary, setLeadsSummary] = useState({ total: 0, pendingCount: 0 });
+  const [updatingLeadId, setUpdatingLeadId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   // Search & Filter state
-  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE', 'COMPLETED', 'HOLDS_EXPIRED', 'CANCELLED', 'ALL'
+  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE', 'COMPLETED', 'HOLDS_EXPIRED', 'CANCELLED', 'ALL', 'WEBSITE_LEADS'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTherapist, setSelectedTherapist] = useState('All');
   const [selectedType, setSelectedType] = useState('All');
@@ -54,7 +58,7 @@ export default function AppointmentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [dashRes, therRes] = await Promise.allSettled([
+      const [dashRes, therRes, leadsRes] = await Promise.allSettled([
         api.getAppointmentsDashboard(token, {
           tab: activeTab,
           search: searchQuery,
@@ -63,6 +67,7 @@ export default function AppointmentsPage() {
           status: selectedStatus,
         }),
         api.listTherapists(token),
+        api.listConsultationLeads(token, { search: searchQuery }),
       ]);
 
       if (dashRes.status === 'rejected' || !dashRes.value?.data) {
@@ -73,6 +78,18 @@ export default function AppointmentsPage() {
 
       if (therRes.status === 'fulfilled' && Array.isArray(therRes.value?.data)) {
         setTherapistsList(therRes.value.data);
+      }
+
+      if (leadsRes.status === 'fulfilled' && Array.isArray(leadsRes.value?.data)) {
+        setLeadsList(leadsRes.value.data);
+        if (leadsRes.value?.summary) {
+          setLeadsSummary(leadsRes.value.summary);
+        } else {
+          setLeadsSummary({
+            total: leadsRes.value.data.length,
+            pendingCount: leadsRes.value.data.filter(l => l.status === 'PENDING').length,
+          });
+        }
       }
     } catch (err) {
       console.error('[AppointmentsPage] Error loading dashboard:', err);
@@ -158,6 +175,25 @@ export default function AppointmentsPage() {
       showToast('Schedule exported as CSV successfully!');
     } catch {
       showToast('Failed to export schedule.');
+    }
+  };
+
+  const handleUpdateLeadStatus = async (leadId, newStatus) => {
+    setUpdatingLeadId(leadId);
+    try {
+      await api.updateLeadStatus(token, leadId, { status: newStatus });
+      setLeadsList(prev => prev.map(l => l._id === leadId ? { ...l, status: newStatus } : l));
+      setLeadsSummary(prev => ({
+        ...prev,
+        pendingCount: newStatus === 'PENDING'
+          ? prev.pendingCount + 1
+          : Math.max(0, prev.pendingCount - (prev.pendingCount > 0 ? 1 : 0)),
+      }));
+      showToast(`Lead status updated to ${newStatus}`);
+    } catch (err) {
+      alert(err.message || 'Failed to update lead status.');
+    } finally {
+      setUpdatingLeadId(null);
     }
   };
 
@@ -313,6 +349,7 @@ export default function AppointmentsPage() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {[
                 { id: 'ACTIVE', label: 'Active & Confirmed', count: summary.activeConfirmed },
+                { id: 'WEBSITE_LEADS', label: 'Website Leads', count: leadsSummary.pendingCount || leadsList.filter(l => l.status === 'PENDING').length, isLead: true },
                 { id: 'COMPLETED', label: 'Completed', count: summary.completed },
                 { id: 'HOLDS_EXPIRED', label: 'Holds & Expired', count: summary.holdsExpired },
                 { id: 'CANCELLED', label: 'Cancelled', count: summary.cancelled },
@@ -325,13 +362,21 @@ export default function AppointmentsPage() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                       isActive
-                        ? 'bg-[#003882] text-white shadow-xs'
-                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                        ? tab.isLead
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'bg-[#003882] text-white shadow-xs'
+                        : tab.isLead && tab.count > 0
+                          ? 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300'
+                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
                     }`}
                   >
                     <span>{tab.label}</span>
                     <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
-                      isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : tab.isLead && tab.count > 0
+                          ? 'bg-amber-200/80 text-amber-900'
+                          : 'bg-slate-100 text-slate-500'
                     }`}>
                       {tab.count}
                     </span>
@@ -348,66 +393,192 @@ export default function AppointmentsPage() {
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Filter appointments..."
+                  placeholder={activeTab === 'WEBSITE_LEADS' ? 'Search website leads...' : 'Filter appointments...'}
                   className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
                 />
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Therapist Filter Dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setShowTherapistDropdown(!showTherapistDropdown)}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors"
-                  >
-                    <User size={13} className="text-slate-500" />
-                    <span>{selectedTherapist === 'All' ? 'Therapist' : selectedTherapist}</span>
-                    <ChevronDown size={12} className="text-slate-400" />
-                  </button>
-                  {showTherapistDropdown && (
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
-                      <button
-                        onClick={() => { setSelectedTherapist('All'); setShowTherapistDropdown(false); }}
-                        className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium"
-                      >
-                        All Therapists
-                      </button>
-                      {therapistsList.map(t => (
+              {activeTab !== 'WEBSITE_LEADS' && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Therapist Filter Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowTherapistDropdown(!showTherapistDropdown)}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <User size={13} className="text-slate-500" />
+                      <span>{selectedTherapist === 'All' ? 'Therapist' : selectedTherapist}</span>
+                      <ChevronDown size={12} className="text-slate-400" />
+                    </button>
+                    {showTherapistDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
                         <button
-                          key={t._id}
-                          onClick={() => { setSelectedTherapist(t.name || t.user?.name); setShowTherapistDropdown(false); }}
-                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium truncate"
+                          onClick={() => { setSelectedTherapist('All'); setShowTherapistDropdown(false); }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium"
                         >
-                          {t.name || t.user?.name}
+                          All Therapists
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        {therapistsList.map(t => (
+                          <button
+                            key={t._id}
+                            onClick={() => { setSelectedTherapist(t.name || t.user?.name); setShowTherapistDropdown(false); }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-slate-50 text-slate-700 font-medium truncate"
+                          >
+                            {t.name || t.user?.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                {/* View Mode Toggle Icons */}
-                <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
-                  <button
-                    onClick={() => setViewMode('list')}
-                    className={`p-1 rounded-lg transition-all ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                    title="List View"
-                  >
-                    <List size={14} />
-                  </button>
-                  <button
-                    onClick={() => setViewMode('grid')}
-                    className={`p-1 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
-                    title="Grid View"
-                  >
-                    <Grid size={14} />
-                  </button>
+                  {/* View Mode Toggle Icons */}
+                  <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`p-1 rounded-lg transition-all cursor-pointer ${viewMode === 'list' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                      title="List View"
+                    >
+                      <List size={14} />
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`p-1 rounded-lg transition-all cursor-pointer ${viewMode === 'grid' ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                      title="Grid View"
+                    >
+                      <Grid size={14} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* TABLE / GRID DISPLAY */}
             <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
-              {appointments.length === 0 ? (
+              {activeTab === 'WEBSITE_LEADS' ? (
+                /* ─── WEBSITE LEADS VIEW ─── */
+                leadsList.length === 0 ? (
+                  <EmptyState
+                    title="No website leads yet"
+                    subtitle="When prospective patients fill out the consultation form on the landing page, their requests will appear here instantly."
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                      <thead>
+                        <tr className="bg-slate-50/70 border-b border-slate-200/80">
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Patient Contact</th>
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Requested Specialist</th>
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Preferred Time</th>
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Patient Note</th>
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Status</th>
+                          <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {leadsList.map(lead => {
+                          const createdAt = new Date(lead.createdAt || Date.now());
+                          const dateStr = createdAt.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+                          const timeStr = createdAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                          const mode = lead.appointmentPlace || 'VIDEO';
+
+                          const statusColors = {
+                            PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
+                            CONTACTED: 'bg-blue-50 text-blue-700 border-blue-200',
+                            CONVERTED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            CLOSED: 'bg-slate-100 text-slate-600 border-slate-200',
+                          };
+
+                          return (
+                            <tr key={lead._id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="py-3.5 px-4">
+                                <div className="flex items-start gap-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 font-bold flex items-center justify-center text-xs shrink-0 mt-0.5">
+                                    {lead.name?.[0]?.toUpperCase() || 'L'}
+                                  </div>
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-900">{lead.name}</div>
+                                    <div className="text-[11px] text-slate-600 font-medium flex items-center gap-1.5 mt-0.5">
+                                      <a
+                                        href={`tel:${lead.phone}`}
+                                        className="text-blue-600 hover:underline flex items-center gap-1"
+                                      >
+                                        <Phone size={11} /> {lead.phone}
+                                      </a>
+                                      {lead.email && (
+                                        <span className="text-slate-400 truncate max-w-[140px]" title={lead.email}>
+                                          • {lead.email}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      Received: {dateStr} at {timeStr}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="text-xs font-bold text-slate-800">{lead.therapistName || 'Specialist Team'}</div>
+                                <span className={`inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full border ${
+                                  mode === 'VIDEO'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200/60'
+                                    : mode === 'HOME'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60'
+                                    : 'bg-cyan-50 text-cyan-700 border-cyan-200/60'
+                                }`}>
+                                  {mode === 'VIDEO' ? 'Online Video' : mode === 'HOME' ? 'Home Visit' : 'Clinic Visit'}
+                                </span>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <div className="text-xs font-bold text-slate-800">
+                                  {lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Flexible'}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  {lead.preferredTime || 'Preferred slot'}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4 max-w-[180px]">
+                                <div className="text-xs text-slate-600 line-clamp-2" title={lead.notes}>
+                                  {lead.notes || '—'}
+                                </div>
+                              </td>
+
+                              <td className="py-3.5 px-4">
+                                <select
+                                  value={lead.status || 'PENDING'}
+                                  disabled={updatingLeadId === lead._id}
+                                  onChange={e => handleUpdateLeadStatus(lead._id, e.target.value)}
+                                  className={`text-[11px] font-bold rounded-lg px-2 py-1 border focus:outline-none cursor-pointer ${
+                                    statusColors[lead.status] || 'bg-slate-50 text-slate-600 border-slate-200'
+                                  }`}
+                                >
+                                  <option value="PENDING">● PENDING</option>
+                                  <option value="CONTACTED">● CONTACTED</option>
+                                  <option value="CONVERTED">● CONVERTED</option>
+                                  <option value="CLOSED">● CLOSED</option>
+                                </select>
+                              </td>
+
+                              <td className="py-3.5 px-4 text-right">
+                                <button
+                                  onClick={() => navigate('/appointments/create')}
+                                  className="px-2.5 py-1 bg-[#003882] hover:bg-[#002b66] text-white text-[11px] font-bold rounded-lg shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  title="Schedule full appointment for this lead"
+                                >
+                                  <span>Book</span>
+                                  <ExternalLink size={11} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : appointments.length === 0 ? (
                 <EmptyState
                   title="No appointments found"
                   subtitle={searchQuery ? 'No appointments match the search filters.' : 'There are currently no appointments in this category.'}

@@ -149,6 +149,8 @@ const PUBLIC_PREFIXES = [
   '/api/v1/healthz',
   '/api/v1/auth',
   '/auth',
+  '/api/v1/appointments/public-booking',
+  '/appointments/public-booking',
   '/api/v1/therapists',
   '/therapists',
   '/api/v1/availability',

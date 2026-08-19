@@ -17,17 +17,21 @@ import BookingModal from './components/BookingModal';
 
 export default function LandingPage() {
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | undefined>(undefined);
   const [selectedDoctor, setSelectedDoctor] = useState<string | undefined>(undefined);
   const [selectedPlan, setSelectedPlan] = useState<string | undefined>(undefined);
 
-  const handleOpenBooking = (doctorOrPlan?: string) => {
-    if (doctorOrPlan?.startsWith('Dr.')) {
-      setSelectedDoctor(doctorOrPlan);
+  const handleOpenBooking = (doctorIdOrPlan?: string, doctorName?: string) => {
+    if (doctorIdOrPlan && (doctorIdOrPlan.startsWith('doc_') || doctorIdOrPlan.startsWith('Dr.') || doctorName)) {
+      setSelectedDoctorId(doctorIdOrPlan.startsWith('doc_') || !doctorIdOrPlan.startsWith('Dr.') ? doctorIdOrPlan : undefined);
+      setSelectedDoctor(doctorName || (doctorIdOrPlan.startsWith('Dr.') ? doctorIdOrPlan : undefined));
       setSelectedPlan(undefined);
-    } else if (doctorOrPlan) {
-      setSelectedPlan(doctorOrPlan);
+    } else if (doctorIdOrPlan) {
+      setSelectedPlan(doctorIdOrPlan);
+      setSelectedDoctorId(undefined);
       setSelectedDoctor(undefined);
     } else {
+      setSelectedDoctorId(undefined);
       setSelectedDoctor(undefined);
       setSelectedPlan(undefined);
     }
@@ -66,7 +70,7 @@ export default function LandingPage() {
       <ServicesSection onOpenBooking={() => handleOpenBooking()} />
 
       {/* 7. Meet Our Specialists Carousel */}
-      <SpecialistsSection onOpenBooking={(doctor) => handleOpenBooking(doctor)} />
+      <SpecialistsSection onOpenBooking={(docId, docName) => handleOpenBooking(docId, docName)} />
 
       {/* 8. Success Stories & Milestones */}
       <TestimonialsSection onOpenBooking={() => handleOpenBooking()} />
@@ -84,8 +88,10 @@ export default function LandingPage() {
       <BookingModal
         isOpen={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
+        initialDoctorId={selectedDoctorId}
         initialDoctor={selectedDoctor}
         initialPlan={selectedPlan}
+        onDownloadApp={handleDownloadApp}
       />
     </main>
   );

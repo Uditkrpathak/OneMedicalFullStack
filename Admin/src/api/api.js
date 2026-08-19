@@ -67,6 +67,8 @@ export const api = {
   completeAppointment:    (token, id, body)    => request(`/appointments/${id}/complete`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   sendReminder:           (token, id, body)    => request(`/appointments/${id}/reminder`, { method: 'POST', body: JSON.stringify(body) }, token),
   saveSessionSummary:     (token, id, body)    => request(`/appointments/${id}/session-summary`, { method: 'POST', body: JSON.stringify(body) }, token),
+  listConsultationLeads:  (token, params = {}) => request(`/appointments/leads?${new URLSearchParams(params)}`, {}, token),
+  updateLeadStatus:       (token, id, body)    => request(`/appointments/leads/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }, token),
 
   // ── Exercises ────────────────────────────────────────────────────────────────
   listExercises:          (token, params = {}) => request(`/exercises?${new URLSearchParams(params)}`, {}, token),

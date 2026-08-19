@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Stethoscope, Calendar, CreditCard, TrendingUp, Activity, ArrowRight, Clock,
-  CheckCircle, AlertCircle, RefreshCw
+  CheckCircle, AlertCircle, RefreshCw, Sparkles
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [revenueChart, setRevenueChart] = useState([]);
   const [recentPatients, setRecentPatients] = useState([]);
   const [recentAppointments, setRecentAppointments] = useState([]);
+  const [pendingLeadsCount, setPendingLeadsCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -48,12 +49,19 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [sumRes, revRes, patRes, apptRes] = await Promise.allSettled([
+      const [sumRes, revRes, patRes, apptRes, leadsRes] = await Promise.allSettled([
         api.getAnalyticsSummary(token),
         api.getRevenueChart(token, { range: '7d' }),
         api.listPatients(token, { limit: 5 }),
         api.listAppointments(token, { limit: 5 }),
+        api.listConsultationLeads(token, { limit: 5 }),
       ]);
+
+      if (leadsRes.status === 'fulfilled' && leadsRes.value?.summary) {
+        setPendingLeadsCount(leadsRes.value.summary.pendingCount || 0);
+      } else if (leadsRes.status === 'fulfilled' && Array.isArray(leadsRes.value?.data)) {
+        setPendingLeadsCount(leadsRes.value.data.filter(l => l.status === 'PENDING').length);
+      }
 
       if (sumRes.status === 'fulfilled' && sumRes.value?.data) {
         setStats(sumRes.value.data);
@@ -132,6 +140,33 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* NEW WEBSITE LEADS ALERT BANNER */}
+      {pendingLeadsCount > 0 && (
+        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl flex items-center justify-between gap-4 flex-wrap shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-amber-950 flex items-center gap-2">
+                <span>{pendingLeadsCount} New Website Consultation {pendingLeadsCount === 1 ? 'Enquiry' : 'Enquiries'}</span>
+                <span className="bg-amber-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">Action Needed</span>
+              </div>
+              <p className="text-[11.5px] text-amber-800/80 mt-0.5">
+                Prospective patients submitted consultation requests from the landing page.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/appointments')}
+            className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>Review Leads in Appointments</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
 
       {/* 4 TOP STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
