@@ -24,26 +24,25 @@ export default function AppointmentDetailScreen({ route, navigation }) {
   const initialBooking = route.params?.booking || {};
   const appointmentId = route.params?.appointmentId || initialBooking._id || initialBooking.id;
 
-  const initialDocName = initialBooking.doctorName || initialBooking.therapistName || 'Dr. Vivek Joshi';
-
+  const [loading, setLoading] = useState(Boolean(appointmentId && !initialBooking.startTime));
   const [booking, setBooking] = useState({
-    id: appointmentId ? `#APT-${String(appointmentId).slice(-8).toUpperCase()}` : '#APT-LIVE',
+    id: appointmentId ? `#APT-${String(appointmentId).slice(-8).toUpperCase()}` : '#APT-CONSULT',
     _id: appointmentId,
-    doctorName: initialDocName,
-    specialty: 'Orthopedic Physiotherapist',
-    status: 'CONFIRMED',
-    startTime: null,
-    date: 'Mon, 17 Aug 2026 • 01:30 PM',
-    service: 'Physiotherapy Session',
-    duration: '45 mins',
-    clinic: 'ONE MEDICAL Rehabilitation Clinic',
-    address: 'ONE MEDICAL Center, Indiranagar, Bangalore',
-    receiptId: '#RC-800-LIVE',
-    amount: 80000,
-    paymentStatus: 'PAID',
-    therapistPhone: '+91 98765 64524',
-    ratingAvg: 4.9,
-    avatar: getDoctorImageUri(initialBooking.avatar || initialDocName),
+    doctorName: initialBooking.doctorName || initialBooking.therapistName || 'Attending Specialist',
+    specialty: initialBooking.specialty || 'Physiotherapist',
+    status: initialBooking.status || 'CONFIRMED',
+    startTime: initialBooking.startTime || null,
+    date: initialBooking.date || 'Scheduled Consultation',
+    service: initialBooking.service || initialBooking.serviceType || 'Physiotherapy Consultation',
+    duration: initialBooking.duration || '30 mins',
+    clinic: initialBooking.clinic || 'ONE MEDICAL Rehabilitation Clinic',
+    address: initialBooking.address || 'ONE MEDICAL Center, Indiranagar, Bangalore',
+    receiptId: initialBooking.receiptId || (appointmentId ? `#RC-${String(appointmentId).slice(-8).toUpperCase()}` : '—'),
+    amount: initialBooking.amount || 0,
+    paymentStatus: initialBooking.paymentStatus || 'PAID',
+    therapistPhone: initialBooking.therapistPhone || '+91 80 4965 2100',
+    ratingAvg: initialBooking.ratingAvg || 4.9,
+    avatar: getDoctorImageUri(initialBooking.avatar || initialBooking.doctorName),
     ...initialBooking,
   });
 
@@ -59,14 +58,14 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     if (s === 'RESCHEDULED') return 'Session Rescheduled';
     if (s === 'NO_ATTENDANCE' || s === 'PROVIDER_NO_SHOW' || s === 'PATIENT_NO_SHOW') return 'Missed Consultation (No Attendance)';
 
-    if (!isoStartTime) return 'Scheduled';
+    if (!isoStartTime) return 'Scheduled Consultation';
     const apptTime = new Date(isoStartTime).getTime();
     const now = Date.now();
     const diffMs = apptTime - now;
 
     if (diffMs <= 0) {
       const hoursAgo = Math.floor(Math.abs(diffMs) / (1000 * 60 * 60));
-      if (hoursAgo < 2) return 'In Progress';
+      if (hoursAgo < 2) return 'In Progress (Ready to Join)';
       return 'Completed Session';
     }
 
@@ -87,19 +86,20 @@ export default function AppointmentDetailScreen({ route, navigation }) {
       try {
         const res = await appointmentApi.getAppointmentById(appointmentId, token);
         if (res.success && res.data) {
-          const a = res.data;
-          const dateStr = a.startTime
-            ? `${new Date(a.startTime).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })} • ${new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`
-            : booking.date;
+          const a = res.data.appointment || res.data;
+          const sDate = a.startTime ? new Date(a.startTime) : null;
+          const dateStr = sDate
+            ? `${sDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`
+            : (a.dateString || a.date || 'Scheduled Consultation');
 
-          const serviceClean = (a.serviceType || 'PHYSIOTHERAPY_SESSION')
+          const serviceClean = (a.serviceName || a.serviceType || 'Physiotherapy Consultation')
             .replace(/_/g, ' ')
             .toLowerCase()
             .replace(/\b\w/g, c => c.toUpperCase());
 
           const clinicClean = a.appointmentPlace === 'HOME'
             ? 'Home Visit Consultation'
-            : a.appointmentPlace === 'VIDEO'
+            : (a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth')
             ? 'Virtual Telehealth Consultation'
             : 'In-Clinic Rehabilitation';
 
@@ -117,13 +117,13 @@ export default function AppointmentDetailScreen({ route, navigation }) {
           }
 
           const resolvedDoctorName = therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName;
-          const resolvedPhone = therapistData?.phoneNumber || therapistData?.user?.phoneNumber || '+91 98765 64524';
-          const resolvedRating = therapistData?.ratingAvg && therapistData.ratingAvg > 0 ? therapistData.ratingAvg : 4.9;
-          const resolvedClinicLocation = typeof therapistData?.clinicLocation === 'string' && therapistData.clinicLocation.trim()
+          const resolvedPhone = therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone || '+91 80 4965 2100';
+          const resolvedRating = therapistData?.ratingAvg && therapistData.ratingAvg > 0 ? therapistData.ratingAvg : (a.ratingAvg || 4.9);
+          const resolvedClinicLocation = (typeof therapistData?.clinicLocation === 'string' && therapistData.clinicLocation.trim())
             ? therapistData.clinicLocation
-            : 'ONE MEDICAL Center, Indiranagar, Bangalore';
+            : (a.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bangalore');
 
-          const isVideo = a.appointmentPlace === 'VIDEO';
+          const isVideo = a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth';
           const isHome = a.appointmentPlace === 'HOME';
 
           let dynamicChecklist = [];
@@ -148,21 +148,24 @@ export default function AppointmentDetailScreen({ route, navigation }) {
           }
           setChecklist(dynamicChecklist);
 
+          const rawAmount = a.amount || 0;
+          const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
+
           setBooking(prev => ({
             ...prev,
             ...a,
             _id: a._id,
-            id: `#APT-${a._id.slice(-8).toUpperCase()}`,
+            id: `#APT-${String(a._id).slice(-8).toUpperCase()}`,
             doctorName: resolvedDoctorName,
             status: (a.status || 'CONFIRMED').toUpperCase(),
             startTime: a.startTime,
             date: dateStr,
             service: serviceClean,
-            duration: `${a.durationMin || 45} mins`,
+            duration: `${a.durationMin || 30} mins`,
             clinic: clinicClean,
-            address: a.appointmentPlace === 'VIDEO' ? 'Online Secure Video Room' : (a.appointmentPlace === 'HOME' ? (user?.address || 'Patient Registered Residence') : resolvedClinicLocation),
-            receiptId: a.paymentId ? `#RC-${a.paymentId.slice(-8).toUpperCase()}` : `#RC-${a._id.slice(-8).toUpperCase()}`,
-            amount: a.amount || 80000,
+            address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (user?.address || 'Patient Registered Residence') : resolvedClinicLocation),
+            receiptId: a.paymentId ? `#RC-${String(a.paymentId).slice(-8).toUpperCase()}` : `#RC-${String(a._id).slice(-8).toUpperCase()}`,
+            amount: cleanAmount,
             paymentStatus: a.paymentStatus || 'PAID',
             therapistPhone: resolvedPhone,
             ratingAvg: resolvedRating,
@@ -171,6 +174,8 @@ export default function AppointmentDetailScreen({ route, navigation }) {
         }
       } catch (e) {
         console.warn('Error fetching appointment:', e.message);
+      } finally {
+        setLoading(false);
       }
     };
     fetchAppt();
@@ -189,7 +194,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
   };
 
   const handleCall = () => {
-    const phone = booking.therapistPhone || '+91 98765 64524';
+    const phone = booking.therapistPhone || '+91 80 4965 2100';
     Alert.alert(
       'Call Specialist',
       `Connect with ${booking.doctorName} at ${phone}?`,
@@ -217,6 +222,17 @@ export default function AppointmentDetailScreen({ route, navigation }) {
       Alert.alert('Direct Message', `Connecting to ${booking.doctorName}'s clinical desk...`);
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#003D9B" />
+        <Text style={{ marginTop: 12, fontSize: 13, color: '#64748b', fontWeight: '600' }}>
+          Loading appointment details...
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
