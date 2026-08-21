@@ -66,6 +66,9 @@ export default function AppointmentDetailsPage() {
           id: apt._id?.slice(-6)?.toUpperCase() || id?.slice(-6)?.toUpperCase(),
           status: apt.status || 'CONFIRMED',
           paymentStatus: apt.paymentStatus || 'PAID',
+          cancellationReason: apt.cancellationReason,
+          cancellationPolicy: apt.cancellationPolicy,
+          amount: apt.amount || 120000,
           sessionType: apt.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation',
           date: startDate.toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
           time: startDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
@@ -103,6 +106,21 @@ export default function AppointmentDetailsPage() {
     loadData();
   }, [loadData]);
 
+  const handleApproveRefund = async () => {
+    if (!window.confirm('Approve and process refund for this appointment?')) return;
+    setActionLoading(true);
+    try {
+      await api.approveRefund(token, `ref_appt_${id}`);
+      showToast('Refund approved and routed to gateway.');
+      setAppointment(prev => prev ? ({ ...prev, paymentStatus: 'REFUNDED' }) : prev);
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to approve refund.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleComplete = async () => {
     setActionLoading(true);
     try {
@@ -123,7 +141,7 @@ export default function AppointmentDetailsPage() {
     try {
       await api.cancelAppointment(token, id, { reason: 'Cancelled by administrator' });
       showToast('Appointment cancelled.');
-      setAppointment(prev => prev ? ({ ...prev, status: 'CANCELLED' }) : prev);
+      setAppointment(prev => prev ? ({ ...prev, status: 'CANCELLED', cancellationPolicy: 'REFUND_ELIGIBLE', paymentStatus: 'REFUND_PENDING' }) : prev);
       await loadData();
     } catch (err) {
       alert(err.message || 'Failed to cancel appointment.');
@@ -233,8 +251,61 @@ export default function AppointmentDetailsPage() {
               <CheckCircle2 size={15} /> Consultation Completed
             </div>
           )}
+          {isCancelled && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {appointment.paymentStatus === 'REFUNDED' ? (
+                <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-bold">
+                  <CheckCircle2 size={15} /> Refund Settled
+                </div>
+              ) : (
+                <button
+                  onClick={handleApproveRefund}
+                  disabled={actionLoading}
+                  className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs flex items-center gap-1.5 shadow-sm"
+                >
+                  <CheckCircle size={14} /> Approve & Settle Refund
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ─── CANCELLATION & REFUND BANNER ─── */}
+      {isCancelled && (
+        <div className={`card p-4.5 border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs ${
+          appointment.paymentStatus === 'REFUNDED'
+            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+            : 'bg-amber-50/80 border-amber-200 text-amber-950'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              appointment.paymentStatus === 'REFUNDED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+            }`}>
+              <AlertCircle size={18} />
+            </div>
+            <div className="space-y-0.5">
+              <div className="font-extrabold text-sm">
+                {appointment.paymentStatus === 'REFUNDED' ? 'Cancellation Processed & Refund Settled' : 'Session Cancelled • Refund Pending'}
+              </div>
+              <div className="text-slate-600 font-medium">
+                Reason: <span className="font-bold text-slate-800">{appointment.cancellationReason || 'Cancelled by administrator'}</span>
+                {' • '}Policy: <span className="font-bold">{appointment.cancellationPolicy || 'REFUND_ELIGIBLE'}</span>
+              </div>
+            </div>
+          </div>
+
+          {appointment.paymentStatus !== 'REFUNDED' && (
+            <button
+              onClick={handleApproveRefund}
+              disabled={actionLoading}
+              className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs whitespace-nowrap self-start sm:self-center"
+            >
+              Approve Refund Now
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ─── MAIN GRID ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

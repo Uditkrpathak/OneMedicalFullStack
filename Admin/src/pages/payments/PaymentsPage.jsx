@@ -24,6 +24,7 @@ export default function PaymentsPage() {
   const [invoices, setInvoices] = useState([]);
   const [payouts, setPayouts] = useState([]);
   const [refunds, setRefunds] = useState([]);
+  const [refundFilter, setRefundFilter] = useState('ALL'); // 'ALL', 'PENDING', 'APPROVED'
   const [patients, setPatients] = useState([]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -319,44 +320,92 @@ export default function PaymentsPage() {
         </div>
       ) : (
         <div className="card p-6 bg-white border border-slate-200 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900">Refund Requests</h3>
-          {refunds.length > 0 ? (
-            <table className="tbl w-full text-xs">
-              <thead>
-                <tr>
-                  <th>PATIENT</th>
-                  <th>REASON</th>
-                  <th>AMOUNT</th>
-                  <th>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {refunds.map(rf => (
-                  <tr key={rf._id}>
-                    <td className="font-bold">{rf.patientName || 'Patient'}</td>
-                    <td>{rf.reason || 'Session Cancellation'}</td>
-                    <td className="font-bold">{fmt(rf.amount)}</td>
-                    <td>
-                      {rf.status === 'processed' || rf.status === 'REFUNDED' || rf.status === 'refunded' ? (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
-                          ● Approved / Refunded
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleApproveRefund(rf._id)}
-                          className="btn btn-secondary text-[10px] py-1 text-emerald-700 hover:bg-emerald-50 border-emerald-200"
-                        >
-                          Approve Refund
-                        </button>
-                      )}
-                    </td>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Refund Requests & Disbursals</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Manage appointment cancellation refunds and client reimbursements.</p>
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+              {[
+                { id: 'ALL', label: 'All Requests', count: refunds.length },
+                { id: 'PENDING', label: 'Pending Approval', count: refunds.filter(r => r.status !== 'processed' && r.status !== 'REFUNDED' && r.status !== 'refunded').length },
+                { id: 'APPROVED', label: 'Settled', count: refunds.filter(r => r.status === 'processed' || r.status === 'REFUNDED' || r.status === 'refunded').length },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setRefundFilter(tab.id)}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                    refundFilter === tab.id
+                      ? 'bg-white text-blue-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {tab.label} <span className="text-[10px] opacity-75 font-normal">({tab.count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {(() => {
+            const filteredRefunds = refunds.filter(rf => {
+              const isSettled = rf.status === 'processed' || rf.status === 'REFUNDED' || rf.status === 'refunded';
+              if (refundFilter === 'PENDING') return !isSettled;
+              if (refundFilter === 'APPROVED') return isSettled;
+              return true;
+            });
+
+            return filteredRefunds.length > 0 ? (
+              <table className="tbl w-full text-xs">
+                <thead>
+                  <tr>
+                    <th>PATIENT</th>
+                    <th>REASON</th>
+                    <th>AMOUNT</th>
+                    <th>STATUS</th>
+                    <th>ACTIONS</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="text-xs text-slate-400 text-center py-6">No pending refund requests.</p>
-          )}
+                </thead>
+                <tbody>
+                  {filteredRefunds.map(rf => {
+                    const isSettled = rf.status === 'processed' || rf.status === 'REFUNDED' || rf.status === 'refunded';
+                    return (
+                      <tr key={rf._id}>
+                        <td className="font-bold">{rf.patientName || 'Patient'}</td>
+                        <td>{rf.reason || 'Session Cancellation'}</td>
+                        <td className="font-bold text-slate-900">{fmt(rf.amount)}</td>
+                        <td>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isSettled
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            ● {isSettled ? 'Settled' : 'Pending Review'}
+                          </span>
+                        </td>
+                        <td>
+                          {isSettled ? (
+                            <span className="text-[11px] text-slate-400 font-semibold">
+                              Completed
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleApproveRefund(rf._id)}
+                              className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-[10px] py-1 px-3 shadow-xs"
+                            >
+                              Approve Refund
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-6">No {refundFilter.toLowerCase()} refund requests.</p>
+            );
+          })()}
         </div>
       )}
 
