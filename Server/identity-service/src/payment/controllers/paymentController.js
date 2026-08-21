@@ -771,7 +771,14 @@ export const listRefunds = async (req, res) => {
     const existingTxIds = new Set(refunds.map(r => String(r.transactionId?._id || r.transactionId)));
 
     for (const appt of clinicalAppts) {
-      if (appt.cancellationPolicy === 'REFUND_ELIGIBLE' || appt.paymentStatus === 'REFUND_PENDING' || appt.paymentStatus === 'REFUNDED') {
+      const isRefundCandidate = 
+        appt.cancellationPolicy === 'REFUND_ELIGIBLE' || 
+        appt.paymentStatus === 'REFUND_PENDING' || 
+        appt.paymentStatus === 'REFUNDED' ||
+        appt.status === 'PROVIDER_NO_SHOW' ||
+        (appt.status === 'NO_ATTENDANCE' && appt.paymentStatus !== 'NOT_APPLICABLE');
+
+      if (isRefundCandidate) {
         const apptId = String(appt._id);
         // Find corresponding transaction if any
         let txn = await Transaction.findOne({ appointmentId: apptId }).lean();
@@ -786,11 +793,15 @@ export const listRefunds = async (req, res) => {
         // Avoid duplicates if already in Refund collection
         const alreadyInList = refunds.some(r => String(r.appointmentId) === apptId || (txn && String(r.transactionId?._id || r.transactionId) === String(txn._id)));
         if (!alreadyInList) {
+          const defaultReason = appt.cancellationReason || 
+            (appt.status === 'PROVIDER_NO_SHOW' ? 'Doctor Absent (Provider No-Show)' :
+            (appt.status === 'NO_ATTENDANCE' ? 'No Attendance / Missed Consultation' : 'Session Cancellation (Refund Eligible)'));
+
           list.push({
             _id: `ref_appt_${apptId}`,
             appointmentId: apptId,
             patientName,
-            reason: appt.cancellationReason || 'Session Cancellation (Eligible for Refund)',
+            reason: defaultReason,
             amount: amt > 10000 ? Math.round(amt / 100) : amt,
             status: appt.paymentStatus === 'REFUNDED' ? 'processed' : 'initiated',
             createdAt: appt.updatedAt || appt.createdAt || new Date(),

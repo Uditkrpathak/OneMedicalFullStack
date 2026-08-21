@@ -179,6 +179,9 @@ export default function AppointmentDetailsPage() {
 
   const isCompleted = appointment.status === 'COMPLETED';
   const isCancelled = appointment.status === 'CANCELLED';
+  const isNoAttendance = ['NO_ATTENDANCE', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW'].includes(appointment.status);
+  const isExpired = appointment.status === 'EXPIRED' || appointment.status === 'PAYMENT_EXPIRED';
+  const isActionableActive = !isCompleted && !isCancelled && !isNoAttendance && !isExpired;
 
   return (
     <div className="space-y-6 text-slate-800 animate-fade-up max-w-[1400px] mx-auto pb-12">
@@ -205,7 +208,8 @@ export default function AppointmentDetailsPage() {
             <span className={`px-3 py-0.5 text-xs font-bold rounded-full border ${
               isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
               isCancelled ? 'bg-rose-50 text-rose-700 border-rose-200' :
-              appointment.status === 'EXPIRED' ? 'bg-slate-100 text-slate-700 border-slate-200' :
+              isNoAttendance ? 'bg-amber-50 text-amber-800 border-amber-200' :
+              isExpired ? 'bg-slate-100 text-slate-700 border-slate-200' :
               'bg-blue-50 text-blue-700 border-blue-200'
             }`}>
               ● {appointment.status}
@@ -215,7 +219,7 @@ export default function AppointmentDetailsPage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {!isCompleted && !isCancelled && (
+          {isActionableActive && (
             <>
               <button
                 onClick={() => navigate(`/appointments/${id}/reschedule`)}
@@ -246,11 +250,38 @@ export default function AppointmentDetailsPage() {
               </button>
             </>
           )}
+
+          {isNoAttendance && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => navigate(`/appointments/${id}/reschedule`)}
+                className="btn btn-secondary text-xs"
+              >
+                <RefreshCcw size={13} /> Reschedule Slot
+              </button>
+
+              {appointment.paymentStatus === 'REFUNDED' ? (
+                <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs">
+                  <CheckCircle2 size={15} /> Refund Settled
+                </div>
+              ) : (
+                <button
+                  onClick={handleApproveRefund}
+                  disabled={actionLoading}
+                  className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs flex items-center gap-1.5 shadow-sm"
+                >
+                  <CheckCircle size={14} /> Issue Refund
+                </button>
+              )}
+            </div>
+          )}
+
           {isCompleted && (
             <div className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-bold">
               <CheckCircle2 size={15} /> Consultation Completed
             </div>
           )}
+
           {isCancelled && (
             <div className="flex items-center gap-2 flex-wrap">
               {appointment.paymentStatus === 'REFUNDED' ? (
@@ -358,6 +389,54 @@ export default function AppointmentDetailsPage() {
           </div>
         );
       })()}
+
+      {/* ─── ATTENDANCE INCIDENT & NO-SHOW BANNER ─── */}
+      {isNoAttendance && (
+        <div className={`p-4 border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs shadow-xs ${
+          appointment.paymentStatus === 'REFUNDED'
+            ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+            : 'bg-amber-50/90 border-amber-200 text-amber-950'
+        }`}>
+          <div className="flex items-center gap-3.5">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+              appointment.paymentStatus === 'REFUNDED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+            }`}>
+              <AlertCircle size={20} />
+            </div>
+            <div>
+              <div className="font-extrabold text-sm">
+                {appointment.status === 'PROVIDER_NO_SHOW'
+                  ? 'Doctor Absent • Patient Protected (100% Refund Eligible)'
+                  : appointment.status === 'PATIENT_NO_SHOW'
+                  ? 'Patient Missed Session • No Attendance'
+                  : 'Missed Consultation • No Attendance Logged'}
+              </div>
+              <div className="text-xs mt-0.5 flex items-center gap-2 flex-wrap opacity-90">
+                <span>Outcome: <strong>{appointment.status}</strong></span>
+                <span>•</span>
+                <span>Payment: <strong>{appointment.paymentStatus || 'PAID'}</strong></span>
+                <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                  appointment.paymentStatus === 'REFUNDED'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-900'
+                }`}>
+                  {appointment.paymentStatus === 'REFUNDED' ? 'REFUND SETTLED' : 'REFUND / RESCHEDULE ELIGIBLE'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {appointment.paymentStatus !== 'REFUNDED' && (
+            <button
+              onClick={handleApproveRefund}
+              disabled={actionLoading}
+              className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs whitespace-nowrap self-start sm:self-center shadow-xs flex items-center gap-1.5"
+            >
+              <CheckCircle size={14} /> Issue Refund Now
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ─── MAIN GRID ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
