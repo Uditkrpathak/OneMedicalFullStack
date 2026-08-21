@@ -250,8 +250,8 @@ export const getAppointmentClinicalContext = async (req, res) => {
       });
     }
 
-    // Fetch patient's active program, latest medical records, and active consultation draft
-    const [activeProgram, latestRecords, activeConsultation, lastVisit] = await Promise.all([
+    // Fetch patient's active program, latest medical records, active consultation draft, and previous visits
+    const [activeProgram, latestRecords, activeConsultation, lastVisit, latestPain] = await Promise.all([
       PatientProgram.findOne({ patientId: appointment.patientId, status: 'active' }).populate('programId').lean(),
       MedicalRecord.find({ patientId: appointment.patientId }).sort({ createdAt: -1 }).limit(5).lean(),
       ClinicalConsultation.findOne({ appointmentId }).lean(),
@@ -260,58 +260,74 @@ export const getAppointmentClinicalContext = async (req, res) => {
         status: { $in: ['COMPLETED', 'DOCUMENTED'] },
         _id: { $ne: appointment._id },
       }).sort({ startTime: -1 }).lean(),
+      PainAssessment.findOne({ patientId: appointment.patientId }).sort({ createdAt: -1 }).lean(),
     ]);
 
     // Fetch patient profile from Identity service
     let patientUser = null;
-    try {
-      const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
-      const patRes = await fetch(`${identityUrl}/api/v1/patients/${appointment.patientId}`, {
-        headers: {
-          'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
-          'x-user-role': 'clinic_admin',
-          'x-user-id': 'system',
-        },
-      });
-      const patJson = await patRes.json();
-      if (patJson.success && patJson.data) {
-        patientUser = patJson.data;
+    if (appointment.patientId) {
+      try {
+        const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
+        const patRes = await fetch(`${identityUrl}/api/v1/patients/${appointment.patientId}`, {
+          headers: {
+            'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
+            'x-user-role': 'clinic_admin',
+            'x-user-id': 'system',
+          },
+        });
+        const patJson = await patRes.json();
+        if (patJson.success && patJson.data) {
+          patientUser = patJson.data;
+        }
+      } catch (e) {
+        console.warn('[ConsultationController] Identity fetch warning:', e.message);
       }
-    } catch (e) {
-      console.warn('[ConsultationController] Identity fetch warning:', e.message);
     }
 
     const patientName = appointment.patientName || patientUser?.name || 'Patient';
-    const age = appointment.patientAge || patientUser?.age || (patientUser?.profile?.age) || 32;
-    const gender = appointment.patientGender || patientUser?.gender || (patientUser?.profile?.gender) || 'Male';
-    const patientIdFormatted = `#OM-${(appointment.patientId || '').toString().slice(-5).toUpperCase() || 'PATIENT'}`;
-    const primaryComplaint = appointment.chiefComplaint || appointment.serviceName || appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation';
+    const age = patientUser?.age || (patientUser?.profile?.age) || appointment.patientAge || 28;
+    const gender = patientUser?.gender || (patientUser?.profile?.gender) || appointment.patientGender || 'Male';
+    const patientIdFormatted = `#OM-${(appointment.patientId || appointment._id || '').toString().slice(-5).toUpperCase()}`;
+    const primaryComplaint = appointment.chiefComplaint || appointment.serviceName || (appointment.serviceType ? appointment.serviceType.replace(/_/g, ' ') : 'Physical Rehabilitation');
     const lastVisitDate = lastVisit?.startTime
-      ? new Date(lastVisit.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      ? new Date(lastVisit.startTime).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' })
       : 'Initial Session';
-    const currentProgramName = activeProgram?.programId?.title || activeProgram?.title || (activeProgram ? 'Active Recovery Program' : 'Standard Assessment');
+    const currentProgramName = activeProgram?.programId?.title || activeProgram?.title || (activeProgram ? 'Active Recovery Program' : 'Physical Rehabilitation Assessment');
     const isOnline = appointment.appointmentPlace === 'VIDEO' || appointment.appointmentType === 'telehealth' || appointment.mode === 'online';
     const isHome = appointment.appointmentPlace === 'HOME' || appointment.mode === 'home';
-    const visitMode = isOnline ? 'Online Video Consultation' : (isHome ? 'Home Visit Session' : 'In-Clinic Consultation');
+    const visitMode = isOnline ? 'Online Video Consultation' : (isHome ? 'Home Visit Session' : 'Clinic Visit');
     const clinicLocation = isOnline
-      ? 'Secure Video Call (WebRTC Telehealth)'
+      ? 'Secure Video Consultation (Telehealth Room)'
       : (isHome
-          ? (appointment.homeAddress || appointment.patientAddress || 'Patient Residence')
-          : (appointment.clinicLocation || appointment.clinicName || 'ONE MEDICAL Center, Indiranagar'));
+          ? (appointment.homeAddress || appointment.patientAddress || 'Patient Registered Residence')
+          : (appointment.clinicLocation || appointment.clinicName || 'ONE MEDICAL Central Clinic, Indiranagar, Bengaluru'));
 
-    const appointmentDate = appointment.startTime
-      ? new Date(appointment.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
-      : 'Scheduled Date';
-    const appointmentTime = appointment.startTime
-      ? `${new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${appointment.durationMin || appointment.durationMinutes || 30} mins)`
-      : '10:00 AM';
+    // IST Formatted Date & Time
+    const sDate = appointment.startTime ? new Date(appointment.startTime) : new Date();
+    const durationMins = appointment.durationMin || appointment.durationMinutes || 30;
+    const eDate = appointment.endTime ? new Date(appointment.endTime) : new Date(sDate.getTime() + durationMins * 60000);
+
+    const appointmentDate = sDate.toLocaleDateString('en-IN', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata'
+    });
+
+    const appointmentTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} (${durationMins} mins)`;
+
+    const rawAmt = appointment.amount || appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 80000);
+    const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
+    const painScore = appointment.painScore ?? latestPain?.painScore ?? 3;
+    const recoveryGoalProgress = activeProgram?.progressPercentage ?? activeProgram?.adherencePercentage ?? 40;
 
     const patientSnapshot = {
       appointmentId: appointment._id,
-      transactionId: appointment.transactionId || appointment._id,
-      status: appointment.status || 'CONFIRMED',
-      paymentStatus: appointment.paymentStatus || 'PAID',
-      amount: appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 49900),
+      transactionId: appointment.transactionId || appointment.paymentId || appointment._id,
+      status: (appointment.status || 'CONFIRMED').toUpperCase(),
+      paymentStatus: (appointment.paymentStatus || 'PAID').toUpperCase(),
+      amount: amountPaise,
       patientId: appointment.patientId,
       therapistId: appointment.therapistId,
       therapistName: appointment.therapistName,
@@ -328,8 +344,8 @@ export const getAppointmentClinicalContext = async (req, res) => {
       clinicLocation,
       appointmentDate,
       appointmentTime,
-      durationMins: appointment.durationMin || appointment.durationMinutes || 30,
-      serviceCategory: appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy',
+      durationMins,
+      serviceCategory: (appointment.serviceType || 'PHYSIOTHERAPY').replace(/_/g, ' '),
     };
 
     res.json({

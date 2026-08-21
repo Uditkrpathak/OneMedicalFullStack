@@ -9,6 +9,7 @@ import {
   Dimensions,
   Modal,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -22,15 +23,20 @@ const { width } = Dimensions.get('window');
 export default function AppointmentDetailsScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
   const { showInAppNotification } = useNotification() || {};
-  const appointmentId = route.params?.appointmentId || 'apt_sample';
+  
+  const initialAppt = route.params?.appointment || {};
+  const appointmentId = route.params?.appointmentId || initialAppt._id || initialAppt.id || route.params?.id || route.params?._id;
 
   const [clinicalContext, setClinicalContext] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(appointmentId && !initialAppt.startTime));
   const [qrModalData, setQrModalData] = useState(null);
   const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   const fetchClinicalContext = async () => {
-    if (!token) return;
+    if (!token || !appointmentId || !appointmentId.match(/^[0-9a-fA-F]{24}$/)) {
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/appointments/${appointmentId}/clinical-context`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -50,6 +56,54 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
     fetchClinicalContext();
   }, [appointmentId, token]);
 
+  const apptDoc = clinicalContext?.appointment || initialAppt;
+  const ctxSnapshot = clinicalContext?.patientSnapshot || {};
+
+  const sDate = apptDoc.startTime ? new Date(apptDoc.startTime) : null;
+  const durationMins = apptDoc.durationMin || apptDoc.durationMinutes || ctxSnapshot.durationMins || 30;
+  const eDate = apptDoc.endTime ? new Date(apptDoc.endTime) : (sDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
+
+  const resolvedDate = sDate
+    ? sDate.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+    : (ctxSnapshot.appointmentDate || 'Scheduled Consultation');
+
+  const resolvedTime = sDate
+    ? `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} (${durationMins} mins)`
+    : (ctxSnapshot.appointmentTime || '10:30 AM');
+
+  const rawAmount = ctxSnapshot.amount || apptDoc.amount || apptDoc.amountPaise || (apptDoc.fee ? apptDoc.fee * 100 : 80000);
+  const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
+
+  const isOnlineMode = apptDoc.appointmentPlace === 'VIDEO' || apptDoc.appointmentType === 'telehealth' || (ctxSnapshot.visitMode || '').toLowerCase().includes('online');
+  const isHomeMode = apptDoc.appointmentPlace === 'HOME' || (ctxSnapshot.visitMode || '').toLowerCase().includes('home');
+  const resolvedVisitMode = isOnlineMode ? 'Online Video Consultation' : (isHomeMode ? 'Home Visit Consultation' : 'Clinic Visit');
+  const resolvedClinicLocation = isOnlineMode
+    ? 'Secure Video Consultation (Telehealth Room)'
+    : (isHomeMode ? 'Patient Registered Residence' : (apptDoc.clinicLocation || apptDoc.clinicName || ctxSnapshot.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bengaluru'));
+
+  const snapshot = {
+    patientName: ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName || 'Patient',
+    age: ctxSnapshot.age || apptDoc.patientAge || 28,
+    gender: ctxSnapshot.gender || apptDoc.patientGender || 'Patient',
+    patientIdFormatted: ctxSnapshot.patientIdFormatted || `#OM-${String(apptDoc.patientId || appointmentId || 'PT').slice(-5).toUpperCase()}`,
+    primaryComplaint: ctxSnapshot.primaryComplaint || apptDoc.serviceName || (apptDoc.serviceType ? apptDoc.serviceType.replace(/_/g, ' ') : 'Physical Rehabilitation'),
+    lastVisitDate: ctxSnapshot.lastVisitDate || 'Initial Session',
+    currentProgramName: ctxSnapshot.currentProgramName || 'Active Recovery Plan',
+    recoveryGoalProgress: ctxSnapshot.recoveryGoalProgress !== undefined ? ctxSnapshot.recoveryGoalProgress : 40,
+    painScore: ctxSnapshot.painScore !== undefined ? ctxSnapshot.painScore : 3,
+    visitMode: resolvedVisitMode,
+    clinicLocation: resolvedClinicLocation,
+    appointmentDate: resolvedDate,
+    appointmentTime: resolvedTime,
+    status: (apptDoc.status || ctxSnapshot.status || 'CONFIRMED').toUpperCase(),
+    paymentStatus: (apptDoc.paymentStatus || ctxSnapshot.paymentStatus || 'PAID').toUpperCase(),
+    amount: cleanAmount,
+    serviceCategory: (apptDoc.serviceType || ctxSnapshot.serviceCategory || 'PHYSIOTHERAPY').replace(/_/g, ' '),
+    therapistId: apptDoc.therapistId || ctxSnapshot.therapistId,
+    therapistName: apptDoc.therapistName || ctxSnapshot.therapistName || 'Attending Specialist',
+    transactionId: apptDoc.transactionId || apptDoc.paymentId || appointmentId,
+  };
+
   const handleOpenClinicDynamicQr = async () => {
     try {
       const res = await paymentApi.generateClinicDynamicQr(appointmentId, token);
@@ -57,7 +111,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
         setQrModalData({
           ...res.data,
           patientName: snapshot.patientName,
-          amount: Math.round((snapshot.amount || 49900) / 100),
+          amount: snapshot.amount,
         });
       } else {
         Alert.alert('Error', res.error?.message || 'Failed to generate clinic UPI QR.');
@@ -76,7 +130,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
         if (showInAppNotification) {
           showInAppNotification({
             title: 'Payment Verified & Settled',
-            message: `₹${qrModalData.amount || 499} payment verified. GST Tax invoice issued.`,
+            message: `₹${qrModalData.amount || snapshot.amount} payment verified. GST Tax invoice issued.`,
             type: 'payment.paid',
             category: 'PAYMENT SUCCESS',
             data: { appointmentId },
@@ -111,24 +165,6 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
       </SafeAreaView>
     );
   }
-
-  const snapshot = clinicalContext?.patientSnapshot || {
-    patientName: route.params?.patientName || 'Patient',
-    age: '--',
-    gender: 'Patient',
-    patientIdFormatted: '#OM-PATIENT',
-    primaryComplaint: 'Clinical Consultation',
-    lastVisitDate: 'Initial Session',
-    currentProgramName: 'General Assessment',
-    recoveryGoalProgress: 0,
-    painScore: 0,
-    visitMode: 'Clinic Visit',
-    clinicLocation: 'One Medical Hub',
-    appointmentDate: 'Scheduled Date',
-    appointmentTime: '10:00 AM',
-    status: 'CONFIRMED',
-    serviceCategory: 'Physiotherapy',
-  };
 
   const latestReport = clinicalContext?.latestRecords && clinicalContext.latestRecords.length > 0 ? clinicalContext.latestRecords[0] : null;
 
@@ -377,15 +413,36 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
 
             <TouchableOpacity
               style={styles.quickAccessCard}
-              onPress={() =>
-                navigation.navigate('InvoiceDetails', {
-                  transactionId: snapshot.transactionId || snapshot.appointmentId || appointmentId,
-                  appointmentId,
-                })
-              }
+              onPress={() => {
+                if (snapshot.paymentStatus === 'PAID') {
+                  navigation.navigate('InvoiceDetails', {
+                    transactionId: snapshot.transactionId || snapshot.appointmentId || appointmentId,
+                    appointmentId,
+                  });
+                } else {
+                  if (user?.role === 'therapist') {
+                    handleOpenClinicDynamicQr();
+                  } else {
+                    Alert.alert(
+                      'Payment Pending (Pay at Clinic)',
+                      `The official GST Tax Invoice & receipt will be generated automatically once your payment of ₹${snapshot.amount} is collected at the clinic reception or settled via UPI QR.`,
+                      [
+                        { text: 'Pay Online Now', onPress: () => navigation.navigate('ChoosePayment', { appointmentId }) },
+                        { text: 'OK', style: 'cancel' }
+                      ]
+                    );
+                  }
+                }
+              }}
             >
-              <Ionicons name="receipt-outline" size={22} color="#003D9B" />
-              <Text style={styles.quickAccessText}>Tax Invoice</Text>
+              <Ionicons
+                name={snapshot.paymentStatus === 'PAID' ? "receipt-outline" : "wallet-outline"}
+                size={22}
+                color={snapshot.paymentStatus === 'PAID' ? "#003D9B" : "#d97706"}
+              />
+              <Text style={styles.quickAccessText}>
+                {snapshot.paymentStatus === 'PAID' ? 'Tax Invoice' : 'Collect at Clinic'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -502,7 +559,19 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             </View>
 
             <View style={styles.qrImageBox}>
-              <Ionicons name="qr-code" size={140} color="#003D9B" />
+              {qrModalData?.upiQrPayload ? (
+                <Image
+                  source={{
+                    uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+                      qrModalData.upiQrPayload
+                    )}`,
+                  }}
+                  style={{ width: 170, height: 170, borderRadius: 8 }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Ionicons name="qr-code" size={140} color="#003D9B" />
+              )}
               <View style={styles.qrLivePill}>
                 <View style={styles.liveGreenDot} />
                 <Text style={styles.qrLiveText}>SECURE UPI AUTOPAY</Text>
@@ -511,8 +580,8 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
 
             <View style={styles.qrDetailsBox}>
               <Text style={styles.qrPatientName}>{qrModalData?.patientName || snapshot.patientName}</Text>
-              <Text style={styles.qrAmountText}>₹{qrModalData?.amount || 499}</Text>
-              <Text style={styles.qrVpaText}>{qrModalData?.vpa || 'onemedical.clinic@icici'}</Text>
+              <Text style={styles.qrAmountText}>₹{qrModalData?.amount || snapshot.amount || 800}</Text>
+              <Text style={styles.qrVpaText}>{qrModalData?.upiVpa || qrModalData?.vpa || 'onemedical.pay@icici'}</Text>
             </View>
 
             <TouchableOpacity

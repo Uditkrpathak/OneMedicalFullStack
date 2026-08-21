@@ -428,19 +428,26 @@ export default function TherapistScheduleScreen({ navigation }) {
                   {/* Divider */}
                   <View style={styles.cardInnerDivider} />
 
-                  {/* Action Buttons for all appointment states */}
-                  <View style={styles.cardActionButtonsRow}>
-                    {appt.paymentStatus !== 'PAID' && ['CONFIRMED', 'SCHEDULED', 'HELD'].includes(appt.status) && (
-                      <TouchableOpacity
-                        style={styles.collectUpiBtn}
-                        onPress={() => handleOpenClinicUpiQr(appt)}
-                        activeOpacity={0.85}
-                      >
-                        <Ionicons name="qr-code" size={13} color="#b45309" style={{ marginRight: 4 }} />
-                        <Text style={styles.collectUpiText}>Collect UPI</Text>
-                      </TouchableOpacity>
-                    )}
+                  {/* Payment Alert Banner when UPI collection is needed */}
+                  {appt.paymentStatus !== 'PAID' && ['CONFIRMED', 'SCHEDULED', 'HELD'].includes(appt.status) && (
+                    <TouchableOpacity
+                      style={styles.collectUpiBanner}
+                      onPress={() => handleOpenClinicUpiQr(appt)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.collectUpiBannerLeft}>
+                        <Ionicons name="qr-code" size={13} color="#b45309" style={{ marginRight: 6 }} />
+                        <Text style={styles.collectUpiBannerText}>Payment Pending</Text>
+                      </View>
+                      <View style={styles.collectUpiPill}>
+                        <Text style={styles.collectUpiPillText}>Collect UPI</Text>
+                        <Ionicons name="chevron-forward" size={11} color="#b45309" style={{ marginLeft: 2 }} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
 
+                  {/* Action Buttons Row */}
+                  <View style={styles.cardActionButtonsRow}>
                     {/* Primary Action Button */}
                     <TouchableOpacity
                       style={[
@@ -477,9 +484,9 @@ export default function TherapistScheduleScreen({ navigation }) {
                         }
                         size={14}
                         color="#ffffff"
-                        style={{ marginRight: 4 }}
+                        style={{ marginRight: 5 }}
                       />
-                      <Text style={styles.primaryScheduleBtnText}>
+                      <Text style={styles.primaryScheduleBtnText} numberOfLines={1}>
                         {isCompleted
                           ? 'View Summary'
                           : (isNoAttendance || isProviderNoShow || isPatientNoShow)
@@ -503,7 +510,7 @@ export default function TherapistScheduleScreen({ navigation }) {
                         })
                       }
                     >
-                      <Ionicons name="information-circle-outline" size={14} color="#0f172a" style={{ marginRight: 3 }} />
+                      <Ionicons name="information-circle-outline" size={15} color="#0f172a" style={{ marginRight: 4 }} />
                       <Text style={styles.secondaryDetailsBtnText}>Details</Text>
                     </TouchableOpacity>
                   </View>
@@ -840,27 +847,45 @@ const styles = StyleSheet.create({
   conditionSubText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
   cardInnerDivider: { height: 1, backgroundColor: '#f1f5f9', marginBottom: 12 },
 
+  collectUpiBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  collectUpiBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  collectUpiBannerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b45309',
+  },
+  collectUpiPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  collectUpiPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#b45309',
+  },
   cardActionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 4,
-  },
-  collectUpiBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fef3c7',
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  collectUpiText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#b45309',
   },
   primaryScheduleBtn: {
     flex: 1,
@@ -887,6 +912,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 12,
     borderRadius: 10,
+    minWidth: 76,
   },
   secondaryDetailsBtnText: {
     fontSize: 12,

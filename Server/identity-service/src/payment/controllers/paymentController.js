@@ -389,15 +389,21 @@ export const generateClinicDynamicQr = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
     }
 
-    const amountPaise = appointment.amount || 49900;
+    const rawAmt = appointment.amount || appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 80000);
+    const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
     const amountRupees = Math.round(amountPaise / 100);
 
     let transaction = await Transaction.findOne({ appointmentId });
-    let gatewayOrderId = transaction?.gatewayOrderId;
+    let gatewayOrderId = transaction?.gatewayOrderId || transaction?.razorpayOrderId;
 
     if (!gatewayOrderId) {
-      const order = await createRazorpayOrder(amountPaise, 'INR', appointmentId);
-      gatewayOrderId = order.id;
+      gatewayOrderId = `order_clinic_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      try {
+        const order = await createRazorpayOrder(amountPaise, 'INR', appointmentId);
+        if (order?.id) gatewayOrderId = order.id;
+      } catch (e) {
+        console.warn('[generateClinicDynamicQr] Gateway order generation note:', e.message);
+      }
 
       if (!transaction) {
         transaction = await Transaction.create({
@@ -420,9 +426,11 @@ export const generateClinicDynamicQr = async (req, res) => {
     const upiVpa = 'onemedical.pay@icici';
     const upiQrPayload = `upi://pay?pa=${upiVpa}&pn=One%20Medical%20Clinic&am=${amountRupees}&cu=INR&tr=${gatewayOrderId}&tn=OneMedical%20Consultation%20APT-${String(appointmentId).slice(-6).toUpperCase()}`;
 
-    transaction.qrPayload = upiQrPayload;
-    transaction.upiVpa = upiVpa;
-    await transaction.save();
+    if (transaction) {
+      transaction.qrPayload = upiQrPayload;
+      transaction.upiVpa = upiVpa;
+      await transaction.save();
+    }
 
     res.json({
       success: true,
@@ -430,10 +438,13 @@ export const generateClinicDynamicQr = async (req, res) => {
         appointmentId,
         gatewayOrderId,
         amountRupees,
+        amount: amountRupees,
         amountPaise,
         currency: 'INR',
         upiVpa,
+        vpa: upiVpa,
         upiQrPayload,
+        qrPayload: upiQrPayload,
         patientName: appointment.patientName || 'Patient',
         therapistName: appointment.therapistName || 'Specialist',
       }
