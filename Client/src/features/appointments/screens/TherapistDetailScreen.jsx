@@ -28,7 +28,7 @@ export default function TherapistDetailScreen({ route, navigation }) {
   const initialDoctor = route.params?.doctor || route.params?.therapist || {};
   const therapistId = route.params?.therapistId || route.params?.id || route.params?._id || initialDoctor?._id || initialDoctor?.id || initialDoctor?.userId || initialDoctor?.therapistId || '6a81473d9117da48039bd536';
 
-  const { data: savedRes } = useGetSavedSpecialistsQuery();
+  const { data: savedRes, refetch: refetchSaved } = useGetSavedSpecialistsQuery();
   const [saveSpecialist] = useSaveSpecialistMutation();
   const [removeSavedSpecialist] = useRemoveSavedSpecialistMutation();
   const [isSaved, setIsSaved] = useState(false);
@@ -49,12 +49,14 @@ export default function TherapistDetailScreen({ route, navigation }) {
     try {
       if (nextState) {
         await saveSpecialist(therapistId).unwrap();
-        navigation.navigate('SavedSpecialists');
+        if (refetchSaved) refetchSaved();
       } else {
         await removeSavedSpecialist(therapistId).unwrap();
+        if (refetchSaved) refetchSaved();
       }
     } catch (err) {
       console.warn('Favorite toggle error:', err);
+      setIsSaved(!nextState); // Roll back on failure
     }
   };
 

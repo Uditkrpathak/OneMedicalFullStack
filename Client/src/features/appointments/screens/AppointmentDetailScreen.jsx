@@ -417,71 +417,61 @@ export default function AppointmentDetailScreen({ route, navigation }) {
 
         {/* PAYMENT STATUS & RECEIPT */}
         <View style={styles.paymentStatusCard}>
-          <View style={styles.paymentHeaderRow}>
-            <View>
-              <Text style={styles.infoLabel}>PAYMENT STATUS</Text>
-              <View style={styles.paidStatusRow}>
-                {(() => {
-                  const isRefunded = booking.paymentStatus === 'REFUNDED';
-                  const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
-                  const isCancelledNoCharge = booking.status === 'CANCELLED' && (booking.paymentStatus === 'NOT_APPLICABLE' || !booking.paymentStatus);
-                  const isPaid = booking.paymentStatus === 'PAID';
-                  const amtFormatted = (booking.amount ? (booking.amount > 10000 ? Math.round(booking.amount / 100) : booking.amount) : 1200).toLocaleString('en-IN');
+          <View style={styles.paymentGridRow}>
+            <View style={styles.paymentCol}>
+              <Text style={styles.paymentFieldLabel}>PAYMENT STATUS</Text>
+              {(() => {
+                const isRefunded = booking.paymentStatus === 'REFUNDED';
+                const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
+                const isCancelledNoCharge = booking.status === 'CANCELLED' && (booking.paymentStatus === 'NOT_APPLICABLE' || !booking.paymentStatus);
+                const isPaid = booking.paymentStatus === 'PAID';
+                const amtFormatted = (booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 800).toLocaleString('en-IN');
 
-                  if (isRefunded) {
-                    return (
-                      <>
-                        <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 4 }} />
-                        <Text style={[styles.paidStatusText, { color: '#16a34a' }]}>
-                          Refund Settled (₹{amtFormatted})
-                        </Text>
-                      </>
-                    );
-                  }
-                  if (isRefundPending) {
-                    return (
-                      <>
-                        <Ionicons name="time-outline" size={16} color="#d97706" style={{ marginRight: 4 }} />
-                        <Text style={[styles.paidStatusText, { color: '#d97706' }]}>
-                          Refund Processing (₹{amtFormatted})
-                        </Text>
-                      </>
-                    );
-                  }
-                  if (isCancelledNoCharge) {
-                    return (
-                      <>
-                        <Ionicons name="close-circle-outline" size={16} color="#64748b" style={{ marginRight: 4 }} />
-                        <Text style={[styles.paidStatusText, { color: '#64748b' }]}>
-                          Cancelled (No Payment Collected)
-                        </Text>
-                      </>
-                    );
-                  }
-                  if (isPaid) {
-                    return (
-                      <>
-                        <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 4 }} />
-                        <Text style={[styles.paidStatusText, { color: '#16a34a' }]}>
-                          Paid Online (₹{amtFormatted})
-                        </Text>
-                      </>
-                    );
-                  }
-                  return (
-                    <>
-                      <Ionicons name="time-outline" size={16} color="#f59e0b" style={{ marginRight: 4 }} />
-                      <Text style={[styles.paidStatusText, { color: '#b45309' }]}>
-                        Payment Pending (Pay at Clinic)
-                      </Text>
-                    </>
-                  );
-                })()}
-              </View>
+                let badgeBg = '#fef3c7';
+                let textColor = '#b45309';
+                let iconName = 'time-outline';
+                let label = 'Pay at Clinic';
+
+                if (isRefunded) {
+                  badgeBg = '#dcfce7';
+                  textColor = '#15803d';
+                  iconName = 'checkmark-circle';
+                  label = `Refund Settled (₹${amtFormatted})`;
+                } else if (isRefundPending) {
+                  badgeBg = '#fef3c7';
+                  textColor = '#b45309';
+                  iconName = 'time-outline';
+                  label = `Refund Processing (₹${amtFormatted})`;
+                } else if (isCancelledNoCharge) {
+                  badgeBg = '#f1f5f9';
+                  textColor = '#475569';
+                  iconName = 'close-circle-outline';
+                  label = 'Cancelled (No Charge)';
+                } else if (isPaid) {
+                  badgeBg = '#dcfce7';
+                  textColor = '#15803d';
+                  iconName = 'checkmark-circle';
+                  label = `Paid Online (₹${amtFormatted})`;
+                }
+
+                return (
+                  <View style={[styles.statusBadgePill, { backgroundColor: badgeBg }]}>
+                    <Ionicons name={iconName} size={13} color={textColor} style={{ marginRight: 4 }} />
+                    <Text style={[styles.statusBadgeText, { color: textColor }]} numberOfLines={1}>
+                      {label}
+                    </Text>
+                  </View>
+                );
+              })()}
             </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.infoLabel}>RECEIPT ID</Text>
-              <Text style={styles.receiptIdText}>{booking.receiptId || '—'}</Text>
+
+            <View style={styles.receiptCol}>
+              <Text style={styles.paymentFieldLabelRight}>RECEIPT ID</Text>
+              <View style={styles.receiptBadgePill}>
+                <Text style={styles.receiptBadgeText} numberOfLines={1}>
+                  {booking.receiptId || '—'}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -854,34 +844,69 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     marginBottom: 20,
   },
-  paymentHeaderRow: {
+  paymentGridRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 14,
   },
-  paidStatusRow: {
+  paymentCol: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  receiptCol: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  paymentFieldLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+    textTransform: 'uppercase',
+  },
+  paymentFieldLabelRight: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+    textAlign: 'right',
+    textTransform: 'uppercase',
+  },
+  statusBadgePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  paidStatusText: {
-    fontSize: 13,
+  statusBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: '#16a34a',
   },
-  receiptIdText: {
-    fontSize: 12,
-    fontWeight: '700',
+  receiptBadgePill: {
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignSelf: 'flex-end',
+  },
+  receiptBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
     color: '#0f172a',
-    marginTop: 2,
   },
   downloadInvoiceBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#f0f4ff',
-    height: 40,
+    height: 42,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#dbeafe',

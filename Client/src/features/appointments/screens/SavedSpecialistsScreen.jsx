@@ -11,6 +11,7 @@ import {
   Alert,
   Share,
   Dimensions,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,9 +25,10 @@ import { getDoctorAvatarSource } from '../../../utils/doctorImages';
 const { width } = Dimensions.get('window');
 
 export default function SavedSpecialistsScreen({ navigation }) {
-  const { data: savedRes, isLoading } = useGetSavedSpecialistsQuery();
+  const { data: savedRes, isLoading, refetch } = useGetSavedSpecialistsQuery();
   const [removeSaved] = useRemoveSavedSpecialistMutation();
 
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [specialists, setSpecialists] = useState([]);
@@ -38,6 +40,15 @@ export default function SavedSpecialistsScreen({ navigation }) {
       setSpecialists([]);
     }
   }, [savedRes]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleShare = async () => {
     try {
@@ -135,7 +146,11 @@ export default function SavedSpecialistsScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollInner} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollInner}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0038A8']} />}
+      >
         {/* SEARCH BAR */}
         <View style={styles.searchBarWrap}>
           <Ionicons name="search-outline" size={18} color="#64748b" style={{ marginRight: 8 }} />
