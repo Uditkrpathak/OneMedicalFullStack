@@ -403,7 +403,9 @@ export default function PaymentsPage() {
                 </tbody>
               </table>
             ) : (
-              <p className="text-xs text-slate-400 text-center py-6">No {refundFilter.toLowerCase()} refund requests.</p>
+              <p className="text-xs text-slate-400 text-center py-6">
+                {refundFilter === 'ALL' ? 'No refund requests found.' : `No ${refundFilter.toLowerCase().replace('_', ' ')} refund requests.`}
+              </p>
             );
           })()}
         </div>

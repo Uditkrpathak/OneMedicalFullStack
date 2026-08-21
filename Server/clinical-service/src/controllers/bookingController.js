@@ -436,7 +436,11 @@ export const getMyAppointments = async (req, res) => {
         { status: { $in: ['CONFIRMED', 'confirmed', 'CHECKED_IN', 'IN_PROGRESS'] }, endTime: { $lt: now } }
       ];
     } else if (view === 'cancelled') {
-      filter.status = { $in: ['CANCELLED', 'cancelled', 'EXPIRED', 'expired', 'PAYMENT_EXPIRED', 'payment_expired'] };
+      filter.$or = [
+        { status: { $in: ['CANCELLED', 'cancelled', 'EXPIRED', 'expired', 'PAYMENT_EXPIRED', 'payment_expired', 'PROVIDER_NO_SHOW', 'NO_ATTENDANCE', 'PATIENT_NO_SHOW'] } },
+        { cancellationPolicy: 'REFUND_ELIGIBLE' },
+        { paymentStatus: { $in: ['REFUND_PENDING', 'REFUNDED'] } }
+      ];
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -1224,6 +1228,22 @@ export const updateAppointmentStatus = async (req, res) => {
     res.json({ success: true, data: { appointment: appt } });
   } catch (err) {
     console.error('[updateAppointmentStatus] Error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── UPDATE APPOINTMENT (INTERNAL / ADMIN) ───────────────────────────────────
+export const updateAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+    const appointment = await Appointment.findByIdAndUpdate(id, { $set: updates }, { new: true });
+    if (!appointment) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+    res.json({ success: true, data: { appointment } });
+  } catch (err) {
+    console.error('[updateAppointment] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };

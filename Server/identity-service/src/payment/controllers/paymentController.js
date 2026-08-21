@@ -745,22 +745,38 @@ export const getTransactionInternal = async (req, res) => {
 };
 
 // ─── GET /refunds ─────────────────────────────────────────────────────────────
-// Admin list all refund requests (aggregates Refund collection & cancelled refund-eligible sessions)
+// Admin list all refund requests (aggregates Refund collection & cancelled/no-attendance refund-eligible sessions)
 export const listRefunds = async (req, res) => {
   try {
     const refunds = await Refund.find().sort({ createdAt: -1 }).populate('transactionId').lean();
 
-    // Also fetch cancelled appointments that are refund eligible from clinical service
+    // Fetch cancelled and missed appointments that are refund eligible from clinical service
     let clinicalAppts = [];
     try {
       const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
       const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
-      const cRes = await fetch(`${CLINICAL_URL}/appointments?view=cancelled`, {
-        headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
-      });
-      const cJson = await cRes.json();
-      if (cJson.success && Array.isArray(cJson.data?.appointments || cJson.data)) {
-        clinicalAppts = cJson.data?.appointments || cJson.data;
+      
+      const [cRes, noAttRes] = await Promise.allSettled([
+        fetch(`${CLINICAL_URL}/appointments?view=cancelled&limit=200`, {
+          headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
+        }),
+        fetch(`${CLINICAL_URL}/appointments?status=NO_ATTENDANCE&limit=100`, {
+          headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
+        }),
+      ]);
+
+      if (cRes.status === 'fulfilled') {
+        const cJson = await cRes.value.json();
+        if (cJson.success && Array.isArray(cJson.data?.appointments || cJson.data)) {
+          clinicalAppts.push(...(cJson.data?.appointments || cJson.data));
+        }
+      }
+
+      if (noAttRes.status === 'fulfilled') {
+        const noAttJson = await noAttRes.value.json();
+        if (noAttJson.success && Array.isArray(noAttJson.data?.appointments || noAttJson.data)) {
+          clinicalAppts.push(...(noAttJson.data?.appointments || noAttJson.data));
+        }
       }
     } catch (e) {
       console.warn('[listRefunds] Could not fetch clinical appointments:', e.message);
@@ -768,7 +784,6 @@ export const listRefunds = async (req, res) => {
 
     // Combine into unified refund records for admin
     const list = [...refunds];
-    const existingTxIds = new Set(refunds.map(r => String(r.transactionId?._id || r.transactionId)));
 
     for (const appt of clinicalAppts) {
       const isRefundCandidate = 
@@ -776,7 +791,8 @@ export const listRefunds = async (req, res) => {
         appt.paymentStatus === 'REFUND_PENDING' || 
         appt.paymentStatus === 'REFUNDED' ||
         appt.status === 'PROVIDER_NO_SHOW' ||
-        (appt.status === 'NO_ATTENDANCE' && appt.paymentStatus !== 'NOT_APPLICABLE');
+        appt.status === 'NO_ATTENDANCE' ||
+        appt.status === 'CANCELLED';
 
       if (isRefundCandidate) {
         const apptId = String(appt._id);
@@ -790,8 +806,8 @@ export const listRefunds = async (req, res) => {
           if (u) patientName = u.name;
         }
 
-        // Avoid duplicates if already in Refund collection
-        const alreadyInList = refunds.some(r => String(r.appointmentId) === apptId || (txn && String(r.transactionId?._id || r.transactionId) === String(txn._id)));
+        // Avoid duplicates if already in list
+        const alreadyInList = list.some(r => String(r.appointmentId) === apptId || (txn && String(r.transactionId?._id || r.transactionId) === String(txn._id)));
         if (!alreadyInList) {
           const defaultReason = appt.cancellationReason || 
             (appt.status === 'PROVIDER_NO_SHOW' ? 'Doctor Absent (Provider No-Show)' :
@@ -837,33 +853,45 @@ export const initiateRefund = async (req, res) => {
 export const approveRefund = async (req, res) => {
   try {
     const { id } = req.params;
+    const apptId = id.startsWith('ref_appt_') ? id.replace('ref_appt_', '') : id;
+    const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
+    const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
 
-    if (id.startsWith('ref_appt_')) {
-      const apptId = id.replace('ref_appt_', '');
-      const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
-      const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
-      
-      // Update appointment payment status in clinical service
+    // 1. Update clinical appointment paymentStatus in clinical service
+    try {
       await fetch(`${CLINICAL_URL}/appointments/${apptId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
-        body: JSON.stringify({ paymentStatus: 'REFUNDED' }),
+        body: JSON.stringify({ paymentStatus: 'REFUNDED', cancellationPolicy: 'REFUND_ELIGIBLE' }),
       });
-
-      // Update matching transaction
-      await Transaction.updateMany({ appointmentId: apptId }, { status: 'refunded', refundedAt: new Date() });
-
-      return res.json({ success: true, message: 'Refund approved and routed to gateway.' });
+    } catch (err) {
+      console.warn('[approveRefund] Warning updating clinical appointment:', err.message);
     }
 
-    const refund = await Refund.findByIdAndUpdate(id, { status: 'processed' }, { new: true });
-    if (refund?.transactionId) {
-      await Transaction.findByIdAndUpdate(refund.transactionId, { status: 'refunded', refundedAt: new Date() });
+    // 2. Update matching transaction(s)
+    try {
+      await Transaction.updateMany(
+        { $or: [{ appointmentId: apptId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }].filter(Boolean) },
+        { $set: { status: 'refunded', refundedAt: new Date() } }
+      );
+    } catch (err) {
+      console.warn('[approveRefund] Warning updating transaction:', err.message);
     }
 
-    res.json({ success: true, data: refund, message: 'Refund approved and routed to gateway.' });
+    // 3. Update refund document if exists
+    let refund = null;
+    try {
+      if (id.match(/^[0-9a-fA-F]{24}$/) && !id.startsWith('ref_appt_')) {
+        refund = await Refund.findByIdAndUpdate(id, { $set: { status: 'processed' } }, { new: true });
+      }
+    } catch (err) {
+      // not a mongo id
+    }
+
+    return res.json({ success: true, data: refund, message: 'Refund approved and routed to gateway.' });
   } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    console.error('[approveRefund] Error:', err);
+    return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 

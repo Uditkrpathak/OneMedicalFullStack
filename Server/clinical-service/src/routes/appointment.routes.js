@@ -13,6 +13,7 @@ import {
   getOutageImpact,
   getAppointmentsDashboard,
   updateAppointmentStatus,
+  updateAppointment,
   patientCheckIn,
   therapistJoinSession,
   publicBooking,
@@ -36,6 +37,7 @@ router.get('/appointments',                        getMyAppointments);    // ?vi
 router.get('/appointments/outage-impact',          getOutageImpact);      // Outage impact analysis
 router.get('/appointments/outage/impact',          getOutageImpact);
 router.get('/appointments/:id',                    getAppointmentById);   // Single appointment (RBAC enforced)
+router.patch('/appointments/:id',                  updateAppointment);    // Update appointment attributes & status
 
 router.post('/appointments/:id/check-in',          patientCheckIn);       // Patient check-in
 router.post('/appointments/:id/join',              therapistJoinSession); // Therapist join session

@@ -57,6 +57,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     if (s === 'COMPLETED') return 'Session Completed';
     if (s === 'IN_PROGRESS') return 'Session In Progress';
     if (s === 'RESCHEDULED') return 'Session Rescheduled';
+    if (s === 'NO_ATTENDANCE' || s === 'PROVIDER_NO_SHOW' || s === 'PATIENT_NO_SHOW') return 'Missed Consultation (No Attendance)';
 
     if (!isoStartTime) return 'Scheduled';
     const apptTime = new Date(isoStartTime).getTime();
@@ -238,11 +239,13 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               styles.upcomingBadge,
               booking.status === 'COMPLETED' && { backgroundColor: '#dcfce7' },
               booking.status === 'CANCELLED' && { backgroundColor: '#fee2e2' },
+              (booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW') && { backgroundColor: '#fef3c7' },
             ]}>
               <Text style={[
                 styles.upcomingBadgeText,
                 booking.status === 'COMPLETED' && { color: '#16a34a' },
                 booking.status === 'CANCELLED' && { color: '#dc2626' },
+                (booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW') && { color: '#b45309' },
               ]}>
                 {booking.status}
               </Text>
@@ -255,14 +258,14 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               name={
                 booking.status === 'CANCELLED' ? 'close-circle' :
                 booking.status === 'COMPLETED' ? 'checkmark-circle' :
-                booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED' ? 'alert-circle' :
+                (booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW' || booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED') ? 'alert-circle' :
                 'time-outline'
               }
               size={24}
               color={
                 booking.status === 'CANCELLED' ? '#ef4444' :
                 booking.status === 'COMPLETED' ? '#16a34a' :
-                booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED' ? '#f59e0b' :
+                (booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW' || booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED') ? '#f59e0b' :
                 '#003D9B'
               }
               style={{ marginRight: 10 }}
@@ -272,7 +275,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                 styles.countdownTitle,
                 booking.status === 'CANCELLED' && { color: '#ef4444' },
                 booking.status === 'COMPLETED' && { color: '#16a34a' },
-                (booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED') && { color: '#d97706' },
+                (booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW' || booking.status === 'EXPIRED' || booking.status === 'PAYMENT_EXPIRED') && { color: '#d97706' },
               ]}>
                 {computeCountdown(booking.startTime, booking.status)}
               </Text>
@@ -493,7 +496,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               <Text style={styles.cancelLinkText}>Cancel Appointment</Text>
             </TouchableOpacity>
           </>
-        ) : booking.status === 'CANCELLED' ? (
+        ) : (booking.status === 'CANCELLED' || booking.status === 'NO_ATTENDANCE' || booking.status === 'PROVIDER_NO_SHOW' || booking.status === 'PATIENT_NO_SHOW' || booking.status === 'EXPIRED') ? (
           <TouchableOpacity
             style={styles.primaryRescheduleBtn}
             activeOpacity={0.88}
