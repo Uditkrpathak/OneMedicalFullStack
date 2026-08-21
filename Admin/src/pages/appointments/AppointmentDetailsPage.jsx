@@ -254,10 +254,10 @@ export default function AppointmentDetailsPage() {
           {isCancelled && (
             <div className="flex items-center gap-2 flex-wrap">
               {appointment.paymentStatus === 'REFUNDED' ? (
-                <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-bold">
+                <div className="flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs">
                   <CheckCircle2 size={15} /> Refund Settled
                 </div>
-              ) : (
+              ) : appointment.cancellationPolicy === 'REFUND_ELIGIBLE' || appointment.paymentStatus === 'REFUND_PENDING' ? (
                 <button
                   onClick={handleApproveRefund}
                   disabled={actionLoading}
@@ -265,6 +265,10 @@ export default function AppointmentDetailsPage() {
                 >
                   <CheckCircle size={14} /> Approve & Settle Refund
                 </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold">
+                  <XCircle size={14} className="text-rose-500" /> Cancelled (No Refund Due)
+                </div>
               )}
             </div>
           )}
@@ -272,40 +276,88 @@ export default function AppointmentDetailsPage() {
       </div>
 
       {/* ─── CANCELLATION & REFUND BANNER ─── */}
-      {isCancelled && (
-        <div className={`card p-4.5 border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs ${
-          appointment.paymentStatus === 'REFUNDED'
-            ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
-            : 'bg-amber-50/80 border-amber-200 text-amber-950'
-        }`}>
-          <div className="flex items-start gap-3">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-              appointment.paymentStatus === 'REFUNDED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-            }`}>
-              <AlertCircle size={18} />
-            </div>
-            <div className="space-y-0.5">
-              <div className="font-extrabold text-sm">
-                {appointment.paymentStatus === 'REFUNDED' ? 'Cancellation Processed & Refund Settled' : 'Session Cancelled • Refund Pending'}
+      {isCancelled && (() => {
+        const isRefundSettled = appointment.paymentStatus === 'REFUNDED';
+        const isRefundPending = (appointment.cancellationPolicy === 'REFUND_ELIGIBLE' || appointment.paymentStatus === 'REFUND_PENDING') && !isRefundSettled;
+        const isNoRefund = appointment.cancellationPolicy === 'NO_REFUND';
+        const formattedAmt = `₹${(appointment.amount ? (appointment.amount > 10000 ? Math.round(appointment.amount / 100) : appointment.amount) : 1200).toLocaleString('en-IN')}`;
+
+        if (isRefundSettled) {
+          return (
+            <div className="p-4 bg-emerald-50/80 border border-emerald-200/90 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs shadow-xs">
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckCircle2 size={20} />
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm text-emerald-950">
+                    Cancellation Processed • 100% Refund Settled ({formattedAmt})
+                  </div>
+                  <div className="text-emerald-700/90 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Reason: <strong className="text-emerald-950">{appointment.cancellationReason || 'Patient Request'}</strong></span>
+                    <span>•</span>
+                    <span className="bg-emerald-100/80 px-2 py-0.5 rounded-md font-bold text-emerald-800 text-[10px]">REFUND COMPLETED</span>
+                  </div>
+                </div>
               </div>
-              <div className="text-slate-600 font-medium">
-                Reason: <span className="font-bold text-slate-800">{appointment.cancellationReason || 'Cancelled by administrator'}</span>
-                {' • '}Policy: <span className="font-bold">{appointment.cancellationPolicy || 'REFUND_ELIGIBLE'}</span>
+            </div>
+          );
+        }
+
+        if (isRefundPending) {
+          return (
+            <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs shadow-xs">
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 shadow-xs">
+                  <AlertCircle size={20} />
+                </div>
+                <div>
+                  <div className="font-extrabold text-sm text-amber-950">
+                    Appointment Cancelled • Refund Pending Approval ({formattedAmt})
+                  </div>
+                  <div className="text-amber-800 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Reason: <strong className="text-amber-950">{appointment.cancellationReason || 'Patient Request'}</strong></span>
+                    <span>•</span>
+                    <span className="bg-amber-100 px-2 py-0.5 rounded-md font-bold text-amber-900 text-[10px]">ELIGIBLE FOR REFUND</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleApproveRefund}
+                disabled={actionLoading}
+                className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs whitespace-nowrap self-start sm:self-center shadow-xs flex items-center gap-1.5"
+              >
+                <CheckCircle size={14} /> Approve Refund Now
+              </button>
+            </div>
+          );
+        }
+
+        // Scenario: No Refund / Same-day cancellation / Unpaid
+        return (
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs shadow-xs">
+            <div className="flex items-center gap-3.5">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-100">
+                <XCircle size={20} />
+              </div>
+              <div>
+                <div className="font-extrabold text-sm text-slate-900">
+                  Appointment Cancelled
+                </div>
+                <div className="text-slate-500 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
+                  <span>Reason: <strong className="text-slate-800">{appointment.cancellationReason || 'Personal Emergency'}</strong></span>
+                  <span>•</span>
+                  <span>Policy: <strong className="text-slate-700">{isNoRefund ? 'Non-refundable (Cancelled within 24h of visit)' : 'No Upfront Charge'}</strong></span>
+                  <span className="bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                    {isNoRefund ? 'NO REFUND APPLICABLE' : 'UNPAID SLOT RELEASED'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-
-          {appointment.paymentStatus !== 'REFUNDED' && (
-            <button
-              onClick={handleApproveRefund}
-              disabled={actionLoading}
-              className="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs whitespace-nowrap self-start sm:self-center"
-            >
-              Approve Refund Now
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* ─── MAIN GRID ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

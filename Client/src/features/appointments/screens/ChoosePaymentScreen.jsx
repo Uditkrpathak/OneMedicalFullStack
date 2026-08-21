@@ -24,11 +24,8 @@ export default function ChoosePaymentScreen({ route, navigation }) {
 
   const [appointment, setAppointment] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [paymentType, setPaymentType] = useState('online'); // 'online' | 'card' | 'clinic'
+  const [paymentType, setPaymentType] = useState('online'); // 'online' | 'clinic'
   const [onlineMethod, setOnlineMethod] = useState('upi');
-  const [selectedCardId, setSelectedCardId] = useState('card_hdfc');
-  const [showAddCardForm, setShowAddCardForm] = useState(false);
-  const [cardForm, setCardForm] = useState({ number: '', name: '', expiry: '', cvv: '' });
 
   // Fetch backend-authoritative appointment data
   useEffect(() => {
@@ -98,7 +95,7 @@ export default function ChoosePaymentScreen({ route, navigation }) {
         </View>
 
         {/* PAYMENT METHOD SELECTION */}
-        <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Select UPI Payment Option</Text>
+        <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>Select Payment Option</Text>
 
         {/* OPTION 1: INSTANT UPI (ONLINE) */}
         <TouchableOpacity
@@ -109,19 +106,19 @@ export default function ChoosePaymentScreen({ route, navigation }) {
           <View style={styles.optionHeaderRow}>
             <View style={{ flex: 1 }}>
               <View style={styles.optionTitleBadgeRow}>
-                <Text style={styles.optionTitle}>Pay via UPI (Instant)</Text>
+                <Text style={styles.optionTitle}>Pay Online via UPI</Text>
                 <View style={styles.recBadge}>
-                  <Text style={styles.recBadgeText}>FAST & SECURE</Text>
+                  <Text style={styles.recBadgeText}>INSTANT / SECURE</Text>
                 </View>
               </View>
-              <Text style={styles.optionSub}>Zero convenience fee via Google Pay, PhonePe, Paytm, or BHIM.</Text>
+              <Text style={styles.optionSub}>Instant verification with Google Pay, PhonePe, Paytm or Any UPI App.</Text>
             </View>
             <View style={[styles.radioCircle, paymentType === 'online' && styles.radioCircleActive]}>
               {paymentType === 'online' && <View style={styles.radioInner} />}
             </View>
           </View>
 
-          {/* EXPANDED UPI APPS */}
+          {/* EXPANDED UPI APPS LIST */}
           {paymentType === 'online' && (
             <View style={styles.methodsSubContainer}>
               <TouchableOpacity
@@ -131,7 +128,7 @@ export default function ChoosePaymentScreen({ route, navigation }) {
                 <Ionicons name="logo-google" size={20} color="#003D9B" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.methodName}>Google Pay</Text>
-                  <Text style={styles.methodDesc}>Instant 1-Tap UPI</Text>
+                  <Text style={styles.methodDesc}>Instant UPI Transfer</Text>
                 </View>
                 {onlineMethod === 'gpay' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
               </TouchableOpacity>
@@ -143,7 +140,7 @@ export default function ChoosePaymentScreen({ route, navigation }) {
                 <Ionicons name="phone-portrait-outline" size={20} color="#003D9B" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.methodName}>PhonePe</Text>
-                  <Text style={styles.methodDesc}>Direct UPI Autopay</Text>
+                  <Text style={styles.methodDesc}>Fast UPI Gateway</Text>
                 </View>
                 {onlineMethod === 'phonepe' && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
               </TouchableOpacity>
@@ -167,7 +164,7 @@ export default function ChoosePaymentScreen({ route, navigation }) {
                 <Ionicons name="qr-code-outline" size={20} color="#003D9B" style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.methodName}>BHIM / Any UPI App / QR</Text>
-                  <Text style={styles.methodDesc}>Scan QR or Enter UPI ID (VPA)</Text>
+                  <Text style={styles.methodDesc}>Scan Dynamic QR or Enter UPI ID</Text>
                 </View>
                 {(onlineMethod === 'upi' || onlineMethod === 'bhim') && <Ionicons name="checkmark-circle" size={18} color="#003D9B" />}
               </TouchableOpacity>
@@ -175,157 +172,14 @@ export default function ChoosePaymentScreen({ route, navigation }) {
           )}
         </TouchableOpacity>
 
-        {/* OPTION 2: CREDIT / DEBIT / ATM CARD */}
-        <TouchableOpacity
-          style={[styles.optionCard, paymentType === 'card' && styles.optionCardSelected]}
-          activeOpacity={0.9}
-          onPress={() => setPaymentType('card')}
-        >
-          <View style={styles.optionHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.optionTitleBadgeRow}>
-                <Text style={styles.optionTitle}>Credit / Debit / ATM Card</Text>
-                <View style={[styles.recBadge, { backgroundColor: '#f0fdf4' }]}>
-                  <Text style={[styles.recBadgeText, { color: '#16a34a' }]}>VISA / MASTERCARD / RUPAY</Text>
-                </View>
-              </View>
-              <Text style={styles.optionSub}>Save and pay with any domestic or international debit / credit card.</Text>
-            </View>
-            <View style={[styles.radioCircle, paymentType === 'card' && styles.radioCircleActive]}>
-              {paymentType === 'card' && <View style={styles.radioInner} />}
-            </View>
-          </View>
-
-          {/* EXPANDED CARDS LIST & ADD CARD FORM */}
-          {paymentType === 'card' && (
-            <View style={styles.methodsSubContainer}>
-              {/* Saved Card 1 */}
-              <TouchableOpacity
-                style={[styles.methodRow, selectedCardId === 'card_hdfc' && styles.methodRowSelected]}
-                onPress={() => {
-                  setSelectedCardId('card_hdfc');
-                  setShowAddCardForm(false);
-                }}
-              >
-                <Ionicons name="card" size={20} color="#003D9B" style={{ marginRight: 10 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.methodName}>HDFC Bank Visa Debit Card</Text>
-                  <Text style={styles.methodDesc}>•••• •••• •••• 4242 • Exp 08/28</Text>
-                </View>
-                {selectedCardId === 'card_hdfc' && !showAddCardForm && (
-                  <Ionicons name="checkmark-circle" size={18} color="#003D9B" />
-                )}
-              </TouchableOpacity>
-
-              {/* Saved Card 2 */}
-              <TouchableOpacity
-                style={[styles.methodRow, selectedCardId === 'card_icici' && !showAddCardForm && styles.methodRowSelected]}
-                onPress={() => {
-                  setSelectedCardId('card_icici');
-                  setShowAddCardForm(false);
-                }}
-              >
-                <Ionicons name="card" size={20} color="#0d9488" style={{ marginRight: 10 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.methodName}>ICICI Bank Platinum RuPay</Text>
-                  <Text style={styles.methodDesc}>•••• •••• •••• 8821 • Exp 11/29</Text>
-                </View>
-                {selectedCardId === 'card_icici' && !showAddCardForm && (
-                  <Ionicons name="checkmark-circle" size={18} color="#003D9B" />
-                )}
-              </TouchableOpacity>
-
-              {/* Add New Card Button */}
-              <TouchableOpacity
-                style={[styles.addCardToggleBtn, showAddCardForm && styles.addCardToggleBtnActive]}
-                onPress={() => setShowAddCardForm(!showAddCardForm)}
-                activeOpacity={0.85}
-              >
-                <Ionicons name={showAddCardForm ? "remove-circle-outline" : "add-circle-outline"} size={18} color="#003D9B" />
-                <Text style={styles.addCardToggleText}>
-                  {showAddCardForm ? 'Close Card Form' : '+ Add New Debit / Credit Card'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Add Card Inline Form */}
-              {showAddCardForm && (
-                <View style={styles.addCardFormCard}>
-                  <Text style={styles.formInputLabel}>CARD NUMBER</Text>
-                  <TextInput
-                    style={styles.cardInput}
-                    placeholder="4532 8900 1234 5678"
-                    placeholderTextColor="#94a3b8"
-                    keyboardType="numeric"
-                    maxLength={19}
-                    value={cardForm.number}
-                    onChangeText={(v) => {
-                      const cleaned = v.replace(/\D/g, '').slice(0, 16);
-                      const formatted = cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
-                      setCardForm((prev) => ({ ...prev, number: formatted }));
-                    }}
-                  />
-
-                  <Text style={styles.formInputLabel}>NAME ON CARD</Text>
-                  <TextInput
-                    style={styles.cardInput}
-                    placeholder="e.g. Udit Pathak"
-                    placeholderTextColor="#94a3b8"
-                    autoCapitalize="words"
-                    value={cardForm.name}
-                    onChangeText={(v) => setCardForm((prev) => ({ ...prev, name: v }))}
-                  />
-
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.formInputLabel}>EXPIRY (MM/YY)</Text>
-                      <TextInput
-                        style={styles.cardInput}
-                        placeholder="MM/YY"
-                        placeholderTextColor="#94a3b8"
-                        keyboardType="numeric"
-                        maxLength={5}
-                        value={cardForm.expiry}
-                        onChangeText={(v) => {
-                          const cleaned = v.replace(/\D/g, '').slice(0, 4);
-                          const formatted = cleaned.length >= 3 ? `${cleaned.slice(0, 2)}/${cleaned.slice(2)}` : cleaned;
-                          setCardForm((prev) => ({ ...prev, expiry: formatted }));
-                        }}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.formInputLabel}>CVV / CVC</Text>
-                      <TextInput
-                        style={styles.cardInput}
-                        placeholder="•••"
-                        placeholderTextColor="#94a3b8"
-                        keyboardType="numeric"
-                        secureTextEntry
-                        maxLength={4}
-                        value={cardForm.cvv}
-                        onChangeText={(v) => setCardForm((prev) => ({ ...prev, cvv: v }))}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.secureTokenRow}>
-                    <Ionicons name="shield-checkmark" size={14} color="#16a34a" />
-                    <Text style={styles.secureTokenText}>Card data is tokenized securely as per RBI guidelines.</Text>
-                  </View>
-                </View>
-              )}
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* OPTION 3: PAY VIA UPI AT CLINIC RECEPTION (IN-CLINIC VISITS ONLY) */}
+        {/* OPTION 2: PAY VIA UPI AT CLINIC RECEPTION (IN-CLINIC VISITS ONLY) */}
         {appointment?.appointmentPlace === 'telehealth' || appointment?.serviceType === 'online_consultation' ? (
           <View style={[styles.optionCard, { opacity: 0.6, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }]}>
             <View style={styles.optionHeaderRow}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.optionTitle, { color: '#64748b' }]}>Pay at Clinic (Disabled for Telehealth)</Text>
                 <Text style={styles.optionSub}>
-                  Online video sessions require upfront payment confirmation to connect with the specialist.
+                  Online video sessions require upfront UPI payment confirmation to connect with the specialist.
                 </Text>
               </View>
               <Ionicons name="lock-closed" size={18} color="#94a3b8" />
@@ -339,9 +193,9 @@ export default function ChoosePaymentScreen({ route, navigation }) {
           >
             <View style={styles.optionHeaderRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.optionTitle}>Pay via UPI at Clinic Reception</Text>
+                <Text style={styles.optionTitle}>Pay at Clinic Reception</Text>
                 <Text style={styles.optionSub}>
-                  Scan the Dynamic Clinic UPI QR at reception when arriving for your session.
+                  Pay upon arrival at the clinic reception desk (Cash, UPI QR, or Counter).
                 </Text>
               </View>
               <View style={[styles.radioCircle, paymentType === 'clinic' && styles.radioCircleActive]}>

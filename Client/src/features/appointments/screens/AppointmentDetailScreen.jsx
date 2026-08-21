@@ -402,23 +402,67 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             <View>
               <Text style={styles.infoLabel}>PAYMENT STATUS</Text>
               <View style={styles.paidStatusRow}>
-                <Ionicons
-                  name={booking.paymentStatus === 'PAID' ? 'checkmark-circle' : 'time-outline'}
-                  size={16}
-                  color={booking.paymentStatus === 'PAID' ? '#16a34a' : '#f59e0b'}
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[
-                  styles.paidStatusText,
-                  booking.paymentStatus !== 'PAID' && { color: '#b45309' }
-                ]}>
-                  {booking.paymentStatus === 'PAID' ? `Paid Online (₹${(booking.amount / 100).toLocaleString('en-IN')})` : 'Payment Pending'}
-                </Text>
+                {(() => {
+                  const isRefunded = booking.paymentStatus === 'REFUNDED';
+                  const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
+                  const isCancelledNoCharge = booking.status === 'CANCELLED' && (booking.paymentStatus === 'NOT_APPLICABLE' || !booking.paymentStatus);
+                  const isPaid = booking.paymentStatus === 'PAID';
+                  const amtFormatted = (booking.amount ? (booking.amount > 10000 ? Math.round(booking.amount / 100) : booking.amount) : 1200).toLocaleString('en-IN');
+
+                  if (isRefunded) {
+                    return (
+                      <>
+                        <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 4 }} />
+                        <Text style={[styles.paidStatusText, { color: '#16a34a' }]}>
+                          Refund Settled (₹{amtFormatted})
+                        </Text>
+                      </>
+                    );
+                  }
+                  if (isRefundPending) {
+                    return (
+                      <>
+                        <Ionicons name="time-outline" size={16} color="#d97706" style={{ marginRight: 4 }} />
+                        <Text style={[styles.paidStatusText, { color: '#d97706' }]}>
+                          Refund Processing (₹{amtFormatted})
+                        </Text>
+                      </>
+                    );
+                  }
+                  if (isCancelledNoCharge) {
+                    return (
+                      <>
+                        <Ionicons name="close-circle-outline" size={16} color="#64748b" style={{ marginRight: 4 }} />
+                        <Text style={[styles.paidStatusText, { color: '#64748b' }]}>
+                          Cancelled (No Payment Collected)
+                        </Text>
+                      </>
+                    );
+                  }
+                  if (isPaid) {
+                    return (
+                      <>
+                        <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 4 }} />
+                        <Text style={[styles.paidStatusText, { color: '#16a34a' }]}>
+                          Paid Online (₹{amtFormatted})
+                        </Text>
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      <Ionicons name="time-outline" size={16} color="#f59e0b" style={{ marginRight: 4 }} />
+                      <Text style={[styles.paidStatusText, { color: '#b45309' }]}>
+                        Payment Pending (Pay at Clinic)
+                      </Text>
+                    </>
+                  );
+                })()}
               </View>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={styles.infoLabel}>RECEIPT ID</Text>
-              <Text style={styles.receiptIdText}>{booking.receiptId}</Text>
+              <Text style={styles.receiptIdText}>{booking.receiptId || '—'}</Text>
             </View>
           </View>
 

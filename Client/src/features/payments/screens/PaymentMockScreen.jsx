@@ -126,23 +126,28 @@ export default function PaymentMockScreen({ route, navigation }) {
           <Text style={styles.amountDisplay}>₹{amountRupees}.00</Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Select Test Payment Mode</Text>
-        {['upi', 'card', 'netbanking'].map((method) => (
+        <Text style={styles.sectionTitle}>Select UPI Payment App</Text>
+        {[
+          { id: 'gpay', label: 'Google Pay UPI', icon: 'logo-google' },
+          { id: 'phonepe', label: 'PhonePe UPI', icon: 'phone-portrait-outline' },
+          { id: 'paytm', label: 'Paytm UPI', icon: 'wallet-outline' },
+          { id: 'bhim', label: 'BHIM / Dynamic UPI QR', icon: 'qr-code-outline' },
+        ].map((method) => (
           <TouchableOpacity
-            key={method}
-            style={[styles.methodRow, selectedMethod === method && styles.methodRowActive]}
-            onPress={() => setSelectedMethod(method)}
+            key={method.id}
+            style={[styles.methodRow, selectedMethod === method.id && styles.methodRowActive]}
+            onPress={() => setSelectedMethod(method.id)}
           >
             <Ionicons
-              name={method === 'upi' ? 'qr-code-outline' : method === 'card' ? 'card-outline' : 'business-outline'}
+              name={method.icon}
               size={20}
-              color={selectedMethod === method ? '#003D9B' : '#64748b'}
+              color={selectedMethod === method.id ? '#003D9B' : '#64748b'}
               style={{ marginRight: 12 }}
             />
-            <Text style={[styles.methodText, selectedMethod === method && styles.methodTextActive]}>
-              {method === 'upi' ? 'UPI (Google Pay / PhonePe)' : method === 'card' ? 'Credit / Debit Card' : 'Net Banking'}
+            <Text style={[styles.methodText, selectedMethod === method.id && styles.methodTextActive]}>
+              {method.label}
             </Text>
-            {selectedMethod === method && <Ionicons name="checkmark-circle" size={20} color="#003D9B" />}
+            {selectedMethod === method.id && <Ionicons name="checkmark-circle" size={20} color="#003D9B" />}
           </TouchableOpacity>
         ))}
 
