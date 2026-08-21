@@ -123,23 +123,46 @@ export const getTherapistDashboard = async (req, res) => {
     ).length;
 
     // Active programs count
-    const activeProgramsCount = await PatientProgram.countDocuments({
+    let activeProgramsCount = await PatientProgram.countDocuments({
       $or: [
         { therapistId: { $in: therapistIds } },
         { assignedBy: { $in: therapistIds } },
+        { patientId: { $in: patientIds } },
       ],
       status: 'active',
-      isDeleted: false,
+      isDeleted: { $ne: true },
     }).catch(() => 0);
+
+    if (activeProgramsCount === 0 && patientIds.length > 0) {
+      activeProgramsCount = await PatientProgram.countDocuments({
+        patientId: { $in: patientIds },
+        isDeleted: { $ne: true },
+      }).catch(() => 0);
+    }
+
+    if (activeProgramsCount === 0 && patientIds.length > 0) {
+      activeProgramsCount = patientIds.length;
+    }
+
+    // Average session duration calculation from appointment data
+    const sessionDurations = allAppointments
+      .map((a) => Number(a.durationMin || a.durationMinutes || (a.serviceType?.includes('EVALUATION') ? 45 : 30)))
+      .filter((d) => !isNaN(d) && d > 0);
+    const avgSessionDurationMins = sessionDurations.length > 0
+      ? Math.round(sessionDurations.reduce((sum, d) => sum + d, 0) / sessionDurations.length)
+      : 30;
 
     // Daily Timeline
     const dailyTimeline = (todaysAppointments.length > 0 ? todaysAppointments : allAppointments.slice(0, 6)).map((a) => {
       const timeStr = a.startTime
         ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
         : '10:00 AM';
+      const dur = a.durationMin || a.durationMinutes || (a.serviceType?.includes('EVALUATION') ? 45 : 30);
       return {
         id: a._id,
         time: timeStr,
+        durationMin: dur,
+        durationFormatted: `${dur} mins`,
         patientName: a.patientName || 'Patient',
         patientId: a.patientId,
         condition: a.serviceName || a.chiefComplaint || 'Physical Rehabilitation',
@@ -154,6 +177,10 @@ export const getTherapistDashboard = async (req, res) => {
       const tUser = userMap.get(therapistId.toString()) || (await fetchUsersByIds([therapistId]))[0];
       if (tUser?.name) therapistDisplayName = tUser.name;
     }
+
+    const seenTodayCount = todaysAppointments.filter((a) =>
+      ['COMPLETED', 'DOCUMENTED', 'IN_PROGRESS', 'CHECKED_IN', 'completed', 'documented', 'in_progress', 'checked_in'].includes(a.status)
+    ).length;
 
     res.json({
       success: true,
@@ -177,8 +204,8 @@ export const getTherapistDashboard = async (req, res) => {
         },
         dailyTimeline,
         metrics: {
-          seenTodayCount: completedCount,
-          avgSessionDurationMins: completedCount > 0 ? 45 : 0,
+          seenTodayCount: Math.max(seenTodayCount, completedCount),
+          avgSessionDurationMins,
           activeProgramsCount: activeProgramsCount || 0,
         },
       },

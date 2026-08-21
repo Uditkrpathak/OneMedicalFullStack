@@ -341,7 +341,7 @@ export default function TherapistDashboardScreen({ navigation }) {
 
                     <View style={styles.timelineContent}>
                       <Text style={[styles.timelineStatusHeader, { color: statusColor }]}>
-                        {item.time} • {s.replace(/_/g, ' ')}
+                        {item.time} {item.durationFormatted ? `(${item.durationFormatted})` : ''} • {s.replace(/_/g, ' ')}
                       </Text>
                       <Text style={styles.timelinePatientName}>{item.patientName}</Text>
                       <Text style={styles.timelineConditionText}>{item.condition}</Text>
