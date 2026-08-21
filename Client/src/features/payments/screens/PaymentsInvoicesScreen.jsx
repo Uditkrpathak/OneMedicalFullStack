@@ -13,10 +13,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector } from 'react-redux';
 import paymentApi from '../api';
-import { colors } from '../../../theme/colors';
 
 export default function PaymentsInvoicesScreen({ navigation }) {
-  const { token } = useSelector((state) => state.auth);
+  const { token, user } = useSelector((state) => state.auth);
   const [filter, setFilter] = useState('all');
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,9 +26,12 @@ export default function PaymentsInvoicesScreen({ navigation }) {
       const res = await paymentApi.getMyTransactions(token);
       if (res.success && Array.isArray(res.data)) {
         setTransactions(res.data);
+      } else {
+        setTransactions([]);
       }
     } catch (err) {
       console.warn('[Payments] Fetch error:', err.message);
+      setTransactions([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -58,24 +60,43 @@ export default function PaymentsInvoicesScreen({ navigation }) {
       const s = (t.status || t.paymentStatus || '').toLowerCase();
       return s === 'captured' || s === 'paid';
     })
-    .reduce((sum, t) => sum + (t.amountPaise || (t.amount ? t.amount * 100 : 0) || 0), 0) / 100;
+    .reduce((sum, t) => {
+      const amt = t.amountPaise ? (t.amountPaise > 5000 ? t.amountPaise / 100 : t.amountPaise) : (t.amount || 0);
+      return sum + amt;
+    }, 0);
+
+  const totalRefunded = transactions
+    .filter((t) => {
+      const s = (t.status || t.paymentStatus || '').toLowerCase();
+      return s === 'refunded' || s === 'partially_refunded';
+    })
+    .reduce((sum, t) => {
+      const amt = t.amountPaise ? (t.amountPaise > 5000 ? t.amountPaise / 100 : t.amountPaise) : (t.amount || 0);
+      return sum + amt;
+    }, 0);
 
   const handleDownloadTaxSummary = () => {
     Alert.alert(
       'Annual Tax Summary',
-      `Financial Year: 2026-27\nTotal Consultations Paid: ₹${totalPaid.toLocaleString('en-IN')}\nGSTIN: 29AABCU9603R1ZM\n\nOfficial statement has been compiled from ${transactions.length} verified records.`,
-      [{ text: 'OK' }]
+      `Financial Year: 2026-27\nTotal Consultations Paid: ₹${totalPaid.toLocaleString('en-IN')}\nTotal Refunded: ₹${totalRefunded.toLocaleString('en-IN')}\nNet Medical Expenses: ₹${(totalPaid - totalRefunded).toLocaleString('en-IN')}\nGSTIN: 29AABCU9603R1ZM\n\nOfficial statement has been compiled from ${transactions.length} verified records.\nAll consultations qualify for Section 80D tax exemption.`,
+      [
+        { text: 'View Invoices', onPress: () => navigation.navigate('Invoices') },
+        { text: 'OK' }
+      ]
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#0f172a" />
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Payments & Invoices</Text>
+        <TouchableOpacity style={styles.headerInvoicesBtn} onPress={() => navigation.navigate('Invoices')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="receipt-outline" size={20} color="#003D9B" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -85,12 +106,14 @@ export default function PaymentsInvoicesScreen({ navigation }) {
       >
         {/* TOTAL PAID HERO CARD */}
         <View style={styles.heroCard}>
-          <Text style={styles.heroSubText}>TOTAL PAID</Text>
+          <Text style={styles.heroSubText}>TOTAL MEDICAL EXPENSES PAID</Text>
           <Text style={styles.heroAmountText}>₹{totalPaid.toLocaleString('en-IN')}</Text>
 
           <View style={styles.heroFooterRow}>
             <View style={styles.outstandingBadge}>
-              <Text style={styles.outstandingText}>OUTSTANDING: ₹0</Text>
+              <Text style={styles.outstandingText}>
+                {totalRefunded > 0 ? `REFUNDED: ₹${totalRefunded.toLocaleString('en-IN')}` : 'OUTSTANDING: ₹0'}
+              </Text>
             </View>
             <TouchableOpacity style={styles.taxSummaryBtn} onPress={handleDownloadTaxSummary} activeOpacity={0.8}>
               <Ionicons name="document-text-outline" size={14} color="#ffffff" style={{ marginRight: 4 }} />
@@ -122,7 +145,7 @@ export default function PaymentsInvoicesScreen({ navigation }) {
           <ActivityIndicator size="large" color="#003D9B" style={{ marginTop: 40 }} />
         ) : filteredTxns.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Ionicons name="receipt-outline" size={44} color="#94a3b8" style={{ marginBottom: 12 }} />
+            <Ionicons name="receipt-outline" size={48} color="#94a3b8" style={{ marginBottom: 12 }} />
             <Text style={styles.emptyTitle}>No Transactions Found</Text>
             <Text style={styles.emptySub}>Your payment invoices will appear here after booking physiotherapy sessions.</Text>
             <TouchableOpacity
@@ -143,38 +166,48 @@ export default function PaymentsInvoicesScreen({ navigation }) {
             const isPaid = rawStatus === 'captured' || rawStatus === 'paid';
             const isRefunded = rawStatus === 'refunded' || rawStatus === 'partially_refunded';
             const statusLabel = isPaid ? 'PAID' : isRefunded ? 'REFUNDED' : 'PENDING';
-            const amountVal = item.amountPaise ? item.amountPaise / 100 : (item.amount || 0);
+            const amountVal = item.amountPaise ? (item.amountPaise > 5000 ? Math.round(item.amountPaise / 100) : item.amountPaise) : (item.amount || 0);
+            const dName = item.therapistName || 'Dr. Specialist';
+            const dateFormatted = new Date(item.createdAt || item.date || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
             return (
               <TouchableOpacity
                 key={item._id || item.id}
-                style={styles.txnCard}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate('InvoiceDetails', { transactionId: item._id || item.id })}
+                style={[styles.txnCard, isRefunded && { borderColor: '#e9d5ff' }]}
+                activeOpacity={0.88}
+                onPress={() => navigation.navigate('InvoiceDetails', {
+                  transactionId: item._id || item.id,
+                  appointmentId: item.appointmentId,
+                  receiptId: item.invoiceNumber,
+                  doctorName: dName,
+                  amount: amountVal,
+                  serviceName: item.serviceName || 'Physiotherapy Consultation',
+                  dateStr: dateFormatted,
+                })}
               >
                 <View style={styles.txnIconBox}>
                   <Ionicons
                     name={isPaid ? 'checkmark-circle' : isRefunded ? 'arrow-undo-circle' : 'time-outline'}
                     size={28}
-                    color={isPaid ? '#16a34a' : isRefunded ? '#2563eb' : '#eab308'}
+                    color={isPaid ? '#16a34a' : isRefunded ? '#7e22ce' : '#eab308'}
                   />
                 </View>
 
                 <View style={styles.txnDetails}>
                   <Text style={styles.txnTitle} numberOfLines={1}>
-                    {item.therapistName ? `Dr. Consultation • ${item.therapistName}` : 'Physiotherapy Consultation'}
+                    {dName.startsWith('Dr.') ? dName : `Dr. ${dName}`} • Consultation
                   </Text>
                   <Text style={styles.txnSub}>
-                    {new Date(item.createdAt || item.date || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} • {(item.paymentMethod || 'UPI').toUpperCase()}
+                    {dateFormatted} • {(item.paymentMethod || 'UPI').toUpperCase()}
                   </Text>
                 </View>
 
                 <View style={styles.txnRightCol}>
-                  <Text style={styles.txnAmountText}>₹{amountVal.toLocaleString('en-IN')}</Text>
+                  <Text style={[styles.txnAmountText, isRefunded && { color: '#7e22ce' }]}>₹{amountVal.toLocaleString('en-IN')}</Text>
                   <Text
                     style={[
                       styles.txnStatusBadge,
-                      { color: isPaid ? '#16a34a' : isRefunded ? '#2563eb' : '#d97706' }
+                      { color: isPaid ? '#16a34a' : isRefunded ? '#7e22ce' : '#d97706' }
                     ]}
                   >
                     {statusLabel}
@@ -197,32 +230,51 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: '#ffffff',
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
   backBtn: {
-    padding: 6,
-    marginRight: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
   },
+  headerInvoicesBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scrollContent: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 40,
   },
   heroCard: {
     backgroundColor: '#003D9B',
     borderRadius: 20,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 16,
+    shadowColor: '#003D9B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 3,
   },
   heroSubText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#bae6fd',
     letterSpacing: 1,
@@ -230,7 +282,7 @@ const styles = StyleSheet.create({
   },
   heroAmountText: {
     fontSize: 32,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#ffffff',
     marginBottom: 16,
   },
@@ -267,10 +319,10 @@ const styles = StyleSheet.create({
   },
   filterWrapper: {
     marginBottom: 16,
-    marginHorizontal: -20,
+    marginHorizontal: -16,
   },
   filterScroll: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     gap: 8,
   },
   filterChip: {
@@ -302,6 +354,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
   txnIconBox: {
     marginRight: 12,

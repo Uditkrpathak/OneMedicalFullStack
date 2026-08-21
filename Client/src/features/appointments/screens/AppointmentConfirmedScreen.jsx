@@ -250,6 +250,24 @@ export default function AppointmentConfirmedScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={styles.invoiceBtn}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('InvoiceDetails', {
+            transactionId: rawId,
+            appointmentId: rawId,
+            receiptId: displayId,
+            doctorName,
+            serviceName,
+            clinicName,
+            dateStr: dateTimeStr,
+            amount: appointment?.amount ? (appointment.amount > 5000 ? Math.round(appointment.amount / 100) : appointment.amount) : 750,
+          })}
+        >
+          <Ionicons name="receipt-outline" size={16} color="#003D9B" style={{ marginRight: 6 }} />
+          <Text style={styles.invoiceBtnText}>View & Download Tax Invoice</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.secondaryLinkBtn}
           onPress={() => navigation.navigate('PatientHome')}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -462,6 +480,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  invoiceBtn: {
+    width: '100%',
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#bfdbfe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  invoiceBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#003D9B',
   },
   secondaryLinkBtn: {
     paddingVertical: 10,

@@ -24,12 +24,13 @@ export const getTherapistDashboard = async (req, res) => {
     // Resolve all linked therapist IDs (user ID + profile ID)
     const therapistIds = await resolveTherapistIds(therapistId);
 
-    // Start of today and end of today
+    // Start of today and end of today in IST (UTC+5:30)
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const nowIST = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+    const startOfDay = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - 5.5 * 60 * 60 * 1000);
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
 
-    // Fetch all appointments for this therapist
+    // Fetch all appointments for this therapist (excluding deleted and cancelled)
     const allAppointments = await Appointment.find({
       therapistId: { $in: therapistIds },
       status: { $nin: ['CANCELLED', 'REJECTED', 'cancelled', 'rejected'] },
@@ -60,29 +61,30 @@ export const getTherapistDashboard = async (req, res) => {
       }
     });
 
-    // Today's appointments (or recent appointments if today has none in dev/seed)
-    let todaysAppointments = allAppointments.filter((a) => {
+    // Today's real appointments only
+    const todaysAppointments = allAppointments.filter((a) => {
       const apptDate = new Date(a.startTime || a.scheduledDate);
       return apptDate >= startOfDay && apptDate <= endOfDay;
     });
 
-    if (todaysAppointments.length === 0 && allAppointments.length > 0) {
-      todaysAppointments = allAppointments.slice(0, 8);
-    }
-
-    const totalCount = todaysAppointments.length || allAppointments.length || 0;
+    const totalCount = todaysAppointments.length;
     const completedCount = todaysAppointments.filter((a) =>
-      ['COMPLETED', 'DOCUMENTED', 'DOCUMENTATION_PENDING', 'completed', 'documented'].includes(a.status)
+      ['COMPLETED', 'DOCUMENTED', 'completed', 'documented'].includes(a.status)
     ).length;
-    const remainingCount = Math.max(0, totalCount - completedCount);
+    const remainingCount = todaysAppointments.filter((a) =>
+      ['CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'checked_in', 'scheduled'].includes(a.status)
+    ).length;
     const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-    // Determine next appointment (pending, scheduled, or today's active patient)
+    // Active status filter: ONLY confirmed, in-progress, or scheduled sessions qualify as "Next Patient"
+    const activeNextStatuses = ['CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'checked_in', 'scheduled'];
+
+    // Determine next active appointment
     const nextApptDoc =
-      todaysAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
-      allAppointments.find((a) => new Date(a.startTime) > now && ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
-      allAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
-      (todaysAppointments.length > 0 ? todaysAppointments[0] : (allAppointments.length > 0 ? allAppointments[0] : null));
+      todaysAppointments.find((a) => activeNextStatuses.includes(a.status) && new Date(a.endTime || a.startTime) >= now) ||
+      todaysAppointments.find((a) => activeNextStatuses.includes(a.status)) ||
+      allAppointments.find((a) => activeNextStatuses.includes(a.status) && new Date(a.startTime) > now) ||
+      null;
 
     let nextAppointment = null;
     if (nextApptDoc) {
@@ -111,8 +113,8 @@ export const getTherapistDashboard = async (req, res) => {
         timeFormatted: apptTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }),
         minutesUntil,
         timeUntilFormatted,
-        visitType: nextApptDoc.appointmentType || nextApptDoc.appointmentPlace || 'clinic_visit',
-        roomNumber: nextApptDoc.roomNumber || (nextApptDoc.appointmentPlace === 'VIDEO' || nextApptDoc.appointmentType === 'telehealth' ? 'TELEHEALTH' : 'ROOM 204B'),
+        visitType: nextApptDoc.appointmentType || nextApptDoc.appointmentPlace || 'telehealth',
+        roomNumber: nextApptDoc.roomNumber || (nextApptDoc.appointmentPlace === 'VIDEO' || nextApptDoc.appointmentType === 'telehealth' || !nextApptDoc.appointmentPlace ? 'TELEHEALTH' : 'IN-CLINIC'),
         status: nextApptDoc.status,
       };
     }
@@ -140,10 +142,6 @@ export const getTherapistDashboard = async (req, res) => {
       }).catch(() => 0);
     }
 
-    if (activeProgramsCount === 0 && patientIds.length > 0) {
-      activeProgramsCount = patientIds.length;
-    }
-
     // Average session duration calculation from appointment data
     const sessionDurations = allAppointments
       .map((a) => Number(a.durationMin || a.durationMinutes || (a.serviceType?.includes('EVALUATION') ? 45 : 30)))
@@ -152,8 +150,12 @@ export const getTherapistDashboard = async (req, res) => {
       ? Math.round(sessionDurations.reduce((sum, d) => sum + d, 0) / sessionDurations.length)
       : 30;
 
-    // Daily Timeline
-    const dailyTimeline = (todaysAppointments.length > 0 ? todaysAppointments : allAppointments.slice(0, 6)).map((a) => {
+    // Daily Timeline: strictly today's appointments if any, otherwise upcoming future appointments
+    const timelineSource = todaysAppointments.length > 0
+      ? todaysAppointments
+      : allAppointments.filter(a => new Date(a.startTime) >= startOfDay).slice(0, 6);
+
+    const dailyTimeline = timelineSource.map((a) => {
       const timeStr = a.startTime
         ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
         : '10:00 AM';
@@ -167,7 +169,7 @@ export const getTherapistDashboard = async (req, res) => {
         patientId: a.patientId,
         condition: a.serviceName || a.chiefComplaint || 'Physical Rehabilitation',
         status: a.status || 'CONFIRMED',
-        appointmentType: a.appointmentType || 'clinic_visit',
+        appointmentType: a.appointmentType || a.appointmentPlace || 'telehealth',
       };
     });
 

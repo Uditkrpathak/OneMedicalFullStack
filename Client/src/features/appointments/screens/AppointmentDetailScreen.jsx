@@ -471,11 +471,20 @@ export default function AppointmentDetailScreen({ route, navigation }) {
 
           <TouchableOpacity
             style={styles.downloadInvoiceBtn}
-            onPress={() => setInvoiceModalVisible(true)}
+            onPress={() => navigation.navigate('InvoiceDetails', {
+              transactionId: booking.paymentId || booking._id || appointmentId,
+              appointmentId: booking._id || appointmentId,
+              receiptId: booking.receiptId,
+              doctorName: booking.doctorName,
+              serviceName: booking.service,
+              clinicName: booking.clinic,
+              dateStr: booking.date,
+              amount: booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 800,
+            })}
             activeOpacity={0.85}
           >
             <Ionicons name="receipt-outline" size={15} color="#003D9B" style={{ marginRight: 6 }} />
-            <Text style={styles.downloadInvoiceBtnText}>View Tax Invoice</Text>
+            <Text style={styles.downloadInvoiceBtnText}>View Official Tax Invoice</Text>
           </TouchableOpacity>
         </View>
 

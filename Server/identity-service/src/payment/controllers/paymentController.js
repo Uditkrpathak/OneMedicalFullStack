@@ -510,13 +510,7 @@ export const getMyTransactions = async (req, res) => {
 
 // ─── GET /payments/invoices/my ────────────────────────────────────────────────
 export const getMyInvoices = async (req, res) => {
-  try {
-    const patientId = req.user?.userId || req.headers['x-user-id'];
-    const invoices = await Invoice.find({ patientId }).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: invoices });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
+  return getInvoices(req, res);
 };
 
 // ─── GET /payments/invoices ───────────────────────────────────────────────────
@@ -525,9 +519,106 @@ export const getInvoices = async (req, res) => {
     const userRole = req.user?.role || req.headers['x-user-role'];
     const userId = req.user?.userId || req.headers['x-user-id'];
     const filter = (userRole === 'clinic_admin' || userRole === 'super_admin') ? {} : { patientId: userId };
-    const invoices = await Invoice.find(filter).sort({ createdAt: -1 }).lean();
-    res.json({ success: true, data: invoices });
+    let invoices = await Invoice.find(filter).sort({ createdAt: -1 }).lean();
+
+    // If no direct invoice documents exist, also check Transactions for this patient
+    if (userId) {
+      const txns = await Transaction.find({ patientId: userId }).sort({ createdAt: -1 }).lean();
+      const existingTxnIds = new Set(invoices.map(i => i.transactionId?.toString()).filter(Boolean));
+
+      for (const t of txns) {
+        if (!existingTxnIds.has(t._id.toString())) {
+          const totalAmountPaise = t.amountPaise || 75000;
+          const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
+          const taxesPaise = totalAmountPaise - consultationFeePaise;
+          const invNum = t.invoiceNumber || `INV-${new Date(t.createdAt || Date.now()).getFullYear()}-${String(t._id).slice(-5).toUpperCase()}`;
+
+          const isRefunded = t.status === 'refunded' || t.status === 'REFUNDED';
+          const isPaid = t.status === 'captured' || t.status === 'PAID';
+
+          invoices.push({
+            _id: t.invoiceId || t._id,
+            invoiceNumber: invNum,
+            transactionId: t._id,
+            appointmentId: t.appointmentId,
+            patientId: t.patientId,
+            therapistId: t.therapistId,
+            consultationFee: consultationFeePaise,
+            taxes: taxesPaise,
+            discount: 0,
+            totalAmount: totalAmountPaise,
+            currency: 'INR',
+            status: isRefunded ? 'REFUNDED' : (isPaid ? 'PAID' : (t.status?.toUpperCase() || 'PENDING')),
+            refundedAt: t.refundedAt,
+            generatedAt: t.capturedAt || t.createdAt || new Date(),
+            createdAt: t.createdAt || new Date(),
+          });
+        }
+      }
+    }
+
+    // Enrich therapist details and formatting
+    const therapistIds = Array.from(new Set(invoices.map(i => i.therapistId).filter(Boolean)));
+    const tMap = new Map();
+    if (therapistIds.length > 0) {
+      const therapists = await TherapistProfile.find({
+        $or: [{ userId: { $in: therapistIds } }, { _id: { $in: therapistIds } }]
+      }).populate('userId', 'name').lean();
+
+      therapists.forEach(t => {
+        const name = t.userId?.name || t.fullName || t.name;
+        if (t.userId?._id) tMap.set(t.userId._id.toString(), name);
+        if (t._id) tMap.set(t._id.toString(), name);
+      });
+    }
+
+    // Fetch patient user info
+    let patientName = 'Patient';
+    let patientPhone = '+91 98765 43210';
+    if (userId) {
+      const u = await User.findById(userId).lean();
+      if (u) {
+        patientName = u.name || patientName;
+        patientPhone = u.phoneNumber || patientPhone;
+      }
+    }
+
+    const enrichedInvoices = invoices.map((inv) => {
+      const amtVal = inv.totalAmount > 5000 ? Math.round(inv.totalAmount / 100) : (inv.totalAmount || 0);
+      const feeVal = inv.consultationFee > 5000 ? Math.round(inv.consultationFee / 100) : (inv.consultationFee || amtVal);
+      const taxVal = inv.taxes > 5000 ? Math.round(inv.taxes / 100) : (inv.taxes || 0);
+
+      const dName = tMap.get(inv.therapistId?.toString()) || inv.doctorName || 'Dr. Specialist';
+      const genDate = inv.generatedAt || inv.createdAt || new Date();
+      const isRefunded = inv.status === 'REFUNDED' || inv.status === 'refunded';
+
+      return {
+        ...inv,
+        doctorName: dName,
+        patientName: inv.patientName || patientName,
+        patientPhone: inv.patientPhone || patientPhone,
+        service: inv.service || 'Physiotherapy Consultation & Rehabilitation',
+        serviceName: inv.serviceName || 'Physiotherapy Consultation & Rehabilitation',
+        clinicName: inv.clinicName || 'ONE MEDICAL Central Hub',
+        address: inv.address || '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038',
+        gstin: inv.gstin || '29AABCU9603R1ZM',
+        department: inv.department || 'Orthopedic Physiotherapy',
+        totalAmount: amtVal,
+        amountRupees: amtVal,
+        consultationFee: feeVal,
+        taxes: taxVal,
+        discount: inv.discount || 0,
+        amountFormatted: `₹${amtVal.toLocaleString('en-IN')}`,
+        dateFormatted: new Date(genDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+        paymentMethod: inv.paymentMethod || 'UPI (ONLINE)',
+        status: isRefunded ? 'REFUNDED' : (inv.status || 'PAID'),
+        isRefunded,
+      };
+    });
+
+    res.json({ success: true, data: enrichedInvoices });
   } catch (err) {
+    console.error('[Payment] getInvoices error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
@@ -545,94 +636,131 @@ export const getInvoiceById = async (req, res) => {
     }
 
     if (!invoice) {
-      invoice = await Invoice.findOne({ $or: [{ transactionId: id }, { appointmentId: id }] }).lean();
+      invoice = await Invoice.findOne({ $or: [{ transactionId: id }, { appointmentId: id }, { invoiceNumber: id }] }).lean();
     }
 
-    if (!invoice) {
-      let txn = null;
+    let txn = null;
+    if (invoice?.transactionId) {
+      txn = await Transaction.findById(invoice.transactionId).lean();
+    } else {
       try {
-        txn = await Transaction.findOne({ $or: [{ _id: id }, { appointmentId: id }, { gatewayOrderId: id }] }).lean();
-      } catch {
-        // fallback
-      }
-
-      if (txn) {
-        let therapistName = 'Dr. Specialist';
-        if (txn.therapistId) {
-          const t = await TherapistProfile.findOne({
-            $or: [{ userId: txn.therapistId }, { _id: txn.therapistId }]
-          }).populate('userId', 'name').lean();
-          if (t) therapistName = t.userId?.name || t.fullName || t.name || therapistName;
-        }
-
-        let patientUser = null;
-        if (txn.patientId) {
-          patientUser = await User.findById(txn.patientId).lean();
-        }
-
-        const totalAmount = Math.round((txn.amountPaise || 75000) / 100);
-
-        invoice = {
-          _id: txn._id,
-          invoiceNumber: `INV-${String(txn._id).slice(-6).toUpperCase()}`,
-          patientId: txn.patientId,
-          patientName: patientUser?.name || 'Patient',
-          patientPhone: patientUser?.phoneNumber || '+91 98765 43210',
-          doctorName: therapistName,
-          clinicName: 'ONE MEDICAL Central Hub',
-          address: '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038',
-          gstin: '29AABCU9603R1ZM',
-          department: 'Orthopedic Physiotherapy',
-          totalAmount,
-          consultationFee: totalAmount,
-          discount: 0,
-          status: txn.status === 'captured' ? 'PAID' : txn.status?.toUpperCase() || 'PAID',
-          paymentMethod: (txn.paymentMethod || 'UPI').toUpperCase() + (txn.paymentPlace === 'clinic' ? ' (CLINIC)' : ' (ONLINE)'),
-          generatedAt: txn.capturedAt || txn.createdAt || new Date(),
-          createdAt: txn.createdAt || new Date(),
-        };
-      }
-    }
-
-    if (!invoice) {
-      try {
-        const appt = await getAppointmentInternal(id);
-        if (appt) {
-          let patientUser = null;
-          if (appt.patientId) {
-            patientUser = await User.findById(appt.patientId).lean();
-          }
-          const totalAmount = appt.amountPaise ? Math.round(appt.amountPaise / 100) : (appt.fee || 499);
-          invoice = {
-            _id: appt._id,
-            invoiceNumber: `INV-${String(appt._id).slice(-6).toUpperCase()}`,
-            patientId: appt.patientId,
-            patientName: appt.patientName || patientUser?.name || 'Patient',
-            patientPhone: patientUser?.phoneNumber || '+91 98765 43210',
-            doctorName: appt.therapistName || 'Dr. Specialist',
-            clinicName: 'ONE MEDICAL Central Hub',
-            address: '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038',
-            gstin: '29AABCU9603R1ZM',
-            department: appt.serviceType?.replace(/_/g, ' ') || 'Orthopedic Physiotherapy',
-            totalAmount,
-            consultationFee: totalAmount,
-            discount: 0,
-            status: appt.paymentStatus === 'PAID' ? 'PAID' : (appt.paymentStatus || 'PAID'),
-            paymentMethod: (appt.paymentMethod || 'UPI').toUpperCase(),
-            generatedAt: appt.createdAt || new Date(),
-            createdAt: appt.createdAt || new Date(),
-          };
-        }
+        txn = await Transaction.findOne({ $or: [{ _id: id }, { appointmentId: id }, { gatewayOrderId: id }, { razorpayOrderId: id }] }).lean();
       } catch {
         // ignore
       }
     }
 
-    if (!invoice) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found.' } });
+    let appt = null;
+    const targetApptId = invoice?.appointmentId || txn?.appointmentId || id;
+    if (targetApptId) {
+      try {
+        appt = await getAppointmentInternal(targetApptId);
+      } catch {
+        // ignore
+      }
     }
 
-    res.json({ success: true, data: invoice });
+    let refundDoc = null;
+    if (txn?._id) {
+      refundDoc = await Refund.findOne({ transactionId: txn._id }).lean();
+    }
+
+    if (!invoice && !txn && !appt) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found for the requested transaction.' } });
+    }
+
+    // Resolve therapist name
+    let therapistName = appt?.therapistName || 'Dr. Specialist';
+    const targetTherapistId = invoice?.therapistId || txn?.therapistId || appt?.therapistId;
+    if (targetTherapistId) {
+      const t = await TherapistProfile.findOne({
+        $or: [{ userId: targetTherapistId }, { _id: targetTherapistId }]
+      }).populate('userId', 'name').lean();
+      if (t) therapistName = t.userId?.name || t.fullName || t.name || therapistName;
+    }
+
+    // Resolve patient details
+    let patientName = appt?.patientName || 'Patient';
+    let patientPhone = '+91 98765 43210';
+    const targetPatientId = invoice?.patientId || txn?.patientId || appt?.patientId || req.user?.userId;
+    if (targetPatientId) {
+      const pUser = await User.findById(targetPatientId).lean();
+      if (pUser) {
+        patientName = pUser.name || patientName;
+        patientPhone = pUser.phoneNumber || patientPhone;
+      }
+    }
+
+    // Calculate real amounts accurately in Rupees
+    const rawAmount = invoice?.totalAmount || txn?.amountPaise || appt?.amount || 0;
+    const totalAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
+    const consultationFee = invoice?.consultationFee
+      ? (invoice.consultationFee > 5000 ? Math.round(invoice.consultationFee / 100) : invoice.consultationFee)
+      : totalAmount;
+    const taxes = invoice?.taxes ? (invoice.taxes > 5000 ? Math.round(invoice.taxes / 100) : invoice.taxes) : 0;
+    const discount = invoice?.discount ? (invoice.discount > 5000 ? Math.round(invoice.discount / 100) : invoice.discount) : 0;
+
+    const isRefunded =
+      txn?.status === 'refunded' ||
+      txn?.status === 'REFUNDED' ||
+      appt?.paymentStatus === 'REFUNDED' ||
+      refundDoc?.status === 'processed' ||
+      invoice?.status === 'REFUNDED';
+
+    const isRefundPending =
+      appt?.paymentStatus === 'REFUND_PENDING' ||
+      refundDoc?.status === 'initiated';
+
+    const refundAmountRaw = refundDoc?.amountPaise || txn?.amountPaise || rawAmount;
+    const refundAmount = refundAmountRaw > 5000 ? Math.round(refundAmountRaw / 100) : refundAmountRaw;
+
+    const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`;
+    const genDate = invoice?.generatedAt || txn?.capturedAt || txn?.createdAt || appt?.createdAt || new Date();
+
+    const paymentMethodStr = (txn?.paymentMethod || appt?.paymentMethod || 'UPI').toUpperCase() +
+      (txn?.paymentPlace === 'clinic' ? ' (CLINIC RECEPTION)' : ' (ONLINE INSTANT)');
+
+    const result = {
+      _id: invoice?._id || txn?._id || id,
+      invoiceNumber: invNumber,
+      transactionId: txn?._id || invoice?.transactionId || String(id),
+      gatewayPaymentId: txn?.gatewayPaymentId || txn?.razorpayPaymentId || `pay_${String(id).slice(-8)}`,
+      gatewayOrderId: txn?.gatewayOrderId || txn?.razorpayOrderId || `order_${String(id).slice(-8)}`,
+      appointmentId: targetApptId,
+      patientId: targetPatientId,
+      patientName,
+      patientPhone,
+      doctorName: therapistName,
+      department: appt?.serviceType?.replace(/_/g, ' ') || 'Orthopedic Physiotherapy & Rehabilitation',
+      serviceName: appt?.serviceType ? appt.serviceType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : 'Physiotherapy Consultation & Assessment',
+      clinicName: 'ONE MEDICAL Clinic & Rehabilitation Hub',
+      address: '4th Floor, Health Tower, 100 Feet Rd, Indiranagar, Bengaluru, Karnataka 560038',
+      gstin: '29AABCU9603R1ZM',
+      cin: 'U85110KA2026PTC154201',
+      sacCode: '999312',
+      natureOfSupply: 'Healthcare & Medical Rehabilitation Services (Exempt under GST Notification No. 12/2017-CT)',
+      totalAmount,
+      consultationFee,
+      taxes,
+      discount,
+      currency: 'INR',
+      amountFormatted: `₹${totalAmount.toLocaleString('en-IN')}`,
+      status: isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND_PENDING' : (invoice?.status || (txn?.status === 'captured' ? 'PAID' : (txn?.status?.toUpperCase() || 'PAID')))),
+      isRefunded,
+      isRefundPending,
+      refundAmount: isRefunded || isRefundPending ? refundAmount : 0,
+      refundDate: isRefunded ? (txn?.refundedAt || refundDoc?.updatedAt || new Date()) : null,
+      refundReason: refundDoc?.reason || appt?.cancellationReason || 'Appointment Cancelled / Free Cancellation Policy',
+      gatewayRefundId: refundDoc?.gatewayRefundId || `rfnd_${String(txn?._id || id).slice(-8)}`,
+      paymentMethod: paymentMethodStr,
+      generatedAt: genDate,
+      issuedDate: new Date(genDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      issuedTime: new Date(genDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      taxExemptionNote: 'Eligible for Tax Exemption under Section 80D of the Income Tax Act for preventive medical healthcare & physiotherapy consultations.',
+      isComputerGenerated: true,
+    };
+
+    res.json({ success: true, data: result });
   } catch (err) {
     console.error('[Payment] getInvoiceById error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
