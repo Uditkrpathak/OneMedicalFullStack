@@ -178,8 +178,24 @@ export default function TherapistDashboardScreen({ navigation }) {
                     <Text style={styles.patientNameText} numberOfLines={1}>
                       {nextAppt.patientName}{nextAppt.patientAge ? `, ${nextAppt.patientAge}y` : ''}
                     </Text>
-                    <View style={styles.roomBadge}>
-                      <Text style={styles.roomBadgeText}>{nextAppt.roomNumber || 'CLINIC'}</Text>
+                    <View style={[
+                      styles.roomBadge,
+                      ['NO_ATTENDANCE', 'MISSED'].includes((nextAppt.status || '').toUpperCase())
+                        ? { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a' }
+                        : ['COMPLETED', 'DOCUMENTED'].includes((nextAppt.status || '').toUpperCase())
+                        ? { backgroundColor: '#dcfce7', borderWidth: 1, borderColor: '#bbf7d0' }
+                        : { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' }
+                    ]}>
+                      <Text style={[
+                        styles.roomBadgeText,
+                        ['NO_ATTENDANCE', 'MISSED'].includes((nextAppt.status || '').toUpperCase())
+                          ? { color: '#b45309' }
+                          : ['COMPLETED', 'DOCUMENTED'].includes((nextAppt.status || '').toUpperCase())
+                          ? { color: '#15803d' }
+                          : { color: '#003D9B' }
+                      ]}>
+                        {nextAppt.status ? nextAppt.status.replace(/_/g, ' ') : (nextAppt.roomNumber || 'SCHEDULED')}
+                      </Text>
                     </View>
                   </View>
 
@@ -187,18 +203,25 @@ export default function TherapistDashboardScreen({ navigation }) {
                     {nextAppt.condition}
                   </Text>
                   <View style={styles.timeRow}>
-                    <Ionicons name="time-outline" size={13} color="#64748b" />
+                    <Ionicons name="time-outline" size={13} color="#003D9B" />
                     <Text style={styles.timeDetailText}>
-                      {nextAppt.timeFormatted} ({nextAppt.timeUntilFormatted || 'Ready'})
+                      {nextAppt.timeFormatted} • {nextAppt.durationFormatted || '30 mins'} ({nextAppt.timeUntilFormatted || 'Ready'})
                     </Text>
                   </View>
                 </View>
               </View>
 
-              {/* Action Buttons */}
+              {/* Responsive Action Buttons */}
               <View style={styles.heroActionButtons}>
                 <TouchableOpacity
-                  style={styles.startSessionBtn}
+                  style={[
+                    styles.startSessionBtn,
+                    ['NO_ATTENDANCE', 'MISSED'].includes((nextAppt.status || '').toUpperCase())
+                      ? { backgroundColor: '#d97706' }
+                      : ['COMPLETED', 'DOCUMENTED'].includes((nextAppt.status || '').toUpperCase())
+                      ? { backgroundColor: '#16a34a' }
+                      : { backgroundColor: '#003D9B' }
+                  ]}
                   activeOpacity={0.85}
                   onPress={() =>
                     navigation.navigate('ClinicalConsultation', {
@@ -207,7 +230,19 @@ export default function TherapistDashboardScreen({ navigation }) {
                     })
                   }
                 >
-                  <Text style={styles.startSessionText}>Start Session</Text>
+                  <Ionicons
+                    name={['COMPLETED', 'DOCUMENTED'].includes((nextAppt.status || '').toUpperCase()) ? "document-text" : "play"}
+                    size={15}
+                    color="#ffffff"
+                    style={{ marginRight: 5 }}
+                  />
+                  <Text style={styles.startSessionText}>
+                    {['COMPLETED', 'DOCUMENTED'].includes((nextAppt.status || '').toUpperCase())
+                      ? 'View Summary'
+                      : ['NO_ATTENDANCE', 'MISSED'].includes((nextAppt.status || '').toUpperCase())
+                      ? 'Review Session'
+                      : 'Start Session'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -220,6 +255,7 @@ export default function TherapistDashboardScreen({ navigation }) {
                     })
                   }
                 >
+                  <Ionicons name="information-circle-outline" size={15} color="#0f172a" style={{ marginRight: 4 }} />
                   <Text style={styles.viewDetailsText}>View Details</Text>
                 </TouchableOpacity>
               </View>

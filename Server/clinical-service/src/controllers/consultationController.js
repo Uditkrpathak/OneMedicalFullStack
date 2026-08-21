@@ -77,12 +77,12 @@ export const getTherapistDashboard = async (req, res) => {
     const remainingCount = Math.max(0, totalCount - completedCount);
     const completionPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-    // Determine next appointment (only pending / in-progress appointments)
+    // Determine next appointment (pending, scheduled, or today's active patient)
     const nextApptDoc =
       todaysAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
       allAppointments.find((a) => new Date(a.startTime) > now && ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
       allAppointments.find((a) => ['CONFIRMED', 'IN_PROGRESS', 'SCHEDULED', 'HELD', 'confirmed', 'in_progress', 'scheduled'].includes(a.status)) ||
-      null;
+      (todaysAppointments.length > 0 ? todaysAppointments[0] : (allAppointments.length > 0 ? allAppointments[0] : null));
 
     let nextAppointment = null;
     if (nextApptDoc) {

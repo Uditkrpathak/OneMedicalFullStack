@@ -428,107 +428,33 @@ export default function TherapistScheduleScreen({ navigation }) {
                   {/* Divider */}
                   <View style={styles.cardInnerDivider} />
 
-                  {/* State-Machine Specific Action Rows */}
-                  {isCompleted && (
-                    <View style={styles.completedFooterRow}>
-                      <Text style={styles.sessionDurationText}>{appt.sessionInfo}</Text>
+                  {/* Action Buttons for all appointment states */}
+                  <View style={styles.cardActionButtonsRow}>
+                    {appt.paymentStatus !== 'PAID' && ['CONFIRMED', 'SCHEDULED', 'HELD'].includes(appt.status) && (
                       <TouchableOpacity
-                        onPress={() =>
-                          navigation.navigate('AppointmentDetails', {
-                            appointmentId: appt.id,
-                            patientName: appt.patientName,
-                          })
-                        }
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
-                      >
-                        <Text style={styles.viewSummaryLink}>View Summary</Text>
-                        <Ionicons name="chevron-forward" size={13} color="#003D9B" />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {isInProgress && (
-                    <View style={styles.inProgressActionRow}>
-                      <TouchableOpacity
-                        style={styles.joinSessionBtn}
+                        style={styles.collectUpiBtn}
+                        onPress={() => handleOpenClinicUpiQr(appt)}
                         activeOpacity={0.85}
-                        onPress={() =>
-                          navigation.navigate('VideoCall', {
-                            callId: `call_${appt.id}`,
-                            isCaller: true,
-                            recipientName: appt.patientName,
-                            appointmentId: appt.id,
-                          })
-                        }
                       >
-                        <Ionicons name="videocam" size={16} color="#ffffff" style={{ marginRight: 6 }} />
-                        <Text style={styles.joinSessionText}>Join Session</Text>
+                        <Ionicons name="qr-code" size={13} color="#b45309" style={{ marginRight: 4 }} />
+                        <Text style={styles.collectUpiText}>Collect UPI</Text>
                       </TouchableOpacity>
+                    )}
 
-                      <TouchableOpacity
-                        style={styles.phoneActionBtn}
-                        onPress={() =>
-                          navigation.navigate('AppointmentDetails', {
-                            appointmentId: appt.id,
-                            patientName: appt.patientName,
-                          })
-                        }
-                      >
-                        <Ionicons name="call" size={16} color="#003D9B" />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {isConfirmed && (
-                    <View style={styles.confirmedActionRow}>
-                      {appt.paymentStatus !== 'PAID' && (
-                        <TouchableOpacity
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            backgroundColor: '#fef3c7',
-                            borderColor: '#fde68a',
-                            borderWidth: 1,
-                            paddingHorizontal: 10,
-                            paddingVertical: 7,
-                            borderRadius: 8,
-                          }}
-                          onPress={() => handleOpenClinicUpiQr(appt)}
-                        >
-                          <Ionicons name="qr-code" size={14} color="#b45309" style={{ marginRight: 4 }} />
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#b45309' }}>Collect UPI</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      <TouchableOpacity
-                        style={styles.detailsOutlineBtn}
-                        onPress={() =>
-                          navigation.navigate('AppointmentDetails', {
-                            appointmentId: appt.id,
-                            patientName: appt.patientName,
-                          })
-                        }
-                      >
-                        <Text style={styles.detailsBtnText}>Details</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.preChartOutlineBtn}
-                        onPress={() =>
-                          navigation.navigate('ClinicalConsultation', {
-                            appointmentId: appt.id,
-                            patientName: appt.patientName,
-                          })
-                        }
-                      >
-                        <Text style={styles.preChartBtnText}>Pre-Chart</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {isDocPending && (
+                    {/* Primary Action Button */}
                     <TouchableOpacity
-                      style={styles.completeNotesBtn}
+                      style={[
+                        styles.primaryScheduleBtn,
+                        isCompleted
+                          ? { backgroundColor: '#16a34a' }
+                          : (isNoAttendance || isProviderNoShow || isPatientNoShow)
+                          ? { backgroundColor: '#d97706' }
+                          : isInProgress
+                          ? { backgroundColor: '#2563eb' }
+                          : isDocPending
+                          ? { backgroundColor: '#7c3aed' }
+                          : { backgroundColor: '#003D9B' }
+                      ]}
                       activeOpacity={0.85}
                       onPress={() =>
                         navigation.navigate('ClinicalConsultation', {
@@ -537,10 +463,50 @@ export default function TherapistScheduleScreen({ navigation }) {
                         })
                       }
                     >
-                      <Ionicons name="create-outline" size={16} color="#6b21a8" style={{ marginRight: 6 }} />
-                      <Text style={styles.completeNotesText}>Complete Notes</Text>
+                      <Ionicons
+                        name={
+                          isCompleted
+                            ? "document-text"
+                            : (isNoAttendance || isProviderNoShow || isPatientNoShow)
+                            ? "clipboard-outline"
+                            : isInProgress
+                            ? "videocam"
+                            : isDocPending
+                            ? "create-outline"
+                            : "play"
+                        }
+                        size={14}
+                        color="#ffffff"
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={styles.primaryScheduleBtnText}>
+                        {isCompleted
+                          ? 'View Summary'
+                          : (isNoAttendance || isProviderNoShow || isPatientNoShow)
+                          ? 'Review Session'
+                          : isInProgress
+                          ? 'Join Consultation'
+                          : isDocPending
+                          ? 'Complete Notes'
+                          : 'Start Session'}
+                      </Text>
                     </TouchableOpacity>
-                  )}
+
+                    {/* Details Secondary Button */}
+                    <TouchableOpacity
+                      style={styles.secondaryDetailsBtn}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        navigation.navigate('AppointmentDetails', {
+                          appointmentId: appt.id,
+                          patientName: appt.patientName,
+                        })
+                      }
+                    >
+                      <Ionicons name="information-circle-outline" size={14} color="#0f172a" style={{ marginRight: 3 }} />
+                      <Text style={styles.secondaryDetailsBtnText}>Details</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             );
@@ -874,68 +840,59 @@ const styles = StyleSheet.create({
   conditionSubText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
   cardInnerDivider: { height: 1, backgroundColor: '#f1f5f9', marginBottom: 12 },
 
-  // Card Action Buttons
-  completedFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sessionDurationText: { fontSize: 11, color: '#94a3b8', fontWeight: '500' },
-  viewSummaryLink: { fontSize: 12, fontWeight: '700', color: '#003D9B' },
-
-  inProgressActionRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  joinSessionBtn: {
+  cardActionButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  collectUpiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  collectUpiText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  primaryScheduleBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#003D9B',
-    paddingVertical: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
     borderRadius: 10,
   },
-  joinSessionText: { fontSize: 13, fontWeight: '700', color: '#ffffff' },
-  phoneActionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#f8fafc',
+  primaryScheduleBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#ffffff',
   },
-
-  confirmedActionRow: { flexDirection: 'row', gap: 8 },
-  detailsOutlineBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  detailsBtnText: { fontSize: 12, fontWeight: '700', color: '#334155' },
-  preChartOutlineBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#003D9B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#eff6ff',
-  },
-  preChartBtnText: { fontSize: 12, fontWeight: '700', color: '#003D9B' },
-
-  completeNotesBtn: {
+  secondaryDetailsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#faf5ff',
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: '#e9d5ff',
+    borderColor: '#e2e8f0',
     paddingVertical: 9,
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
   },
-  completeNotesText: { fontSize: 12, fontWeight: '700', color: '#7e22ce' },
+  secondaryDetailsBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
 
   // Empty State
   emptyStateBox: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center' },

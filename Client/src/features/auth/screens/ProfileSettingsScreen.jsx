@@ -9,7 +9,10 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import { CommonActions } from '@react-navigation/native';
 import { logout, updateProfile } from '../authSlice';
@@ -103,40 +106,64 @@ export default function ProfileSettingsScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>← Back</Text>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
+      {/* Top Header Bar */}
+      <View style={styles.topHeaderBar}>
+        <TouchableOpacity
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('Home');
+            }
+          }}
+          style={styles.backBtnCircle}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
-        <Text style={styles.title}>Account & Medical Settings</Text>
-        <Text style={styles.roleTag}>Logged in as: {user?.role ? user.role.toUpperCase() : 'PATIENT'}</Text>
+        <Text style={styles.topHeaderTitle}>Settings</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      {isFetchingProfile && (
-        <ActivityIndicator color={colors.primary} size="small" style={{ marginBottom: 10 }} />
-      )}
-
-      {/* Personal Details */}
-      <View style={styles.card}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-          <Ionicons name="person-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-          <Text style={styles.cardTitle}>Personal Information</Text>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Header Title Section */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Account & Medical Settings</Text>
+          <View style={styles.roleBadge}>
+            <View style={styles.roleDot} />
+            <Text style={styles.roleTag}>
+              LOGGED IN AS: {user?.role ? user.role.toUpperCase() : 'PATIENT'}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.label}>Full Name</Text>
-        <TextInput style={styles.input} value={name} onChangeText={setName} />
 
-        <Text style={styles.label}>Email Address</Text>
-        <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" />
+        {isFetchingProfile && (
+          <ActivityIndicator color={colors.primary} size="small" style={{ marginBottom: 14 }} />
+        )}
 
-        <Text style={styles.label}>Phone Number (Requires OTP to change)</Text>
-        <View style={styles.phoneRow}>
-          <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <TouchableOpacity style={styles.verifyBtn} onPress={handleUpdatePhone}>
-            <Text style={styles.verifyBtnText}>Verify OTP</Text>
-          </TouchableOpacity>
+        {/* Personal Details */}
+        <View style={styles.card}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <Ionicons name="person-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.cardTitle}>Personal Information</Text>
+          </View>
+          <Text style={styles.label}>Full Name</Text>
+          <TextInput style={styles.input} value={name} onChangeText={setName} />
+
+          <Text style={styles.label}>Email Address</Text>
+          <TextInput style={styles.input} value={email} onChangeText={setEmail} keyboardType="email-address" />
+
+          <Text style={styles.label}>Phone Number (Requires OTP to change)</Text>
+          <View style={styles.phoneRow}>
+            <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+            <TouchableOpacity style={styles.verifyBtn} onPress={handleUpdatePhone}>
+              <Text style={styles.verifyBtnText}>Verify OTP</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
       {/* Medical Info */}
       <View style={styles.card}>
@@ -212,13 +239,56 @@ export default function ProfileSettingsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: '#ffffff' },
+  topHeaderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  backBtnCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  topHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
   container: { flex: 1, backgroundColor: '#f8fafc' },
   content: { padding: 20, paddingBottom: 50 },
-  header: { marginBottom: 20 },
-  backBtn: { marginBottom: 12 },
-  backBtnText: { color: colors.primary, fontSize: 16, fontWeight: '600' },
-  title: { fontSize: 24, fontWeight: '700', color: colors.slate800 },
-  roleTag: { fontSize: 12, fontWeight: '700', color: colors.primary, marginTop: 4, letterSpacing: 0.5 },
+  header: { marginBottom: 20, marginTop: 4 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.slate800 },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    marginTop: 8,
+    gap: 6,
+  },
+  roleDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#003D9B',
+  },
+  roleTag: { fontSize: 11, fontWeight: '800', color: '#003D9B', letterSpacing: 0.5 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 18, borderWidth: 1, borderColor: '#e2e8f0' },
   cardTitle: { fontSize: 16, fontWeight: '700', color: colors.slate800, marginBottom: 14 },
   cardTitleSub: { fontSize: 15, fontWeight: '700', color: colors.slate800, marginTop: 14, marginBottom: 10 },
