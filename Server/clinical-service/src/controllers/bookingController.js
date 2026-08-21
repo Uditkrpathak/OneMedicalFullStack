@@ -328,16 +328,29 @@ export const cancelAppointment = async (req, res) => {
     let cancellationPolicy = 'NOT_APPLICABLE';
     let eventName = 'appointment.cancelled';
 
-    if (appointment.status === 'CONFIRMED') {
+    const isClinicAdmin = userRole === 'clinic_admin' || userRole === 'super_admin' || req.headers['x-internal-key'];
+    const isTherapist = userRole === 'therapist';
+    const isProviderFault = /therapist|doctor|clinic|admin|emergency|not join|no show|absent|hospital/i.test(reason || '');
+
+    if (appointment.status === 'CONFIRMED' || appointment.status === 'HELD') {
       const hoursAway = (appointment.startTime - new Date()) / (1000 * 60 * 60);
-      cancellationPolicy = hoursAway > 24 ? 'REFUND_ELIGIBLE' : 'NO_REFUND';
-      eventName = hoursAway > 24 ? 'appointment.cancelled_refund_eligible' : 'appointment.cancelled_no_refund';
+
+      // If cancelled by admin/therapist or due to provider fault, ALWAYS 100% refund eligible
+      if (isClinicAdmin || isTherapist || isProviderFault) {
+        cancellationPolicy = 'REFUND_ELIGIBLE';
+        eventName = 'appointment.cancelled_refund_eligible';
+      } else {
+        cancellationPolicy = hoursAway > 24 ? 'REFUND_ELIGIBLE' : 'NO_REFUND';
+        eventName = hoursAway > 24 ? 'appointment.cancelled_refund_eligible' : 'appointment.cancelled_no_refund';
+      }
     }
 
     appointment.status             = 'CANCELLED';
-    appointment.cancellationReason = reason || '';
+    appointment.cancellationReason = reason || (isClinicAdmin ? 'Cancelled by administrator' : '');
     appointment.cancellationPolicy = cancellationPolicy;
-    appointment.paymentStatus      = appointment.paymentStatus === 'PAID' ? 'REFUNDED' : 'NOT_APPLICABLE';
+    appointment.paymentStatus      = (appointment.paymentStatus === 'PAID' || appointment.amount > 0)
+      ? (cancellationPolicy === 'REFUND_ELIGIBLE' ? 'REFUND_PENDING' : 'NOT_APPLICABLE')
+      : 'NOT_APPLICABLE';
     await appointment.save();
 
     await publishEvent(eventName, {

@@ -331,6 +331,8 @@ app.use('/api/v1/patients',      makeServiceProxy(IDENTITY_URL, '/api/v1/patient
 app.use('/api/v1/therapists',    makeServiceProxy(IDENTITY_URL, '/api/v1/therapists'));
 app.use('/api/v1/payments',      makeServiceProxy(IDENTITY_URL, '/api/v1/payments'));
 app.use('/api/v1/invoices',      makeServiceProxy(IDENTITY_URL, '/api/v1/invoices'));
+app.use('/api/v1/refunds',       makeServiceProxy(IDENTITY_URL, '/api/v1/refunds'));
+app.use('/api/v1/payouts',       makeServiceProxy(IDENTITY_URL, '/api/v1/payouts'));
 app.use('/api/v1/admin/therapists', makeServiceProxy(IDENTITY_URL, '/api/v1/admin/therapists'));
 app.use('/api/v1/admin/patients',   makeServiceProxy(IDENTITY_URL, '/api/v1/admin/patients'));
 app.use('/api/v1/admin/users',      makeServiceProxy(IDENTITY_URL, '/api/v1/admin/users'));
@@ -343,6 +345,8 @@ app.use('/patients',             makeServiceProxy(IDENTITY_URL, '/api/v1/patient
 app.use('/therapists',           makeServiceProxy(IDENTITY_URL, '/api/v1/therapists'));
 app.use('/payments',             makeServiceProxy(IDENTITY_URL, '/api/v1/payments'));
 app.use('/invoices',             makeServiceProxy(IDENTITY_URL, '/api/v1/invoices'));
+app.use('/refunds',              makeServiceProxy(IDENTITY_URL, '/api/v1/refunds'));
+app.use('/payouts',              makeServiceProxy(IDENTITY_URL, '/api/v1/payouts'));
 app.use('/admin',                makeProxy(IDENTITY_URL));
 
 // Service 2: Clinical, Scheduling, Chat & Telehealth Service (Port 5003)

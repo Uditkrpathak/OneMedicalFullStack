@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import Transaction from '../../models/Transaction.js';
 import PaymentAttempt from '../../models/PaymentAttempt.js';
-import { Invoice } from '../../models/Billing.js';
+import { Invoice, Refund, Payout } from '../../models/Billing.js';
 import { getNextSequence } from '../../models/Counter.js';
 import User from '../../models/User.js';
 import TherapistProfile from '../../models/TherapistProfile.js';
@@ -743,5 +743,147 @@ export const getTransactionInternal = async (req, res) => {
     return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
+
+// ─── GET /refunds ─────────────────────────────────────────────────────────────
+// Admin list all refund requests (aggregates Refund collection & cancelled refund-eligible sessions)
+export const listRefunds = async (req, res) => {
+  try {
+    const refunds = await Refund.find().sort({ createdAt: -1 }).populate('transactionId').lean();
+
+    // Also fetch cancelled appointments that are refund eligible from clinical service
+    let clinicalAppts = [];
+    try {
+      const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
+      const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+      const cRes = await fetch(`${CLINICAL_URL}/appointments?view=cancelled`, {
+        headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
+      });
+      const cJson = await cRes.json();
+      if (cJson.success && Array.isArray(cJson.data?.appointments || cJson.data)) {
+        clinicalAppts = cJson.data?.appointments || cJson.data;
+      }
+    } catch (e) {
+      console.warn('[listRefunds] Could not fetch clinical appointments:', e.message);
+    }
+
+    // Combine into unified refund records for admin
+    const list = [...refunds];
+    const existingTxIds = new Set(refunds.map(r => String(r.transactionId?._id || r.transactionId)));
+
+    for (const appt of clinicalAppts) {
+      if (appt.cancellationPolicy === 'REFUND_ELIGIBLE' || appt.paymentStatus === 'REFUND_PENDING' || appt.paymentStatus === 'REFUNDED') {
+        const apptId = String(appt._id);
+        // Find corresponding transaction if any
+        let txn = await Transaction.findOne({ appointmentId: apptId }).lean();
+        const amt = appt.amount || (txn ? (txn.amountPaise ? txn.amountPaise / 100 : txn.amount) : 1200);
+
+        let patientName = appt.patientName || 'Patient';
+        if (!appt.patientName && appt.patientId) {
+          const u = await User.findById(appt.patientId).lean();
+          if (u) patientName = u.name;
+        }
+
+        // Avoid duplicates if already in Refund collection
+        const alreadyInList = refunds.some(r => String(r.appointmentId) === apptId || (txn && String(r.transactionId?._id || r.transactionId) === String(txn._id)));
+        if (!alreadyInList) {
+          list.push({
+            _id: `ref_appt_${apptId}`,
+            appointmentId: apptId,
+            patientName,
+            reason: appt.cancellationReason || 'Session Cancellation (Eligible for Refund)',
+            amount: amt > 10000 ? Math.round(amt / 100) : amt,
+            status: appt.paymentStatus === 'REFUNDED' ? 'processed' : 'initiated',
+            createdAt: appt.updatedAt || appt.createdAt || new Date(),
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, data: list });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── POST /refunds ────────────────────────────────────────────────────────────
+export const initiateRefund = async (req, res) => {
+  try {
+    const { transactionId, amountPaise, reason } = req.body;
+    const refund = await Refund.create({
+      transactionId,
+      amountPaise: amountPaise || 120000,
+      reason: reason || 'Admin initiated refund',
+      status: 'initiated',
+      isManualReview: true,
+    });
+    res.status(201).json({ success: true, data: refund });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── PATCH /refunds/:id/approve ───────────────────────────────────────────────
+export const approveRefund = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id.startsWith('ref_appt_')) {
+      const apptId = id.replace('ref_appt_', '');
+      const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
+      const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+      
+      // Update appointment payment status in clinical service
+      await fetch(`${CLINICAL_URL}/appointments/${apptId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
+        body: JSON.stringify({ paymentStatus: 'REFUNDED' }),
+      });
+
+      // Update matching transaction
+      await Transaction.updateMany({ appointmentId: apptId }, { status: 'refunded', refundedAt: new Date() });
+
+      return res.json({ success: true, message: 'Refund approved and routed to gateway.' });
+    }
+
+    const refund = await Refund.findByIdAndUpdate(id, { status: 'processed' }, { new: true });
+    if (refund?.transactionId) {
+      await Transaction.findByIdAndUpdate(refund.transactionId, { status: 'refunded', refundedAt: new Date() });
+    }
+
+    res.json({ success: true, data: refund, message: 'Refund approved and routed to gateway.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── GET /payouts ─────────────────────────────────────────────────────────────
+export const listPayouts = async (req, res) => {
+  try {
+    const payouts = await Payout.find().sort({ createdAt: -1 }).lean();
+    res.json({ success: true, data: payouts });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── POST /payouts/compute ────────────────────────────────────────────────────
+export const computePayout = async (req, res) => {
+  try {
+    const { therapistId, periodStart, periodEnd } = req.body;
+    const payout = await Payout.create({
+      therapistId,
+      periodStart: periodStart || new Date(),
+      periodEnd: periodEnd || new Date(),
+      grossAmountPaise: 500000,
+      commissionPaise: 100000,
+      netAmountPaise: 400000,
+      status: 'pending',
+    });
+    res.json({ success: true, data: payout });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 
 

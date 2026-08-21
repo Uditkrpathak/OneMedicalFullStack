@@ -10,6 +10,11 @@ import {
   getPaymentStatus,
   getPaymentHealth,
   getTransactionInternal,
+  listRefunds,
+  approveRefund,
+  initiateRefund,
+  listPayouts,
+  computePayout,
 } from '../controllers/paymentController.js';
 import { razorpayWebhook } from '../controllers/webhookController.js';
 
@@ -44,5 +49,13 @@ router.get('/',                     getMyTransactions);
 
 router.get('/invoices',             getInvoices);
 router.get('/invoices/:id',         getInvoiceById);
+
+// Refunds & Payouts (Admin & Automated)
+router.get('/refunds',              listRefunds);
+router.post('/refunds',             initiateRefund);
+router.patch('/refunds/:id/approve', approveRefund);
+
+router.get('/payouts',              listPayouts);
+router.post('/payouts/compute',     computePayout);
 
 export default router;

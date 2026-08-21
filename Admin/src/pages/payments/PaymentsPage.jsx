@@ -337,12 +337,18 @@ export default function PaymentsPage() {
                     <td>{rf.reason || 'Session Cancellation'}</td>
                     <td className="font-bold">{fmt(rf.amount)}</td>
                     <td>
-                      <button
-                        onClick={() => handleApproveRefund(rf._id)}
-                        className="btn btn-secondary text-[10px] py-1 text-emerald-700 hover:bg-emerald-50 border-emerald-200"
-                      >
-                        Approve Refund
-                      </button>
+                      {rf.status === 'processed' || rf.status === 'REFUNDED' || rf.status === 'refunded' ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                          ● Approved / Refunded
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleApproveRefund(rf._id)}
+                          className="btn btn-secondary text-[10px] py-1 text-emerald-700 hover:bg-emerald-50 border-emerald-200"
+                        >
+                          Approve Refund
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
