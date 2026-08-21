@@ -52,10 +52,16 @@ router.get('/invoices/:id',         getInvoiceById);
 
 // Refunds & Payouts (Admin & Automated)
 router.get('/refunds',              listRefunds);
+router.get('/api/v1/refunds',       listRefunds);
 router.post('/refunds',             initiateRefund);
+router.post('/api/v1/refunds',      initiateRefund);
 router.patch('/refunds/:id/approve', approveRefund);
+router.patch('/api/v1/refunds/:id/approve', approveRefund);
+router.patch('/:id/approve',        approveRefund);
 
 router.get('/payouts',              listPayouts);
+router.get('/api/v1/payouts',       listPayouts);
 router.post('/payouts/compute',     computePayout);
+router.post('/api/v1/payouts/compute', computePayout);
 
 export default router;

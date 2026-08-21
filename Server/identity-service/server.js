@@ -56,9 +56,17 @@ app.use('/api/v1/admin', userRoutes);
 app.use('/admin', userRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/payments', paymentRoutes);
+app.use('/api/v1/refunds', paymentRoutes);
+app.use('/refunds', paymentRoutes);
+app.use('/api/v1/payouts', paymentRoutes);
+app.use('/payouts', paymentRoutes);
+app.use('/api/v1/invoices', paymentRoutes);
+app.use('/invoices', paymentRoutes);
 app.use('/api/v1', paymentRoutes);
 app.use('/api/v1', userRoutes);
 app.use('/users', userRoutes);
+app.use('/', paymentRoutes);
+app.use('/', userRoutes);
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'identity-service', port: PORT, dbConnected: true, timestamp: new Date().toISOString() }));
 app.get('/healthz', (req, res) => res.json({ status: 'ok', service: 'identity-service', timestamp: new Date().toISOString() }));

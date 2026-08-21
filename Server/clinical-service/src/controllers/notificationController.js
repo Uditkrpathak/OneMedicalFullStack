@@ -3,6 +3,7 @@ import Notification from '../models/Notification.js';
 import NotificationPreference from '../models/NotificationPreference.js';
 import NotificationDeliveryLog from '../models/NotificationDeliveryLog.js';
 import { metricsService } from '../notifications/metricsService.js';
+import { resolveTherapistIds } from '../utils/therapistHelper.js';
 
 /**
  * List in-app notifications for authenticated user
@@ -27,11 +28,16 @@ export const listNotifications = async (req, res) => {
 
     const query = {};
 
-    // If regular patient/therapist, query their recipientId. If admin viewing own feed, recipientRole: admin or recipientId
     if (isAdmin && req.query.all === 'true') {
       // Admin global view
     } else if (userId) {
-      query.recipientId = new mongoose.Types.ObjectId(String(userId));
+      if (userRole === 'therapist') {
+        const tIds = await resolveTherapistIds(userId);
+        const objIds = tIds.filter(id => mongoose.isValidObjectId(id)).map(id => new mongoose.Types.ObjectId(String(id)));
+        query.recipientId = { $in: objIds };
+      } else {
+        query.recipientId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(String(userId)) : userId;
+      }
     }
 
     if (type && type !== 'all') {
@@ -52,7 +58,7 @@ export const listNotifications = async (req, res) => {
         .limit(parseInt(limit))
         .lean(),
       Notification.countDocuments(query),
-      userId ? Notification.countDocuments({ recipientId: new mongoose.Types.ObjectId(String(userId)), isRead: false }) : 0,
+      userId ? Notification.countDocuments({ ...query, isRead: false }) : 0,
     ]);
 
     return res.json({
@@ -78,12 +84,20 @@ export const listNotifications = async (req, res) => {
 export const getUnreadCount = async (req, res) => {
   try {
     const userId = req.headers['x-user-id'] || req.user?.userId;
+    const userRole = req.headers['x-user-role'] || req.user?.role || 'patient';
     if (!userId) {
       return res.json({ success: true, count: 0 });
     }
 
+    let recipientFilter = { recipientId: mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(String(userId)) : userId };
+    if (userRole === 'therapist') {
+      const tIds = await resolveTherapistIds(userId);
+      const objIds = tIds.filter(id => mongoose.isValidObjectId(id)).map(id => new mongoose.Types.ObjectId(String(id)));
+      recipientFilter = { recipientId: { $in: objIds } };
+    }
+
     const count = await Notification.countDocuments({
-      recipientId: new mongoose.Types.ObjectId(String(userId)),
+      ...recipientFilter,
       isRead: false,
     });
 
@@ -100,6 +114,7 @@ export const markNotificationRead = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.headers['x-user-id'] || req.user?.userId;
+    const userRole = req.headers['x-user-role'] || req.user?.role || 'patient';
 
     const query = {
       $or: [
@@ -109,7 +124,13 @@ export const markNotificationRead = async (req, res) => {
     };
 
     if (userId) {
-      query.recipientId = new mongoose.Types.ObjectId(String(userId));
+      if (userRole === 'therapist') {
+        const tIds = await resolveTherapistIds(userId);
+        const objIds = tIds.filter(tid => mongoose.isValidObjectId(tid)).map(tid => new mongoose.Types.ObjectId(String(tid)));
+        query.recipientId = { $in: objIds };
+      } else {
+        query.recipientId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(String(userId)) : userId;
+      }
     }
 
     const updated = await Notification.findOneAndUpdate(

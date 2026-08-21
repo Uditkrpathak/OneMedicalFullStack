@@ -271,35 +271,85 @@ export const getSavedTherapists = async (req, res) => {
     const userId = req.user?.userId || req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
 
-    const user = await User.findById(userId).populate('savedTherapists', 'name email phoneNumber profileImageUrl').lean();
+    const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
     
-    // Fetch profiles for saved therapists
-    const therapistIds = user.savedTherapists ? user.savedTherapists.map(t => t._id || t) : [];
-    const profiles = await TherapistProfile.find({ userId: { $in: therapistIds } }).lean();
-    const profileMap = {};
-    profiles.forEach(p => { profileMap[p.userId.toString()] = p; });
+    const savedIds = (user.savedTherapists || []).map(id => id ? id.toString() : '').filter(Boolean);
+    if (savedIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
 
-    const result = (user.savedTherapists || []).map(t => {
-      const tId = t._id ? t._id.toString() : t.toString();
-      const prof = profileMap[tId] || {};
-      const img = prof.profileImageUrl || t.profileImageUrl || null;
-      return {
-        _id: tId,
-        id: tId,
-        therapistId: tId,
-        name: t.name || prof.name || 'Dr. Specialist',
-        email: t.email,
-        phoneNumber: t.phoneNumber,
-        profileImageUrl: img,
-        avatarUrl: img,
-        avatar: img,
-        ...prof
-      };
+    // 1. Query matching TherapistProfiles by either _id or userId
+    const validObjectIds = savedIds.filter(id => id.match(/^[0-9a-fA-F]{24}$/));
+    const [profiles, users] = await Promise.all([
+      TherapistProfile.find({
+        $or: [
+          { _id: { $in: validObjectIds } },
+          { userId: { $in: savedIds } }
+        ]
+      }).lean(),
+      User.find({ _id: { $in: validObjectIds } }).lean()
+    ]);
+
+    const userMap = {};
+    users.forEach(u => { userMap[u._id.toString()] = u; });
+
+    const profileMap = {};
+    profiles.forEach(p => {
+      if (p.userId) profileMap[p.userId.toString()] = p;
+      profileMap[p._id.toString()] = p;
     });
+
+    const seenIds = new Set();
+    const result = [];
+
+    for (const savedId of savedIds) {
+      const prof = profileMap[savedId] || {};
+      const u = userMap[savedId] || (prof.userId ? userMap[prof.userId.toString()] : {}) || {};
+      const docId = prof._id?.toString() || prof.userId?.toString() || u._id?.toString() || savedId;
+
+      if (!seenIds.has(docId)) {
+        seenIds.add(docId);
+        const name = prof.name || u.name || 'Dr. Specialist';
+        const img = prof.profileImageUrl || u.profileImageUrl || null;
+        const fee = prof.consultationFee ? (prof.consultationFee >= 5000 ? Math.round(prof.consultationFee / 100) : prof.consultationFee) : 800;
+
+        result.push({
+          _id: docId,
+          id: docId,
+          therapistId: docId,
+          userId: prof.userId?.toString() || u._id?.toString() || docId,
+          name,
+          email: u.email,
+          phoneNumber: u.phoneNumber,
+          specialty: (prof.specializations && prof.specializations[0]) || prof.specialization || 'Physiotherapy Specialist',
+          specialization: (prof.specializations && prof.specializations[0]) || prof.specialization || 'Physiotherapy Specialist',
+          specializations: prof.specializations || ['Physiotherapy Specialist'],
+          department: (prof.specializations && prof.specializations[0]) || 'Physiotherapy',
+          experienceYears: prof.experienceYears || 10,
+          ratingAvg: prof.ratingAvg || 4.9,
+          rating: prof.ratingAvg || 4.9,
+          ratingCount: prof.ratingCount || 52,
+          reviewsCount: prof.ratingCount || 52,
+          consultationFee: prof.consultationFee || 80000,
+          fee,
+          clinicName: prof.clinicName || 'ONE MEDICAL Center, Indiranagar',
+          clinic: prof.clinicName || 'ONE MEDICAL Center, Indiranagar',
+          profileImageUrl: img,
+          avatarUrl: img,
+          avatar: img,
+          bio: prof.bio || 'Leading orthopedic rehabilitation specialist with focus on rapid recovery.',
+          ...prof,
+          name,
+          id: docId,
+          _id: docId,
+        });
+      }
+    }
 
     res.json({ success: true, data: result });
   } catch (err) {
+    console.error('[getSavedTherapists] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
@@ -310,9 +360,30 @@ export const saveTherapist = async (req, res) => {
     const { therapistId } = req.params;
     if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
 
-    await User.findByIdAndUpdate(userId, { $addToSet: { savedTherapists: therapistId } });
+    // Store both therapistId and resolved userId/profileId if available
+    const idsToAdd = [therapistId];
+    try {
+      const prof = await TherapistProfile.findOne({
+        $or: [
+          { _id: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
+          { userId: therapistId }
+        ].filter(Boolean)
+      }).lean();
+      if (prof) {
+        if (prof._id) idsToAdd.push(prof._id.toString());
+        if (prof.userId) idsToAdd.push(prof.userId.toString());
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    await User.findByIdAndUpdate(userId, { 
+      $addToSet: { savedTherapists: { $each: idsToAdd } } 
+    });
+
     res.json({ success: true, message: 'Specialist saved successfully' });
   } catch (err) {
+    console.error('[saveTherapist] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
@@ -323,9 +394,28 @@ export const removeSavedTherapist = async (req, res) => {
     const { therapistId } = req.params;
     if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
 
-    await User.findByIdAndUpdate(userId, { $pull: { savedTherapists: therapistId } });
+    const idsToRemove = [therapistId];
+    try {
+      const prof = await TherapistProfile.findOne({
+        $or: [
+          { _id: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
+          { userId: therapistId }
+        ].filter(Boolean)
+      }).lean();
+      if (prof) {
+        if (prof._id) idsToRemove.push(prof._id.toString());
+        if (prof.userId) idsToRemove.push(prof.userId.toString());
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    await User.findByIdAndUpdate(userId, { 
+      $pull: { savedTherapists: { $in: idsToRemove } } 
+    });
     res.json({ success: true, message: 'Specialist removed successfully' });
   } catch (err) {
+    console.error('[removeSavedTherapist] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
