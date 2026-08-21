@@ -234,7 +234,8 @@ export default function ProfileSettingsScreen({ navigation }) {
           <Text style={styles.deleteBtnText}>Request Account Deletion</Text>
         </View>
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
