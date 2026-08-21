@@ -132,6 +132,29 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
 
   const latestReport = clinicalContext?.latestRecords && clinicalContext.latestRecords.length > 0 ? clinicalContext.latestRecords[0] : null;
 
+  const getStatusBadge = (st) => {
+    switch ((st || '').toUpperCase()) {
+      case 'CONFIRMED':
+        return { bg: '#dbeafe', text: '#1e40af', label: 'CONFIRMED' };
+      case 'CANCELLED':
+        return { bg: '#fee2e2', text: '#dc2626', label: 'CANCELLED' };
+      case 'COMPLETED':
+      case 'DOCUMENTED':
+        return { bg: '#dcfce7', text: '#15803d', label: 'COMPLETED' };
+      case 'NO_ATTENDANCE':
+      case 'MISSED':
+        return { bg: '#fef3c7', text: '#b45309', label: 'MISSED SESSION' };
+      case 'IN_PROGRESS':
+        return { bg: '#e0e7ff', text: '#4338ca', label: 'IN PROGRESS' };
+      default:
+        return { bg: '#eff6ff', text: '#1d4ed8', label: st || 'CONFIRMED' };
+    }
+  };
+
+  const statusBadge = getStatusBadge(snapshot.status);
+  const isOnlineMode = (snapshot.visitMode || '').toLowerCase().includes('online') || (snapshot.visitMode || '').toLowerCase().includes('video');
+  const isHomeMode = (snapshot.visitMode || '').toLowerCase().includes('home');
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header */}
@@ -174,8 +197,8 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           <View style={styles.heroInfoCenter}>
             <View style={styles.heroNameRow}>
               <Text style={styles.heroPatientName}>{snapshot.patientName}</Text>
-              <View style={styles.confirmedBadge}>
-                <Text style={styles.confirmedBadgeText}>{snapshot.status || 'CONFIRMED'}</Text>
+              <View style={[styles.confirmedBadge, { backgroundColor: statusBadge.bg }]}>
+                <Text style={[styles.confirmedBadgeText, { color: statusBadge.text }]}>{statusBadge.label}</Text>
               </View>
             </View>
 
@@ -223,8 +246,12 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           <View style={styles.cardDivider} />
 
           <View style={styles.infoRowItem}>
-            <View style={[styles.infoIconBox, { backgroundColor: '#f0fdfa' }]}>
-              <Ionicons name="location" size={18} color="#0d9488" />
+            <View style={[styles.infoIconBox, { backgroundColor: isOnlineMode ? '#eff6ff' : isHomeMode ? '#fef3c7' : '#f0fdfa' }]}>
+              <Ionicons
+                name={isOnlineMode ? 'videocam' : isHomeMode ? 'home' : 'location'}
+                size={18}
+                color={isOnlineMode ? '#003D9B' : isHomeMode ? '#d97706' : '#0d9488'}
+              />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.infoRowLabel}>Visit Mode</Text>
@@ -265,7 +292,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
                 onPress={() => navigation.navigate('ChoosePayment', { appointmentId })}
               >
                 <Ionicons name="flash" size={16} color="#ffffff" />
-                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Pay ₹{Math.round((snapshot.amount || 49900) / 100)} via UPI / Card Now</Text>
+                <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 13 }}>Pay ₹{Math.round((snapshot.amount || 49900) / 100)} via UPI Now</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -304,7 +331,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Quick Access 4-Grid */}
+        {/* Quick Access Grid */}
         <View style={styles.quickAccessSection}>
           <Text style={styles.sectionHeading}>QUICK ACCESS</Text>
           <View style={styles.quickAccessGrid}>
@@ -351,20 +378,14 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             <TouchableOpacity
               style={styles.quickAccessCard}
               onPress={() =>
-                clinicalContext?.activeProgram?._id
-                  ? navigation.navigate('RecoveryProgramDetail', {
-                      programId: clinicalContext.activeProgram._id,
-                      patientProgramId: clinicalContext.activeProgram._id,
-                      patientId: snapshot.patientId,
-                    })
-                  : navigation.navigate('MyRecoveryPrograms', {
-                      patientId: snapshot.patientId,
-                      patientName: snapshot.patientName,
-                    })
+                navigation.navigate('InvoiceDetails', {
+                  transactionId: snapshot.transactionId || snapshot.appointmentId || appointmentId,
+                  appointmentId,
+                })
               }
             >
-              <Ionicons name="clipboard-outline" size={22} color="#003D9B" />
-              <Text style={styles.quickAccessText}>Treatment Plan</Text>
+              <Ionicons name="receipt-outline" size={22} color="#003D9B" />
+              <Text style={styles.quickAccessText}>Tax Invoice</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -559,17 +580,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   heroAvatarContainer: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#eff6ff',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#003D9B',
+    overflow: 'hidden',
   },
   avatarLargeCircle: { alignItems: 'center', justifyContent: 'center' },
-  avatarLargeText: { fontSize: 34, fontWeight: '900', color: '#003D9B' },
+  avatarLargeText: { fontSize: 30, fontWeight: '900', color: '#003D9B' },
   heroInfoCenter: { alignItems: 'center', gap: 6, width: '100%' },
   heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroPatientName: { fontSize: 18, fontWeight: '900', color: '#0f172a' },

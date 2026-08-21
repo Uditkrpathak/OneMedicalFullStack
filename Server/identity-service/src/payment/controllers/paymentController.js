@@ -595,6 +595,40 @@ export const getInvoiceById = async (req, res) => {
     }
 
     if (!invoice) {
+      try {
+        const appt = await getAppointmentInternal(id);
+        if (appt) {
+          let patientUser = null;
+          if (appt.patientId) {
+            patientUser = await User.findById(appt.patientId).lean();
+          }
+          const totalAmount = appt.amountPaise ? Math.round(appt.amountPaise / 100) : (appt.fee || 499);
+          invoice = {
+            _id: appt._id,
+            invoiceNumber: `INV-${String(appt._id).slice(-6).toUpperCase()}`,
+            patientId: appt.patientId,
+            patientName: appt.patientName || patientUser?.name || 'Patient',
+            patientPhone: patientUser?.phoneNumber || '+91 98765 43210',
+            doctorName: appt.therapistName || 'Dr. Specialist',
+            clinicName: 'ONE MEDICAL Central Hub',
+            address: '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038',
+            gstin: '29AABCU9603R1ZM',
+            department: appt.serviceType?.replace(/_/g, ' ') || 'Orthopedic Physiotherapy',
+            totalAmount,
+            consultationFee: totalAmount,
+            discount: 0,
+            status: appt.paymentStatus === 'PAID' ? 'PAID' : (appt.paymentStatus || 'PAID'),
+            paymentMethod: (appt.paymentMethod || 'UPI').toUpperCase(),
+            generatedAt: appt.createdAt || new Date(),
+            createdAt: appt.createdAt || new Date(),
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!invoice) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found.' } });
     }
 

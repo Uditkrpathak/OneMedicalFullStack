@@ -261,18 +261,28 @@ export const getAppointmentClinicalContext = async (req, res) => {
       ? new Date(lastVisit.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : 'Initial Session';
     const currentProgramName = activeProgram?.programId?.title || activeProgram?.title || (activeProgram ? 'Active Recovery Program' : 'Standard Assessment');
-    const recoveryGoalProgress = activeProgram?.adherencePercentage || activeProgram?.recoveryScore || 0;
-    const painScore = appointment.painScore || activeConsultation?.step1_preparation?.painScore || 0;
-    const visitMode = appointment.appointmentPlace === 'VIDEO' || appointment.appointmentType === 'telehealth' ? 'Online Consultation' : 'Clinic Visit';
-    const clinicLocation = appointment.clinicLocation || 'One Medical Hub, MG Road';
+    const isOnline = appointment.appointmentPlace === 'VIDEO' || appointment.appointmentType === 'telehealth' || appointment.mode === 'online';
+    const isHome = appointment.appointmentPlace === 'HOME' || appointment.mode === 'home';
+    const visitMode = isOnline ? 'Online Video Consultation' : (isHome ? 'Home Visit Session' : 'In-Clinic Consultation');
+    const clinicLocation = isOnline
+      ? 'Secure Video Call (WebRTC Telehealth)'
+      : (isHome
+          ? (appointment.homeAddress || appointment.patientAddress || 'Patient Residence')
+          : (appointment.clinicLocation || appointment.clinicName || 'ONE MEDICAL Center, Indiranagar'));
+
     const appointmentDate = appointment.startTime
       ? new Date(appointment.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })
       : 'Scheduled Date';
     const appointmentTime = appointment.startTime
-      ? `${new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${appointment.durationMin || appointment.durationMinutes || 45} mins)`
+      ? `${new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (${appointment.durationMin || appointment.durationMinutes || 30} mins)`
       : '10:00 AM';
 
     const patientSnapshot = {
+      appointmentId: appointment._id,
+      transactionId: appointment.transactionId || appointment._id,
+      status: appointment.status || 'CONFIRMED',
+      paymentStatus: appointment.paymentStatus || 'PAID',
+      amount: appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 49900),
       patientId: appointment.patientId,
       therapistId: appointment.therapistId,
       therapistName: appointment.therapistName,
@@ -289,9 +299,8 @@ export const getAppointmentClinicalContext = async (req, res) => {
       clinicLocation,
       appointmentDate,
       appointmentTime,
-      durationMins: appointment.durationMin || appointment.durationMinutes || 45,
-      status: appointment.status || 'CONFIRMED',
-      serviceCategory: appointment.serviceType?.replace(/_/g, ' ') || 'Rehabilitation',
+      durationMins: appointment.durationMin || appointment.durationMinutes || 30,
+      serviceCategory: appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy',
     };
 
     res.json({
