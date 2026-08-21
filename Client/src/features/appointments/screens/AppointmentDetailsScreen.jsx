@@ -188,8 +188,6 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   };
 
   const statusBadge = getStatusBadge(snapshot.status);
-  const isOnlineMode = (snapshot.visitMode || '').toLowerCase().includes('online') || (snapshot.visitMode || '').toLowerCase().includes('video');
-  const isHomeMode = (snapshot.visitMode || '').toLowerCase().includes('home');
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
