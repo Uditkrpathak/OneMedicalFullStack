@@ -475,6 +475,46 @@ export const generateClinicDynamicQr = async (req, res) => {
   }
 };
 
+// ─── GET /payments/health ────────────────────────────────────────────────────
+export const getPaymentHealth = async (req, res) => {
+  res.json({
+    success: true,
+    service: 'identity-service:payments',
+    status: 'healthy',
+    gateway: 'razorpay',
+    timestamp: new Date().toISOString()
+  });
+};
+
+// ─── GET /payments/transactions/my (GET MY TRANSACTIONS) ──────────────────────
+export const getMyTransactions = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'patient';
+    const isAdmin = isAdminRole(userRole);
+
+    if (!userId && !isAdmin) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    }
+
+    const filter = isAdmin ? {} : { patientId: String(userId) };
+    const transactions = await Transaction.find(filter).sort({ createdAt: -1 }).lean();
+
+    const formatted = transactions.map(t => ({
+      ...t,
+      id: t._id,
+      amountRupees: t.amountPaise ? Math.round(t.amountPaise / 100) : 0,
+      amountFormatted: `₹${(t.amountPaise ? Math.round(t.amountPaise / 100) : 0).toLocaleString('en-IN')}`,
+      dateFormatted: new Date(t.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    }));
+
+    res.json({ success: true, data: formatted });
+  } catch (err) {
+    console.error('[Payment] getMyTransactions error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 // ─── GET /payments/invoices/my ────────────────────────────────────────────────
 export const getMyInvoices = async (req, res) => {
   return getInvoices(req, res);
