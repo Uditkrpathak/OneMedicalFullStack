@@ -146,6 +146,19 @@ const AppointmentSchema = new mongoose.Schema({
   // ─── Concurrency & Versioning ──────────────────────────────────────────
   version: { type: Number, default: 1 },
 
+  // ─── Home Visit Address Snapshot (Immutable Historical Truth) ────────────
+  patientAddressSnapshot: {
+    addressLine1: { type: String },
+    addressLine2: { type: String },
+    city:         { type: String },
+    state:        { type: String },
+    postalCode:   { type: String },
+    country:      { type: String, default: 'India' },
+    latitude:     { type: Number },
+    longitude:    { type: Number },
+    capturedAt:   { type: Date, default: Date.now },
+  },
+
   // ─── Session ──────────────────────────────────────────────────────────────
   sessionSummary: { type: String },
 

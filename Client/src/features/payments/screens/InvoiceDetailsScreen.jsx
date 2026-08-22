@@ -358,7 +358,9 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               <Text style={styles.partyNameBold}>{invoice.doctorName || 'Dr. Specialist'}</Text>
               <Text style={styles.partySubText}>{invoice.department || 'Orthopedic Physiotherapy'}</Text>
               <Text style={styles.partySubText}>Reg: {invoice.doctorRegNo || 'KMC-72941-PT'}</Text>
-              <Text style={styles.partySubText}>Mode: In-Clinic / Telehealth</Text>
+              <Text style={[styles.partySubText, { fontWeight: '700', color: '#003D9B', marginTop: 2 }]}>
+                Mode: {invoice.consultationMode || 'In-Person / Online'}
+              </Text>
             </View>
           </View>
 
@@ -369,6 +371,24 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>SERVICE</Text>
               <Text style={styles.serviceContextValBold}>{invoice.serviceName || 'Physiotherapy Consultation'}</Text>
+            </View>
+            <View style={styles.serviceContextRow}>
+              <Text style={styles.serviceContextLabel}>MODE & PLACE</Text>
+              <Text style={[styles.serviceContextVal, { fontWeight: '600', color: '#0f172a' }]}>
+                {invoice.consultationMode || 'Clinical Service'}
+              </Text>
+            </View>
+            <View style={styles.serviceContextRow}>
+              <Text style={styles.serviceContextLabel}>LOCATION</Text>
+              <Text style={styles.serviceContextVal} numberOfLines={2}>
+                {invoice.serviceLocation || invoice.address || 'ONE MEDICAL Central Hub'}
+              </Text>
+            </View>
+            <View style={styles.serviceContextRow}>
+              <Text style={styles.serviceContextLabel}>PAYMENT</Text>
+              <Text style={[styles.serviceContextVal, { color: '#16a34a', fontWeight: '600' }]}>
+                {invoice.paymentChannel || 'Paid Online (Instant UPI / Gateway)'}
+              </Text>
             </View>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>APPT REF</Text>

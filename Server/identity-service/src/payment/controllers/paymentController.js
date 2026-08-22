@@ -728,8 +728,24 @@ export const getInvoiceById = async (req, res) => {
     const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`;
     const genDate = invoice?.generatedAt || txn?.capturedAt || txn?.createdAt || appt?.createdAt || new Date();
 
-    const paymentMethodStr = (txn?.paymentMethod || appt?.paymentMethod || 'UPI').toUpperCase() +
-      (txn?.paymentPlace === 'clinic' ? ' (CLINIC RECEPTION)' : ' (ONLINE INSTANT)');
+    // Resolve Mode and Location
+    const place = (appt?.appointmentPlace || appt?.appointmentType || appt?.serviceType || '').toUpperCase();
+    let consultationMode = 'In-Person Clinic Visit';
+    let defaultService = 'In-Clinic Physiotherapy Consultation & Rehabilitation';
+    let serviceLocation = 'ONE MEDICAL Clinic & Rehabilitation Hub • 4th Floor, Health Tower, Indiranagar, Bengaluru';
+
+    if (place.includes('HOME')) {
+      consultationMode = 'Home Visit (At-Home Care)';
+      defaultService = 'At-Home Physiotherapy Consultation & Care';
+      serviceLocation = appt?.patientAddress || appt?.address || 'Patient Residence (At-Home Clinical Care)';
+    } else if (place.includes('VIDEO') || place.includes('TELEHEALTH') || place.includes('ONLINE')) {
+      consultationMode = 'Online Video Consultation';
+      defaultService = 'Online Video Telehealth Consultation';
+      serviceLocation = 'OneMedical Encrypted WebRTC Telehealth Suite (Online Virtual Room)';
+    }
+
+    const isPaidOnline = txn?.paymentPlace === 'online' || txn?.gateway === 'razorpay' || (!txn?.paymentPlace && txn?.gatewayOrderId);
+    const paymentChannelStr = isPaidOnline ? 'Paid Online (UPI / Card / Instant Gateway)' : 'Paid at Clinic Reception Desk';
 
     const result = {
       _id: invoice?._id || txn?._id || id,
@@ -742,8 +758,11 @@ export const getInvoiceById = async (req, res) => {
       patientName,
       patientPhone,
       doctorName: therapistName,
+      consultationMode,
+      serviceLocation,
+      paymentChannel: paymentChannelStr,
       department: appt?.serviceType?.replace(/_/g, ' ') || 'Orthopedic Physiotherapy & Rehabilitation',
-      serviceName: appt?.serviceType ? appt.serviceType.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : 'Physiotherapy Consultation & Assessment',
+      serviceName: appt?.serviceName || defaultService,
       clinicName: 'ONE MEDICAL Clinic & Rehabilitation Hub',
       address: '4th Floor, Health Tower, 100 Feet Rd, Indiranagar, Bengaluru, Karnataka 560038',
       gstin: '29AABCU9603R1ZM',
@@ -763,7 +782,7 @@ export const getInvoiceById = async (req, res) => {
       refundDate: isRefunded ? (txn?.refundedAt || refundDoc?.updatedAt || new Date()) : null,
       refundReason: refundDoc?.reason || appt?.cancellationReason || 'Appointment Cancelled / Free Cancellation Policy',
       gatewayRefundId: refundDoc?.gatewayRefundId || `rfnd_${String(txn?._id || id).slice(-8)}`,
-      paymentMethod: paymentMethodStr,
+      paymentMethod: `${(txn?.paymentMethod || appt?.paymentMethod || 'UPI').toUpperCase()} • ${paymentChannelStr}`,
       generatedAt: genDate,
       issuedDate: new Date(genDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       issuedTime: new Date(genDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),

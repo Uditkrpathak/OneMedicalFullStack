@@ -11,6 +11,7 @@ import {
   Modal,
   Dimensions,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -128,11 +129,18 @@ export default function TherapistScheduleScreen({ navigation }) {
             visitMode = 'home';
           }
 
+          const snap = a.patientAddressSnapshot;
+          const addressFormatted = snap?.addressLine1
+            ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''} ${snap.postalCode ? '- ' + snap.postalCode : ''}`
+            : (a.patientAddress || a.address || a.location || 'Patient Residence');
+
           const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '10:00 AM');
           return {
             id: a.id || a.appointmentId || a._id,
             time: timeFormatted,
             patientName: a.patient?.name || a.patientName || 'Patient',
+            patientPhone: a.patient?.phoneNumber || a.patientPhone || a.phone || '+91 98765 43210',
+            patientAddress: addressFormatted,
             condition: a.condition || a.serviceName || a.chiefComplaint || 'Physical Rehabilitation',
             sessionInfo: `${timeFormatted} — 45m session`,
             status,
@@ -158,11 +166,18 @@ export default function TherapistScheduleScreen({ navigation }) {
               visitMode = 'home';
             }
 
+            const snap = a.patientAddressSnapshot;
+            const addressFormatted = snap?.addressLine1
+              ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''}`
+              : (a.patientAddress || a.address || a.location || 'Patient Residence');
+
             const timeFormatted = a.time || '10:00 AM';
             return {
               id: a.id || a._id,
               time: timeFormatted,
               patientName: a.patientName || 'Patient',
+              patientPhone: a.patientPhone || a.phone || '+91 98765 43210',
+              patientAddress: addressFormatted,
               condition: a.condition || 'Physical Rehabilitation',
               sessionInfo: `${timeFormatted} — 45m session`,
               status,
@@ -431,15 +446,46 @@ export default function TherapistScheduleScreen({ navigation }) {
                   {/* Visit Mode & Complaint Subtitle */}
                   <View style={styles.conditionRow}>
                     <Ionicons
-                      name={appt.type === 'telehealth' ? 'videocam-outline' : 'location-outline'}
+                      name={appt.type === 'telehealth' ? 'videocam-outline' : (appt.visitMode === 'home' ? 'home-outline' : 'location-outline')}
                       size={14}
-                      color={appt.type === 'telehealth' ? '#0284c7' : '#64748b'}
+                      color={appt.type === 'telehealth' ? '#0284c7' : (appt.visitMode === 'home' ? '#003D9B' : '#64748b')}
                       style={{ marginRight: 4 }}
                     />
                     <Text style={styles.conditionSubText}>
-                      {appt.type === 'telehealth' ? 'Online Consultation' : 'Clinic Visit'} • {appt.condition}
+                      {appt.type === 'telehealth' ? 'Online Video Consultation' : (appt.visitMode === 'home' ? 'Home Visit (At-Home Care)' : 'Clinic Visit')} • {appt.condition}
                     </Text>
                   </View>
+
+                  {/* Home Visit Specific Location HUD & Map Navigation */}
+                  {appt.visitMode === 'home' && (
+                    <View style={styles.homeLocationBox}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+                        <Ionicons name="home" size={12} color="#003D9B" style={{ marginRight: 4 }} />
+                        <Text style={styles.homeLocationTitle}>PATIENT ADDRESS (HOME VISIT)</Text>
+                      </View>
+                      <Text style={styles.homeLocationAddressText} numberOfLines={2}>{appt.patientAddress}</Text>
+
+                      <View style={styles.homeLocationActionsRow}>
+                        <TouchableOpacity
+                          style={styles.homeMapNavBtn}
+                          onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(appt.patientAddress)}`)}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="navigate" size={12} color="#003D9B" style={{ marginRight: 4 }} />
+                          <Text style={styles.homeMapNavBtnText}>Open Maps</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.homeCallPatientBtn}
+                          onPress={() => Linking.openURL(`tel:${appt.patientPhone}`)}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="call" size={12} color="#16a34a" style={{ marginRight: 4 }} />
+                          <Text style={styles.homeCallPatientBtnText}>Call Patient</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
 
                   {/* Divider */}
                   <View style={styles.cardInnerDivider} />
@@ -971,10 +1017,70 @@ const styles = StyleSheet.create({
   calDayText: { fontSize: 11, fontWeight: '700', color: '#64748b', marginBottom: 4 },
   calDayTextActive: { color: '#ffffff' },
   calDateNum: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
-  calDateNumActive: { color: '#ffffff' },
-
   filterOptRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   filterOptRowActive: { borderColor: '#003D9B', backgroundColor: '#eff6ff' },
   filterOptText: { fontSize: 14, fontWeight: '600', color: '#334155' },
   filterOptTextActive: { color: '#003D9B', fontWeight: '800' },
+
+  // Home Visit Specific HUD
+  homeLocationBox: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  homeLocationTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#003D9B',
+    letterSpacing: 0.5,
+  },
+  homeLocationAddressText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1e293b',
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  homeLocationActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  homeMapNavBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  homeMapNavBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#003D9B',
+  },
+  homeCallPatientBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  homeCallPatientBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#16a34a',
+  },
 });
