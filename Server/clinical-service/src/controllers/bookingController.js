@@ -138,7 +138,7 @@ export const createHold = async (req, res) => {
   const normalizedServiceType = normalizeServiceType(serviceType);
 
   const resolvedPlace = (appointmentPlace || 'CLINIC').toUpperCase();
-  const isHomeVisit = resolvedPlace === 'HOME' || normalizedServiceType === 'HOME_VISIT';
+  const isHomeVisit = resolvedPlace === 'HOME';
   const HOME_VISIT_TRAVEL_BUFFER_MS = 30 * 60 * 1000;
 
   const lockKey = times.start.toISOString();

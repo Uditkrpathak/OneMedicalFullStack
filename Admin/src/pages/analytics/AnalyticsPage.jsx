@@ -8,7 +8,9 @@ import { api } from '../../api/api.js';
 import { Spinner } from '../../components/ui.jsx';
 
 function fmt(n) {
-  return `₹${Number(n || 0).toLocaleString('en-IN')}`;
+  const val = Number(n || 0);
+  const normalized = val >= 10000 ? Math.round(val / 100) : val;
+  return `₹${normalized.toLocaleString('en-IN')}`;
 }
 
 const DATE_RANGES = [
