@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import appointmentApi from '../api';
 import { getDoctorAvatarSource, getDoctorImageUri } from '../../../utils/doctorImages';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   useGetSavedSpecialistsQuery,
@@ -33,9 +34,17 @@ export default function SavedSpecialistsScreen({ navigation }) {
   const [category, setCategory] = useState('All');
   const [specialists, setSpecialists] = useState([]);
 
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
   useEffect(() => {
     if (savedRes?.data && Array.isArray(savedRes.data)) {
       setSpecialists(savedRes.data);
+    } else if (Array.isArray(savedRes)) {
+      setSpecialists(savedRes);
     } else if (savedRes?.data !== undefined) {
       setSpecialists([]);
     }

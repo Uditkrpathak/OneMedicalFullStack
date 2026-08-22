@@ -10,6 +10,7 @@ import {
   Linking,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -59,7 +60,9 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     if (s === 'NO_ATTENDANCE' || s === 'PROVIDER_NO_SHOW' || s === 'PATIENT_NO_SHOW') return 'Missed Consultation (No Attendance)';
 
     if (!isoStartTime) return 'Scheduled Consultation';
-    const apptTime = new Date(isoStartTime).getTime();
+    const parsedDate = new Date(isoStartTime);
+    const apptTime = parsedDate.getTime();
+    if (isNaN(apptTime)) return 'Scheduled Consultation';
     const now = Date.now();
     const diffMs = apptTime - now;
 
@@ -88,9 +91,14 @@ export default function AppointmentDetailScreen({ route, navigation }) {
         if (res.success && res.data) {
           const a = res.data.appointment || res.data;
           const sDate = a.startTime ? new Date(a.startTime) : null;
-          const dateStr = sDate
-            ? `${sDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`
-            : (a.dateString || a.date || 'Scheduled Consultation');
+          let dateStr = a.dateString || a.date || 'Scheduled Consultation';
+          if (sDate && !isNaN(sDate.getTime())) {
+            try {
+              dateStr = `${sDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+            } catch (e) {
+              dateStr = `${sDate.toDateString()} • ${sDate.toTimeString().slice(0, 5)}`;
+            }
+          }
 
           const serviceClean = (a.serviceName || a.serviceType || 'Physiotherapy Consultation')
             .replace(/_/g, ' ')

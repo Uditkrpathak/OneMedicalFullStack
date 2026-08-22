@@ -538,10 +538,7 @@ export default function BookAppointmentScreen({ route, navigation }) {
                             <View style={styles.docNameFavRow}>
                               <Text style={styles.docListName}>{docName}</Text>
                               <TouchableOpacity
-                                onPress={async () => {
-                                  await toggleFavorite(docId);
-                                  navigation.navigate('SavedSpecialists');
-                                }}
+                                onPress={() => toggleFavorite(docId)}
                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                               >
                                 <Ionicons

@@ -33,7 +33,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   const [verifyingPayment, setVerifyingPayment] = useState(false);
 
   const fetchClinicalContext = async () => {
-    if (!token || !appointmentId || !appointmentId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (!token || !appointmentId || typeof appointmentId !== 'string' || !appointmentId.match(/^[0-9a-fA-F]{24}$/)) {
       setLoading(false);
       return;
     }
@@ -60,18 +60,31 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   const ctxSnapshot = clinicalContext?.patientSnapshot || {};
 
   const sDate = apptDoc.startTime ? new Date(apptDoc.startTime) : null;
+  const isValidSDate = Boolean(sDate && !isNaN(sDate.getTime()));
   const durationMins = apptDoc.durationMin || apptDoc.durationMinutes || ctxSnapshot.durationMins || 30;
-  const eDate = apptDoc.endTime ? new Date(apptDoc.endTime) : (sDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
+  const eDate = apptDoc.endTime ? new Date(apptDoc.endTime) : (isValidSDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
+  const isValidEDate = Boolean(eDate && !isNaN(eDate.getTime()));
 
-  const resolvedDate = sDate
-    ? sDate.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-    : (ctxSnapshot.appointmentDate || 'Scheduled Consultation');
+  let resolvedDate = ctxSnapshot.appointmentDate || 'Scheduled Consultation';
+  let resolvedTime = ctxSnapshot.appointmentTime || '10:30 AM';
 
-  const resolvedTime = sDate
-    ? `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} (${durationMins} mins)`
-    : (ctxSnapshot.appointmentTime || '10:30 AM');
+  if (isValidSDate) {
+    try {
+      resolvedDate = sDate.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) {
+      resolvedDate = sDate.toDateString();
+    }
+  }
 
-  const rawAmount = ctxSnapshot.amount || apptDoc.amount || apptDoc.amountPaise || (apptDoc.fee ? apptDoc.fee * 100 : 80000);
+  if (isValidSDate && isValidEDate) {
+    try {
+      resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} (${durationMins} mins)`;
+    } catch (e) {
+      resolvedTime = `${sDate.toTimeString().slice(0, 5)} (${durationMins} mins)`;
+    }
+  }
+
+  const rawAmount = ctxSnapshot.amount || apptDoc.amountPaise || apptDoc.amount || (apptDoc.fee ? apptDoc.fee * 100 : 80000);
   const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
 
   const isOnlineMode = apptDoc.appointmentPlace === 'VIDEO' || apptDoc.appointmentType === 'telehealth' || (ctxSnapshot.visitMode || '').toLowerCase().includes('online');
@@ -82,6 +95,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
     : (isHomeMode ? 'Patient Registered Residence' : (apptDoc.clinicLocation || apptDoc.clinicName || ctxSnapshot.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bengaluru'));
 
   const snapshot = {
+    patientId: apptDoc.patientId || ctxSnapshot.patientId || user?._id || user?.id,
     patientName: ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName || 'Patient',
     age: ctxSnapshot.age || apptDoc.patientAge || 28,
     gender: ctxSnapshot.gender || apptDoc.patientGender || 'Patient',
@@ -213,7 +227,14 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
               <Ionicons name="information-circle" size={18} color="#9333ea" />
               <Text style={styles.alertBannerText} numberOfLines={1}>
-                Recent {latestReport.title || latestReport.category?.replace(/_/g, ' ') || 'medical record'} uploaded ({new Date(latestReport.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                Recent {latestReport.title || latestReport.category?.replace(/_/g, ' ') || 'medical record'} uploaded ({(() => {
+                  try {
+                    const rDate = new Date(latestReport.createdAt);
+                    return !isNaN(rDate.getTime()) ? rDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'recently';
+                  } catch (e) {
+                    return 'recently';
+                  }
+                })()})
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#9333ea" />
@@ -224,7 +245,7 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
         <View style={styles.patientHeroCard}>
           <View style={styles.heroAvatarContainer}>
             <View style={styles.avatarLargeCircle}>
-              <Text style={styles.avatarLargeText}>{snapshot.patientName.charAt(0).toUpperCase()}</Text>
+              <Text style={styles.avatarLargeText}>{String(snapshot.patientName || 'P').charAt(0).toUpperCase()}</Text>
             </View>
           </View>
 
