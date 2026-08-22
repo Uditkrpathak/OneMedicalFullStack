@@ -454,42 +454,49 @@ export default function AppointmentDetailScreen({ route, navigation }) {
                 const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
                 const isCancelledNoCharge = booking.status === 'CANCELLED' && (booking.paymentStatus === 'NOT_APPLICABLE' || !booking.paymentStatus);
                 const isPaid = booking.paymentStatus === 'PAID';
-                const amtFormatted = (booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 800).toLocaleString('en-IN');
+                const amtFormatted = (booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 499).toLocaleString('en-IN');
 
                 let badgeBg = '#fef3c7';
                 let textColor = '#b45309';
-                let iconName = 'time-outline';
-                let label = 'Pay at Clinic';
+                let iconName = 'wallet-outline';
+                let label = `Payment Required (₹${amtFormatted})`;
+                let helperNote = `⚠️ Payment due at clinic. Please settle ₹${amtFormatted} at the reception desk via Cash, UPI QR, or Card POS.`;
 
                 if (isRefunded) {
                   badgeBg = '#dcfce7';
                   textColor = '#15803d';
                   iconName = 'checkmark-circle';
                   label = `Refund Settled (₹${amtFormatted})`;
+                  helperNote = `✅ Refund of ₹${amtFormatted} credited to your original payment method.`;
                 } else if (isRefundPending) {
                   badgeBg = '#fef3c7';
                   textColor = '#b45309';
                   iconName = 'time-outline';
                   label = `Refund Processing (₹${amtFormatted})`;
+                  helperNote = `⏳ Refund of ₹${amtFormatted} is processing back to your bank account (3-5 business days).`;
                 } else if (isCancelledNoCharge) {
                   badgeBg = '#f1f5f9';
                   textColor = '#475569';
                   iconName = 'close-circle-outline';
                   label = 'Cancelled (No Charge)';
+                  helperNote = 'Consultation cancelled with no payment required.';
                 } else if (isPaid) {
                   badgeBg = '#dcfce7';
                   textColor = '#15803d';
                   iconName = 'checkmark-circle';
                   label = `Paid Online (₹${amtFormatted})`;
+                  helperNote = `✅ Pre-settled digitally via instant gateway. No payment required at clinic.`;
                 }
 
                 return (
-                  <View style={[styles.statusBadgePill, { backgroundColor: badgeBg }]}>
-                    <Ionicons name={iconName} size={13} color={textColor} style={{ marginRight: 4 }} />
-                    <Text style={[styles.statusBadgeText, { color: textColor }]} numberOfLines={1}>
-                      {label}
-                    </Text>
-                  </View>
+                  <>
+                    <View style={[styles.statusBadgePill, { backgroundColor: badgeBg }]}>
+                      <Ionicons name={iconName} size={13} color={textColor} style={{ marginRight: 4 }} />
+                      <Text style={[styles.statusBadgeText, { color: textColor }]} numberOfLines={1}>
+                        {label}
+                      </Text>
+                    </View>
+                  </>
                 );
               })()}
             </View>
@@ -504,6 +511,36 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             </View>
           </View>
 
+          {/* PAYMENT INSTRUCTION NOTE */}
+          {(() => {
+            const isPaid = booking.paymentStatus === 'PAID';
+            const isRefunded = booking.paymentStatus === 'REFUNDED';
+            const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
+            const amtFormatted = (booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 499).toLocaleString('en-IN');
+
+            if (isPaid) {
+              return (
+                <View style={{ backgroundColor: '#f0fdf4', padding: 10, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 11, color: '#166534', fontWeight: '600', flex: 1, lineHeight: 16 }}>
+                    Pre-settled online. No payment required at the clinic or during consultation.
+                  </Text>
+                </View>
+              );
+            }
+            if (!isRefunded && !isRefundPending && booking.status !== 'CANCELLED') {
+              return (
+                <View style={{ backgroundColor: '#fefce8', padding: 10, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#fef08a', flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="information-circle" size={16} color="#b45309" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 11, color: '#854d0e', fontWeight: '600', flex: 1, lineHeight: 16 }}>
+                    Payment required at clinic: Please settle ₹{amtFormatted} at the reception desk via Cash, UPI QR code, or Card POS.
+                  </Text>
+                </View>
+              );
+            }
+            return null;
+          })()}
+
           <TouchableOpacity
             style={styles.downloadInvoiceBtn}
             onPress={() => navigation.navigate('InvoiceDetails', {
@@ -514,7 +551,8 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               serviceName: booking.service,
               clinicName: booking.clinic,
               dateStr: booking.date,
-              amount: booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 800,
+              amount: booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 499,
+              paymentStatus: booking.paymentStatus,
             })}
             activeOpacity={0.85}
           >

@@ -213,6 +213,9 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
   const effectiveAmount = isRefunded ? (invoice.refundAmount || invoice.totalAmount || 0) : (invoice.totalAmount || 0);
   const amtWords = convertNumberToWords(effectiveAmount);
 
+  const isPaidOnline = invoice.paymentStatus === 'PAID' || invoice.status === 'PAID' || routeParams.paymentStatus === 'PAID' || (invoice.paymentChannel || '').toLowerCase().includes('online') || (invoice.paymentChannel || '').toLowerCase().includes('upi');
+  const isPayAtClinic = !isPaidOnline && !isRefunded && !isRefundPending;
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* HEADER */}
@@ -253,17 +256,37 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               </Text>
             </View>
           </View>
-        ) : null}
+        ) : isPayAtClinic ? (
+          <View style={[styles.refundBanner, { backgroundColor: '#fefce8', borderColor: '#fef08a' }]}>
+            <Ionicons name="alert-circle" size={22} color="#854d0e" style={{ marginRight: 10, marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.refundBannerTitle, { color: '#854d0e' }]}>Payment Required: Pay at Clinic</Text>
+              <Text style={[styles.refundBannerDesc, { color: '#713f12' }]}>
+                Please settle ₹{(invoice.totalAmount || 499).toLocaleString('en-IN')} at the clinic reception desk upon arrival via Cash, UPI QR code, or Card POS machine.
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.refundBanner, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+            <Ionicons name="checkmark-circle" size={22} color="#16a34a" style={{ marginRight: 10, marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.refundBannerTitle, { color: '#166534' }]}>Payment Completed (Paid Online)</Text>
+              <Text style={[styles.refundBannerDesc, { color: '#14532d' }]}>
+                Pre-settled digitally via instant gateway. No payment required at clinic reception.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* FORMAL TAX INVOICE CARD */}
         <View style={styles.invoiceSheet}>
           {/* WATERMARK ACCENT TOP BAR */}
-          <View style={[styles.topAccentBar, isRefunded && { backgroundColor: '#7e22ce' }]} />
+          <View style={[styles.topAccentBar, isRefunded && { backgroundColor: '#7e22ce' }, isPayAtClinic && { backgroundColor: '#eab308' }]} />
 
           {/* CLINIC BRANDING HEADER */}
           <View style={styles.clinicHeaderBlock}>
             <View style={styles.clinicBadgeRow}>
-              <View style={[styles.logoBox, isRefunded && { backgroundColor: '#7e22ce' }]}>
+              <View style={[styles.logoBox, isRefunded && { backgroundColor: '#7e22ce' }, isPayAtClinic && { backgroundColor: '#eab308' }]}>
                 <Ionicons name="medical" size={20} color="#ffffff" />
               </View>
               <View style={{ flex: 1, marginLeft: 10 }}>
@@ -317,24 +340,28 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               <View style={[
                 styles.paidBadge,
                 isRefunded && { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe' },
-                isRefundPending && { backgroundColor: '#fef3c7', borderColor: '#fde68a' }
+                isRefundPending && { backgroundColor: '#fef3c7', borderColor: '#fde68a' },
+                isPayAtClinic && { backgroundColor: '#fef3c7', borderColor: '#fde047' },
+                isPaidOnline && { backgroundColor: '#dcfce7', borderColor: '#86efac' }
               ]}>
                 <Ionicons
-                  name={isRefunded ? 'arrow-undo-circle' : isRefundPending ? 'time' : 'shield-checkmark'}
+                  name={isRefunded ? 'arrow-undo-circle' : isRefundPending ? 'time' : isPayAtClinic ? 'wallet-outline' : 'checkmark-circle'}
                   size={14}
-                  color={isRefunded ? '#7e22ce' : isRefundPending ? '#b45309' : '#15803d'}
+                  color={isRefunded ? '#7e22ce' : isRefundPending ? '#b45309' : isPayAtClinic ? '#b45309' : '#15803d'}
                   style={{ marginRight: 4 }}
                 />
                 <Text style={[
                   styles.paidBadgeText,
                   isRefunded && { color: '#7e22ce' },
-                  isRefundPending && { color: '#b45309' }
+                  isRefundPending && { color: '#b45309' },
+                  isPayAtClinic && { color: '#b45309' },
+                  isPaidOnline && { color: '#15803d' }
                 ]}>
-                  {isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND PENDING' : (invoice.status || 'PAID'))}
+                  {isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND PENDING' : isPayAtClinic ? 'PAY AT CLINIC' : 'PAID')}
                 </Text>
               </View>
-              <Text style={[styles.authVerifiedText, isRefunded && { color: '#7e22ce' }]}>
-                {isRefunded ? 'Settled to Bank' : 'Verified via UPI'}
+              <Text style={[styles.authVerifiedText, isRefunded && { color: '#7e22ce' }, isPayAtClinic && { color: '#b45309' }]}>
+                {isRefunded ? 'Settled to Bank' : isPayAtClinic ? 'Due at Reception' : 'Verified via UPI / Gateway'}
               </Text>
             </View>
           </View>
@@ -366,7 +393,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
 
           <View style={styles.dashedDivider} />
 
-          {/* APPOINTMENT & SERVICE SUMMARY */}
+          {/* APPOINTMENT & SERVICE SUMMARY (RESPONSIVE GRID) */}
           <View style={styles.serviceContextBox}>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>SERVICE</Text>
@@ -374,20 +401,20 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
             </View>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>MODE & PLACE</Text>
-              <Text style={[styles.serviceContextVal, { fontWeight: '600', color: '#0f172a' }]}>
+              <Text style={[styles.serviceContextVal, { fontWeight: '700', color: '#0f172a' }]}>
                 {invoice.consultationMode || 'Clinical Service'}
               </Text>
             </View>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>LOCATION</Text>
-              <Text style={styles.serviceContextVal} numberOfLines={2}>
-                {invoice.serviceLocation || invoice.address || 'ONE MEDICAL Central Hub'}
+              <Text style={styles.serviceContextVal}>
+                {invoice.serviceLocation || invoice.address || 'ONE MEDICAL Central Hub • 4th Floor, Health Tower, Indiranagar, Bengaluru'}
               </Text>
             </View>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>PAYMENT</Text>
-              <Text style={[styles.serviceContextVal, { color: '#16a34a', fontWeight: '600' }]}>
-                {invoice.paymentChannel || 'Paid Online (Instant UPI / Gateway)'}
+              <Text style={[styles.serviceContextVal, { color: isPayAtClinic ? '#b45309' : '#15803d', fontWeight: '700' }]}>
+                {isPayAtClinic ? 'Pay at Clinic Desk (Cash / UPI QR / Card POS)' : 'Paid Online (UPI / Card / Instant Gateway)'}
               </Text>
             </View>
             <View style={styles.serviceContextRow}>
@@ -781,32 +808,41 @@ const styles = StyleSheet.create({
   },
   serviceContextBox: {
     backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginBottom: 10,
-    gap: 4,
+    marginBottom: 14,
+    gap: 6,
   },
   serviceContextRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingVertical: 2,
   },
   serviceContextLabel: {
+    width: 95,
     fontSize: 10,
     fontWeight: '800',
     color: '#64748b',
+    paddingTop: 1,
   },
   serviceContextVal: {
+    flex: 1,
     fontSize: 11,
     color: '#334155',
     fontWeight: '600',
+    textAlign: 'right',
+    lineHeight: 16,
   },
   serviceContextValBold: {
+    flex: 1,
     fontSize: 11,
     color: '#003D9B',
     fontWeight: '800',
+    textAlign: 'right',
+    lineHeight: 16,
   },
   tableHeaderRow: {
     flexDirection: 'row',

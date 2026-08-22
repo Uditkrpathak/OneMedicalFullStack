@@ -153,10 +153,14 @@ export default function TherapistDetailPage() {
       let totalRev = 0;
       let compCount = 0;
       apptsList.forEach((a) => {
-        if (['COMPLETED', 'DOCUMENTED', 'CONFIRMED', 'IN_PROGRESS'].includes(a.status) || a.paymentStatus === 'PAID') {
-          compCount++;
-          const amt = a.paidAmount || a.amount || 0;
-          totalRev += amt >= 5000 ? Math.round(amt / 100) : amt;
+        const isCancelled = a.status === 'CANCELLED';
+        const isRefunded = a.paymentStatus === 'REFUNDED';
+        if (!isCancelled && !isRefunded) {
+          if (['COMPLETED', 'DOCUMENTED', 'CONFIRMED', 'IN_PROGRESS'].includes(a.status) || a.paymentStatus === 'PAID') {
+            compCount++;
+            const amt = a.paidAmount || a.amount || 0;
+            totalRev += amt >= 5000 ? Math.round(amt / 100) : amt;
+          }
         }
       });
 
