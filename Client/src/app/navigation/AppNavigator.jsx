@@ -275,6 +275,7 @@ export default function AppNavigator() {
           <Stack.Screen name="AppointmentConfirmed" component={AppointmentConfirmedScreen} />
           <Stack.Screen name="MyBookings" component={MyBookingsScreen} />
           <Stack.Screen name="AppointmentDetail" component={AppointmentDetailScreen} />
+          <Stack.Screen name="Book" component={BookAppointmentScreen} />
           <Stack.Screen name="BookAppointment" component={BookAppointmentScreen} />
           <Stack.Screen name="RescheduleAppointment" component={RescheduleAppointmentScreen} />
           <Stack.Screen name="CancelAppointment" component={CancelAppointmentScreen} />

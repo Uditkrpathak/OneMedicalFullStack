@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,14 +11,28 @@ import {
   Alert,
   Image,
   BackHandler,
+  Modal,
+  Dimensions,
 } from 'react-native';
+
+const { width } = Dimensions.get('window');
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector, useDispatch } from 'react-redux';
 import { useForm, Controller } from 'react-hook-form';
+import * as ImagePicker from 'expo-image-picker';
 import { useUpdatePatientProfileMutation } from '../authApiSlice';
 import { updateProfile, updateProfileStatus, loginSuccess, logout } from '../authSlice';
 import { colors } from '../../../theme/colors';
+
+const AVATAR_PRESETS = [
+  { id: '1', label: 'Male 1', uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400' },
+  { id: '2', label: 'Female 1', uri: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400' },
+  { id: '3', label: 'Male 2', uri: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400' },
+  { id: '4', label: 'Female 2', uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400' },
+  { id: '5', label: 'Male 3', uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400' },
+  { id: '6', label: 'Female 3', uri: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400' },
+];
 
 const CONCERNS = [
   { id: 'back_pain', icon: 'accessibility-outline', label: 'Back Pain', desc: 'Lumbar & spine relief' },
@@ -34,7 +48,10 @@ export default function CompleteProfileScreen({ navigation }) {
   const { token, user } = useSelector((state) => state.auth);
 
   const [updatePatientProfile, { isLoading }] = useUpdatePatientProfileMutation();
-  const [profilePhoto, setProfilePhoto] = React.useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300');
+  const [profilePhoto, setProfilePhoto] = useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300');
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [customUrl, setCustomUrl] = useState('');
 
   const handleExitAttempt = () => {
     Alert.alert(
@@ -80,15 +97,61 @@ export default function CompleteProfileScreen({ navigation }) {
   const selectedConcern = watch('primaryConcern');
 
   const handlePickPhoto = () => {
-    Alert.alert(
-      'Profile Photo',
-      'Select a photo for your medical profile:',
-      [
-        { text: 'Sample Avatar 1', onPress: () => setProfilePhoto('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300') },
-        { text: 'Sample Avatar 2', onPress: () => setProfilePhoto('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300') },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
+    setShowPhotoModal(true);
+  };
+
+  const handleLaunchCamera = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Denied', 'Camera access is required to take a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setProfilePhoto(result.assets[0].uri);
+        setShowPhotoModal(false);
+      }
+    } catch (e) {
+      Alert.alert('Camera Error', 'Could not open camera on this device.');
+    }
+  };
+
+  const handleLaunchGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Denied', 'Photo library access is required to choose a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setProfilePhoto(result.assets[0].uri);
+        setShowPhotoModal(false);
+      }
+    } catch (e) {
+      Alert.alert('Gallery Error', 'Could not open photo gallery on this device.');
+    }
+  };
+
+  const handleApplyCustomUrl = () => {
+    if (customUrl && customUrl.trim().startsWith('http')) {
+      setProfilePhoto(customUrl.trim());
+      setShowPhotoModal(false);
+      setShowUrlInput(false);
+      setCustomUrl('');
+    } else {
+      Alert.alert('Invalid URL', 'Please enter a valid image URL starting with http:// or https://');
+    }
   };
 
   const onSubmit = async (data) => {
@@ -387,6 +450,79 @@ export default function CompleteProfileScreen({ navigation }) {
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* PHOTO SELECTION MODAL */}
+      <Modal visible={showPhotoModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Choose Profile Photo</Text>
+              <TouchableOpacity onPress={() => { setShowPhotoModal(false); setShowUrlInput(false); }}>
+                <Ionicons name="close-circle" size={24} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            {/* ACTION BUTTONS: CAMERA & GALLERY & LINK */}
+            <View style={styles.photoActionRow}>
+              <TouchableOpacity style={styles.photoActionBtn} onPress={handleLaunchCamera} activeOpacity={0.8}>
+                <View style={[styles.photoActionIcon, { backgroundColor: '#eff6ff' }]}>
+                  <Ionicons name="camera" size={22} color="#003D9B" />
+                </View>
+                <Text style={styles.photoActionText}>Camera</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.photoActionBtn} onPress={handleLaunchGallery} activeOpacity={0.8}>
+                <View style={[styles.photoActionIcon, { backgroundColor: '#f0fdf4' }]}>
+                  <Ionicons name="images" size={22} color="#16a34a" />
+                </View>
+                <Text style={styles.photoActionText}>Gallery</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.photoActionBtn} onPress={() => setShowUrlInput(!showUrlInput)} activeOpacity={0.8}>
+                <View style={[styles.photoActionIcon, { backgroundColor: '#fdf4ff' }]}>
+                  <Ionicons name="link" size={22} color="#a855f7" />
+                </View>
+                <Text style={styles.photoActionText}>Image Link</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* CUSTOM URL INPUT */}
+            {showUrlInput && (
+              <View style={styles.urlInputContainer}>
+                <TextInput
+                  style={styles.urlTextInput}
+                  placeholder="Paste direct image URL (https://...)"
+                  placeholderTextColor="#94a3b8"
+                  value={customUrl}
+                  onChangeText={setCustomUrl}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity style={styles.urlApplyBtn} onPress={handleApplyCustomUrl}>
+                  <Text style={styles.urlApplyBtnText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* AVATAR PRESETS */}
+            <Text style={styles.presetSectionTitle}>Or select a medical avatar</Text>
+            <View style={styles.presetGrid}>
+              {AVATAR_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.id}
+                  style={[styles.presetAvatarBox, profilePhoto === preset.uri && styles.presetAvatarBoxActive]}
+                  onPress={() => {
+                    setProfilePhoto(preset.uri);
+                    setShowPhotoModal(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri: preset.uri }} style={styles.presetAvatarImg} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -663,5 +799,122 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#ffffff',
+  },
+
+  // Photo Selection Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  photoActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 20,
+  },
+  photoActionBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  photoActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  photoActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  urlInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+    backgroundColor: '#f8fafc',
+    padding: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  urlTextInput: {
+    flex: 1,
+    fontSize: 12,
+    color: '#0f172a',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  urlApplyBtn: {
+    backgroundColor: '#003D9B',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  urlApplyBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  presetSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  presetAvatarBox: {
+    width: (width - 48 - 24) / 3,
+    height: (width - 48 - 24) / 3,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#f1f5f9',
+  },
+  presetAvatarBoxActive: {
+    borderColor: '#003D9B',
+    borderWidth: 3,
+  },
+  presetAvatarImg: {
+    width: '100%',
+    height: '100%',
   },
 });

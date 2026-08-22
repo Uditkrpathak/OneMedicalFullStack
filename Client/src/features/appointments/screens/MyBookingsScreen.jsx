@@ -263,7 +263,14 @@ export default function MyBookingsScreen({ navigation }) {
           </Text>
           <TouchableOpacity
             style={styles.bookNewBtn}
-            onPress={() => navigation.navigate('Book')}
+            activeOpacity={0.85}
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.navigate('BookAppointment');
+              } else {
+                navigation.navigate('PatientHome', { screen: 'Book' });
+              }
+            }}
           >
             <Text style={styles.bookNewBtnText}>Book New Appointment</Text>
           </TouchableOpacity>

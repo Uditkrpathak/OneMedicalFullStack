@@ -104,33 +104,13 @@ export default function SavedSpecialistsScreen({ navigation }) {
 
   const handleNavigateToBooking = (doc) => {
     if (doc) {
-      try {
-        navigation.navigate('SelectDateTime', {
-          therapistId: doc._id || doc.id,
-          therapistName: doc.name,
-          doctor: doc,
-        });
-      } catch {
-        try {
-          navigation.navigate('BookAppointment', {
-            therapistId: doc._id || doc.id,
-            therapistName: doc.name,
-            doctor: doc,
-          });
-        } catch {
-          navigation.navigate('PatientHome', { screen: 'Book', params: { doctor: doc } });
-        }
-      }
+      navigation.navigate('SelectDateTime', {
+        therapistId: doc._id || doc.id,
+        therapistName: doc.name,
+        doctor: doc,
+      });
     } else {
-      try {
-        navigation.navigate('BookAppointment');
-      } catch {
-        try {
-          navigation.navigate('PatientHome', { screen: 'Book' });
-        } catch {
-          navigation.navigate('Book');
-        }
-      }
+      navigation.navigate('BookAppointment');
     }
   };
 

@@ -60,11 +60,11 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     if (s === 'NO_ATTENDANCE' || s === 'PROVIDER_NO_SHOW' || s === 'PATIENT_NO_SHOW') return 'Missed Consultation (No Attendance)';
 
     if (!isoStartTime) return 'Scheduled Consultation';
-    const parsedDate = new Date(isoStartTime);
-    const apptTime = parsedDate.getTime();
-    if (isNaN(apptTime)) return 'Scheduled Consultation';
-    const now = Date.now();
-    const diffMs = apptTime - now;
+    const apptDate = new Date(isoStartTime);
+    if (isNaN(apptDate.getTime())) return 'Scheduled Consultation';
+    
+    const now = new Date();
+    const diffMs = apptDate.getTime() - now.getTime();
 
     if (diffMs <= 0) {
       const hoursAgo = Math.floor(Math.abs(diffMs) / (1000 * 60 * 60));
@@ -72,15 +72,24 @@ export default function AppointmentDetailScreen({ route, navigation }) {
       return 'Completed Session';
     }
 
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
+    // Calculate calendar day difference
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const apptMidnight = new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate()).getTime();
+    const calendarDayDiff = Math.round((apptMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) {
-      if (diffHours <= 1) return 'Starts in less than 1 hour';
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (calendarDayDiff === 0) {
+      if (diffHours < 1) {
+        return diffMins <= 5 ? 'Starts in a few minutes' : `Starts in ${diffMins} mins`;
+      }
       return `Starts today in ${diffHours} hour${diffHours > 1 ? 's' : ''}`;
     }
-    if (diffDays === 1) return 'Starts tomorrow';
-    return `Starts in ${diffDays} days`;
+    if (calendarDayDiff === 1) {
+      return `Starts tomorrow in ${diffHours} hour${diffHours > 1 ? 's' : ''}`;
+    }
+    return `Starts in ${calendarDayDiff} days`;
   };
 
   useEffect(() => {
@@ -845,12 +854,16 @@ const styles = StyleSheet.create({
   },
   checkItemRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
+    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   checkItemText: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 12,
+    lineHeight: 18,
     color: '#334155',
+    fontWeight: '500',
   },
   checkItemTextChecked: {
     color: '#94a3b8',
