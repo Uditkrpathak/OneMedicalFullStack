@@ -48,7 +48,7 @@ export default function LoginScreen({ navigation }) {
         navigation.navigate('Otp', { 
           email: phone, 
           phoneNumber: phone, 
-          otp: res?.data?.otp || '123456'
+          otp: res?.data?.otp || ''
         });
         return;
       }

@@ -399,8 +399,25 @@ export const verifyOtp = async (req, res) => {
     // Issue tokens from database-verified user
     const { accessToken, refreshToken } = await issueTokens(user._id.toString(), user.role, user.status || 'active');
 
+    let profile = null;
+    if (user.role === 'patient') {
+      profile = await PatientProfile.findOne({ userId: user._id }).lean();
+    } else if (user.role === 'therapist') {
+      profile = await TherapistProfile.findOne({ userId: user._id }).lean();
+    }
+
     const safeUser = user.toSafeObject();
-    res.json({ success: true, data: { accessToken, refreshToken, user: safeUser } });
+    res.json({
+      success: true,
+      data: {
+        accessToken,
+        refreshToken,
+        user: safeUser,
+        profile,
+        isNewUser: !user.name || user.name === 'Patient' || !user.isProfileCompleted,
+        isProfileCompleted: Boolean(user.isProfileCompleted),
+      }
+    });
   } catch (err) {
     console.error('[Auth] verifyOtp error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });

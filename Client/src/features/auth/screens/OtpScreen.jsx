@@ -24,7 +24,7 @@ export default function OtpScreen({ route, navigation }) {
   const email = route.params?.email || route.params?.phoneNumber || '+91 98765 43210';
   const role = route.params?.role || 'patient';
 
-  const [currentOtp, setCurrentOtp] = useState(route.params?.otp || '123456');
+  const [currentOtp, setCurrentOtp] = useState(route.params?.otp || '');
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(35);
   const [infoMessage, setInfoMessage] = useState('');
@@ -57,7 +57,8 @@ export default function OtpScreen({ route, navigation }) {
   }, [timer]);
 
   const autoFillOtp = (codeToFill) => {
-    const targetOtp = String(codeToFill || currentOtp || '123456');
+    const targetOtp = String(codeToFill || currentOtp || '');
+    if (!targetOtp) return;
     const digits = targetOtp.padStart(6, '0').slice(0, 6).split('');
     digits.forEach((d, idx) => {
       setValue(`d${idx}`, d);
