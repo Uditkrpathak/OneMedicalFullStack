@@ -170,19 +170,9 @@ export const verifyPayment = async (req, res) => {
 
     // Gateway Signature Verification
     const hasLiveRazorpaySecret = Boolean(process.env.RAZORPAY_KEY_SECRET && process.env.RAZORPAY_KEY_SECRET !== 'dev_key_secret' && !process.env.RAZORPAY_KEY_SECRET.startsWith('dummy'));
+    const isLiveHexSignature = typeof effectiveSignature === 'string' && /^[0-9a-f]{64}$/i.test(effectiveSignature);
 
-    if (process.env.NODE_ENV === 'production' && hasLiveRazorpaySecret && effectiveSignature && !effectiveSignature.startsWith('sig_')) {
-      if (!effectivePaymentId || !effectiveSignature) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: 'PAYMENT_VERIFICATION_DATA_MISSING',
-            message: 'Payment verification data is incomplete (paymentId and signature are required).'
-          },
-          requestId
-        });
-      }
-
+    if (isLiveHexSignature && hasLiveRazorpaySecret) {
       const isValid = verifyRazorpaySignature(effectiveOrderId, effectivePaymentId, effectiveSignature);
       if (!isValid) {
         return res.status(400).json({
