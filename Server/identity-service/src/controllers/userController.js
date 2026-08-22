@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import PatientProfile from '../models/PatientProfile.js';
 import TherapistProfile from '../models/TherapistProfile.js';
@@ -18,7 +17,6 @@ export const calculatePatientProfileCompletion = (user, profile) => {
   const hasBasicUser = hasValue(user.name) && hasValue(user.phoneNumber);
   const hasDemographics = hasValue(profile.gender) && hasValue(profile.dob);
   
-  // Complete address check (street, city, state, pincode)
   const addr = profile.address;
   const hasCompleteAddress = addr && (
     (typeof addr === 'string' && addr.trim().length > 5) ||
@@ -30,10 +28,17 @@ export const calculatePatientProfileCompletion = (user, profile) => {
 
 const isAdminRole = (role) => ['super_admin', 'clinic_admin', 'admin'].includes(role);
 
+const normalizePhone = (phone) => {
+  if (!phone) return '';
+  let clean = phone.replace(/[^0-9]/g, '');
+  if (clean.length === 10) return `+91${clean}`;
+  return `+${clean}`;
+};
+
 // ─── GET MY PROFILE ───────────────────────────────────────────────────────────
 export const getMyProfile = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     if (!userId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
@@ -60,14 +65,13 @@ export const getMyProfile = async (req, res) => {
 // ─── UPDATE PATIENT PROFILE ───────────────────────────────────────────────────
 export const updatePatientProfile = async (req, res) => {
   try {
-    const requesterId = req.user?.userId || req.user?.id;
-    const requesterRole = req.user?.role;
+    const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const requesterRole = req.user?.role || req.headers['x-user-role'];
 
     if (!requesterId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    // Role Guard: Only patients (or admins) can update patient profiles
     if (requesterRole !== 'patient' && !isAdminRole(requesterRole)) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only patients can update patient profiles.' } });
     }
@@ -78,17 +82,14 @@ export const updatePatientProfile = async (req, res) => {
     const updates = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
 
-    // Handle heightCm / weightKg aliases
     if (req.body.heightCm !== undefined && updates.height === undefined) updates.height = req.body.heightCm;
     if (req.body.weightKg !== undefined && updates.weight === undefined) updates.weight = req.body.weightKg;
 
-    // Normalize gender
     if (updates.gender) {
       const g = String(updates.gender).toLowerCase().trim();
       updates.gender = ['male', 'female', 'other', 'prefer_not_to_say'].includes(g) ? g : 'other';
     }
 
-    // Normalize Date of Birth
     if (updates.dob) {
       const parsedDate = new Date(updates.dob);
       if (!isNaN(parsedDate.getTime())) {
@@ -128,14 +129,13 @@ export const updatePatientProfile = async (req, res) => {
 // ─── UPDATE THERAPIST PROFILE ─────────────────────────────────────────────────
 export const updateTherapistProfile = async (req, res) => {
   try {
-    const requesterId = req.user?.userId || req.user?.id;
-    const requesterRole = req.user?.role;
+    const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const requesterRole = req.user?.role || req.headers['x-user-role'];
 
     if (!requesterId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    // Role Guard: Only therapists (or admins) can update therapist profiles
     if (requesterRole !== 'therapist' && !isAdminRole(requesterRole)) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only specialists can update therapist profiles.' } });
     }
@@ -144,7 +144,6 @@ export const updateTherapistProfile = async (req, res) => {
     const updates = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
 
-    // Canonical Consultation Fee in Paise integer
     if (updates.consultationFee !== undefined) {
       const rawFee = Number(updates.consultationFee);
       if (!isNaN(rawFee) && rawFee > 0) {
@@ -169,7 +168,7 @@ export const updateTherapistProfile = async (req, res) => {
   }
 };
 
-// ─── GET THERAPISTS (Public Catalog with Authentic Ratings) ────────────────────
+// ─── GET THERAPISTS (Public Catalog) ──────────────────────────────────────────
 export const getTherapists = async (req, res) => {
   try {
     const { specialization, isVerified, search, page = 1, limit = 20 } = req.query;
@@ -187,7 +186,6 @@ export const getTherapists = async (req, res) => {
 
     const total = await TherapistProfile.countDocuments(filter);
 
-    // Format with authentic data (NO fabricated ratings or fake availability)
     const formatted = profiles.map(prof => ({
       _id: prof._id,
       id: prof._id,
@@ -220,6 +218,8 @@ export const getTherapists = async (req, res) => {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
+
+export const listTherapists = getTherapists;
 
 // ─── GET THERAPIST BY ID ──────────────────────────────────────────────────────
 export const getTherapistById = async (req, res) => {
@@ -264,10 +264,21 @@ export const getTherapistById = async (req, res) => {
   }
 };
 
-// ─── GET SAVED THERAPISTS (Canonical User._id resolution) ──────────────────────
+// ─── INTERNAL: GET USERS BY IDS ──────────────────────────────────────────────
+export const internalGetUsersByIds = async (req, res) => {
+  try {
+    const ids = (req.query.ids || '').split(',').filter(id => mongoose.isValidObjectId(id));
+    const users = await User.find({ _id: { $in: ids } }, 'name email phoneNumber profileImageUrl role status').lean();
+    res.json({ success: true, data: users });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── GET SAVED THERAPISTS ─────────────────────────────────────────────────────
 export const getSavedTherapists = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     if (!userId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
@@ -303,17 +314,16 @@ export const getSavedTherapists = async (req, res) => {
   }
 };
 
-// ─── SAVE THERAPIST (Deduplicated Canonical User._id) ──────────────────────────
+// ─── SAVE THERAPIST ───────────────────────────────────────────────────────────
 export const saveTherapist = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
-    const { therapistId } = req.body;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const therapistId = req.body?.therapistId || req.params?.therapistId;
 
     if (!userId || !therapistId) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required.' } });
     }
 
-    // Resolve canonical User._id
     let canonicalUserId = therapistId;
     if (mongoose.isValidObjectId(therapistId)) {
       const prof = await TherapistProfile.findById(therapistId);
@@ -333,8 +343,8 @@ export const saveTherapist = async (req, res) => {
 // ─── REMOVE SAVED THERAPIST ───────────────────────────────────────────────────
 export const removeSavedTherapist = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
-    const { id: therapistId } = req.params;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const therapistId = req.params?.id || req.params?.therapistId || req.body?.therapistId;
 
     if (!userId || !therapistId) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required.' } });
@@ -356,10 +366,25 @@ export const removeSavedTherapist = async (req, res) => {
   }
 };
 
-// ─── NOTIFICATION PREFERENCES (Whitelist Filtered) ────────────────────────────
+// ─── GET NOTIFICATION PREFERENCES ────────────────────────────────────────────
+export const getNotificationPreferences = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
+
+    const user = await User.findById(userId, 'notificationPreferences').lean();
+    res.json({ success: true, data: user?.notificationPreferences || {} });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── UPDATE NOTIFICATION PREFERENCES ─────────────────────────────────────────
 export const updateNotificationPreferences = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     if (!userId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
@@ -385,20 +410,18 @@ export const updateNotificationPreferences = async (req, res) => {
   }
 };
 
-// ─── ACCOUNT DELETION (Session Revocation & Distributed Event) ────────────────
-export const deleteAccount = async (req, res) => {
+// ─── REQUEST ACCOUNT DELETION ─────────────────────────────────────────────────
+export const requestAccountDeletion = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.user?.id;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     const { reason } = req.body;
 
     if (!userId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    // 1. Revoke all active sessions
     await RefreshToken.deleteMany({ userId });
 
-    // 2. Mark account as deleted and deactivated
     await User.findByIdAndUpdate(userId, {
       $set: {
         isDeleted: true,
@@ -411,7 +434,6 @@ export const deleteAccount = async (req, res) => {
       }
     });
 
-    // 3. Publish distributed account deletion event
     await publishEvent('identity.account.deleted', {
       userId,
       deletedAt: new Date().toISOString(),
@@ -424,10 +446,195 @@ export const deleteAccount = async (req, res) => {
   }
 };
 
-// ─── ADMIN: CREATE THERAPIST (Passwordless Onboarding) ────────────────────────
+export const deleteAccount = requestAccountDeletion;
+
+// ─── ADMIN: LIST PATIENTS ─────────────────────────────────────────────────────
+export const listPatientsAdmin = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole) && adminRole !== 'therapist') {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin or specialist access required.' } });
+    }
+
+    const { page = 1, limit = 50, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const filter = { role: 'patient', isDeleted: { $ne: true } };
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phoneNumber: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const patients = await User.find(filter)
+      .select('name email phoneNumber profileImageUrl status isActive isProfileCompleted createdAt')
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const total = await User.countDocuments(filter);
+    res.json({ success: true, data: patients, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: LIST USERS ────────────────────────────────────────────────────────
+export const adminListUsers = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { role, status, page = 1, limit = 50 } = req.query;
+    const filter = { isDeleted: { $ne: true } };
+    if (role) filter.role = role;
+    if (status) filter.status = status;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const users = await User.find(filter).select('-passwordHash -otp').skip(skip).limit(parseInt(limit)).sort({ createdAt: -1 }).lean();
+    const total = await User.countDocuments(filter);
+
+    res.json({ success: true, data: users, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: GET USER BY ID ────────────────────────────────────────────────────
+export const adminGetUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id).select('-passwordHash -otp').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
+
+    let profile = null;
+    if (user.role === 'patient') {
+      profile = await PatientProfile.findOne({ userId: id }).lean();
+    } else if (user.role === 'therapist') {
+      profile = await TherapistProfile.findOne({ userId: id }).lean();
+    }
+
+    res.json({ success: true, data: { user, profile } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: CREATE PATIENT ────────────────────────────────────────────────────
+export const adminCreatePatient = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { name, email, phoneNumber, dob, gender, address, primaryConcern } = req.body;
+    if (!name || (!email && !phoneNumber)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name and email or phoneNumber required.' } });
+    }
+
+    const cleanEmail = email ? email.toLowerCase().trim() : undefined;
+    const cleanPhone = phoneNumber ? normalizePhone(phoneNumber) : undefined;
+
+    const existing = await User.findOne({
+      $or: [
+        ...(cleanEmail ? [{ email: cleanEmail }] : []),
+        ...(cleanPhone ? [{ phoneNumber: cleanPhone }] : [])
+      ],
+      isDeleted: false
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'User already exists.' } });
+    }
+
+    const user = await User.create({
+      name: name.trim(),
+      email: cleanEmail,
+      phoneNumber: cleanPhone,
+      role: 'patient',
+      isActive: true,
+      status: 'active',
+      isProfileCompleted: true,
+    });
+
+    const profile = await PatientProfile.create({
+      userId: user._id,
+      dob: dob ? new Date(dob) : undefined,
+      gender: gender || 'other',
+      address,
+      primaryConcern,
+    });
+
+    res.status(201).json({ success: true, data: { user: user.toSafeObject(), profile } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: UPDATE PATIENT ────────────────────────────────────────────────────
+export const adminUpdatePatient = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { id } = req.params;
+    const userUpdates = {};
+    if (req.body.name) userUpdates.name = req.body.name.trim();
+    if (req.body.status) userUpdates.status = req.body.status;
+    if (req.body.isActive !== undefined) userUpdates.isActive = req.body.isActive;
+
+    const updatedUser = await User.findOneAndUpdate({ _id: id, role: 'patient' }, userUpdates, { new: true });
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Patient not found.' } });
+    }
+
+    const profileUpdates = { ...req.body };
+    delete profileUpdates.name;
+    delete profileUpdates.status;
+    delete profileUpdates.isActive;
+
+    const profile = await PatientProfile.findOneAndUpdate({ userId: id }, profileUpdates, { new: true, upsert: true });
+    res.json({ success: true, data: { user: updatedUser.toSafeObject(), profile } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: DELETE PATIENT ────────────────────────────────────────────────────
+export const adminDeletePatient = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { id } = req.params;
+    await Promise.all([
+      User.findByIdAndUpdate(id, { isDeleted: true, isActive: false, status: 'deactivated' }),
+      PatientProfile.findOneAndUpdate({ userId: id }, { isDeleted: true }),
+      RefreshToken.deleteMany({ userId: id })
+    ]);
+
+    res.json({ success: true, message: 'Patient deactivated successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: CREATE THERAPIST ──────────────────────────────────────────────────
 export const adminCreateTherapist = async (req, res) => {
   try {
-    const adminRole = req.user?.role;
+    const adminRole = req.user?.role || req.headers['x-user-role'];
     if (!isAdminRole(adminRole)) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
     }
@@ -441,7 +648,6 @@ export const adminCreateTherapist = async (req, res) => {
     const cleanEmail = email ? email.toLowerCase().trim() : undefined;
     const cleanPhone = phoneNumber ? normalizePhone(phoneNumber) : undefined;
 
-    // Check duplicate
     const existing = await User.findOne({
       $or: [
         ...(cleanEmail ? [{ email: cleanEmail }] : []),
@@ -457,7 +663,6 @@ export const adminCreateTherapist = async (req, res) => {
     const rawFee = Number(consultationFee || 80000);
     const feePaise = rawFee < 5000 ? rawFee * 100 : rawFee;
 
-    // Create user in pending_onboarding status (NO default plaintext password!)
     const user = await User.create({
       name: name.trim(),
       email: cleanEmail,
@@ -483,7 +688,6 @@ export const adminCreateTherapist = async (req, res) => {
       verifiedAt: new Date(),
     });
 
-    // Mark active now that profile is created and verified by admin
     user.isActive = true;
     user.status = 'active';
     await user.save();
@@ -495,10 +699,71 @@ export const adminCreateTherapist = async (req, res) => {
   }
 };
 
+// ─── ADMIN: UPDATE THERAPIST ──────────────────────────────────────────────────
+export const adminUpdateTherapist = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { id } = req.params;
+    const userUpdates = {};
+    if (req.body.name) userUpdates.name = req.body.name.trim();
+    if (req.body.status) userUpdates.status = req.body.status;
+    if (req.body.isActive !== undefined) userUpdates.isActive = req.body.isActive;
+
+    const profile = await TherapistProfile.findOneAndUpdate(
+      { $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] },
+      req.body,
+      { new: true }
+    );
+
+    if (!profile) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
+    }
+
+    if (profile.userId && Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(profile.userId, userUpdates);
+    }
+
+    res.json({ success: true, data: profile });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+// ─── ADMIN: DELETE THERAPIST ──────────────────────────────────────────────────
+export const adminDeleteTherapist = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { id } = req.params;
+    const profile = await TherapistProfile.findOneAndUpdate(
+      { $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] },
+      { isDeleted: true }
+    );
+
+    if (profile?.userId) {
+      await Promise.all([
+        User.findByIdAndUpdate(profile.userId, { isDeleted: true, isActive: false, status: 'deactivated' }),
+        RefreshToken.deleteMany({ userId: profile.userId })
+      ]);
+    }
+
+    res.json({ success: true, message: 'Specialist deactivated successfully.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 // ─── ADMIN: VERIFY THERAPIST ──────────────────────────────────────────────────
 export const verifyTherapistAdmin = async (req, res) => {
   try {
-    const adminRole = req.user?.role;
+    const adminRole = req.user?.role || req.headers['x-user-role'];
     if (!isAdminRole(adminRole)) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
     }
@@ -511,7 +776,7 @@ export const verifyTherapistAdmin = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Status must be one of: ${allowedStatuses.join(', ')}` } });
     }
 
-    const adminId = req.user?.userId || req.user?.id;
+    const adminId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     const notes = verificationNotes || rejectionReason || '';
     const updates = {
       verificationStatus: status,
@@ -535,7 +800,6 @@ export const verifyTherapistAdmin = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
     }
 
-    // Synchronize User status
     if (profile.userId) {
       const userStatus = status === 'verified' ? 'active' : (status === 'rejected' ? 'rejected' : (status === 'suspended' ? 'suspended' : 'pending'));
       await User.findByIdAndUpdate(profile.userId, {
@@ -544,7 +808,6 @@ export const verifyTherapistAdmin = async (req, res) => {
       });
     }
 
-    // Create Audit Log
     if (adminId && mongoose.isValidObjectId(adminId)) {
       try {
         await AuditLog.create({
@@ -570,7 +833,7 @@ export const verifyTherapistAdmin = async (req, res) => {
   }
 };
 
-// ─── GET THERAPIST REVIEWS (Honest Review Summary) ─────────────────────────────
+// ─── GET THERAPIST REVIEWS ───────────────────────────────────────────────────
 export const getTherapistReviews = async (req, res) => {
   try {
     const { id, therapistId } = req.params;
