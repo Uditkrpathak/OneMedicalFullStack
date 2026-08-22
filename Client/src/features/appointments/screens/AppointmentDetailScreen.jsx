@@ -124,12 +124,24 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             }
           }
 
-          const resolvedDoctorName = therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName;
-          const resolvedPhone = therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone || '+91 80 4965 2100';
+          const resolveLocationString = (loc) => {
+            if (!loc) return '';
+            if (typeof loc === 'string') return loc;
+            if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
+            return String(loc);
+          };
+
+          const resolvedDoctorName = typeof (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName) === 'string'
+            ? (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName)
+            : 'Dr. Attending Specialist';
+          const resolvedPhone = typeof (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone) === 'string'
+            ? (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone)
+            : '+91 80 4965 2100';
           const resolvedRating = therapistData?.ratingAvg && therapistData.ratingAvg > 0 ? therapistData.ratingAvg : (a.ratingAvg || 4.9);
-          const resolvedClinicLocation = (typeof therapistData?.clinicLocation === 'string' && therapistData.clinicLocation.trim())
-            ? therapistData.clinicLocation
-            : (a.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bangalore');
+          const resolvedClinicLocation = resolveLocationString(therapistData?.clinicLocation)
+            || resolveLocationString(a.clinicLocation)
+            || (typeof a.clinicName === 'string' ? a.clinicName : '')
+            || 'ONE MEDICAL Center, Indiranagar, Bangalore';
 
           const isVideo = a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth';
           const isHome = a.appointmentPlace === 'HOME';
@@ -168,10 +180,10 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             status: (a.status || 'CONFIRMED').toUpperCase(),
             startTime: a.startTime,
             date: dateStr,
-            service: serviceClean,
+            service: resolveLocationString(serviceClean) || 'Physiotherapy Consultation',
             duration: `${a.durationMin || 30} mins`,
-            clinic: clinicClean,
-            address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (user?.address || 'Patient Registered Residence') : resolvedClinicLocation),
+            clinic: resolveLocationString(clinicClean) || resolveLocationString(a.clinicName) || 'ONE MEDICAL Central Clinic',
+            address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (resolveLocationString(user?.address) || 'Patient Registered Residence') : resolvedClinicLocation),
             receiptId: a.paymentId ? `#RC-${String(a.paymentId).slice(-8).toUpperCase()}` : `#RC-${String(a._id).slice(-8).toUpperCase()}`,
             amount: cleanAmount,
             paymentStatus: a.paymentStatus || 'PAID',

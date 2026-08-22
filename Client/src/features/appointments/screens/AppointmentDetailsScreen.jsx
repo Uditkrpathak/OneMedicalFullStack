@@ -87,20 +87,28 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   const rawAmount = ctxSnapshot.amount || apptDoc.amountPaise || apptDoc.amount || (apptDoc.fee ? apptDoc.fee * 100 : 80000);
   const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
 
+  const resolveLocationString = (loc) => {
+    if (!loc) return '';
+    if (typeof loc === 'string') return loc;
+    if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
+    return String(loc);
+  };
+
   const isOnlineMode = apptDoc.appointmentPlace === 'VIDEO' || apptDoc.appointmentType === 'telehealth' || (ctxSnapshot.visitMode || '').toLowerCase().includes('online');
   const isHomeMode = apptDoc.appointmentPlace === 'HOME' || (ctxSnapshot.visitMode || '').toLowerCase().includes('home');
   const resolvedVisitMode = isOnlineMode ? 'Online Video Consultation' : (isHomeMode ? 'Home Visit Consultation' : 'Clinic Visit');
+  const rawClinicLoc = apptDoc.clinicLocation || apptDoc.clinicName || ctxSnapshot.clinicLocation || ctxSnapshot.clinicName;
   const resolvedClinicLocation = isOnlineMode
     ? 'Secure Video Consultation (Telehealth Room)'
-    : (isHomeMode ? 'Patient Registered Residence' : (apptDoc.clinicLocation || apptDoc.clinicName || ctxSnapshot.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bengaluru'));
+    : (isHomeMode ? 'Patient Registered Residence' : (resolveLocationString(rawClinicLoc) || 'ONE MEDICAL Center, Indiranagar, Bengaluru'));
 
   const snapshot = {
     patientId: apptDoc.patientId || ctxSnapshot.patientId || user?._id || user?.id,
-    patientName: ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName || 'Patient',
+    patientName: typeof (ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName) === 'string' ? (ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName) : 'Patient',
     age: ctxSnapshot.age || apptDoc.patientAge || 28,
     gender: ctxSnapshot.gender || apptDoc.patientGender || 'Patient',
     patientIdFormatted: ctxSnapshot.patientIdFormatted || `#OM-${String(apptDoc.patientId || appointmentId || 'PT').slice(-5).toUpperCase()}`,
-    primaryComplaint: ctxSnapshot.primaryComplaint || apptDoc.serviceName || (apptDoc.serviceType ? apptDoc.serviceType.replace(/_/g, ' ') : 'Physical Rehabilitation'),
+    primaryComplaint: typeof (ctxSnapshot.primaryComplaint || apptDoc.serviceName) === 'string' ? (ctxSnapshot.primaryComplaint || apptDoc.serviceName) : (apptDoc.serviceType ? String(apptDoc.serviceType).replace(/_/g, ' ') : 'Physical Rehabilitation'),
     lastVisitDate: ctxSnapshot.lastVisitDate || 'Initial Session',
     currentProgramName: ctxSnapshot.currentProgramName || 'Active Recovery Plan',
     recoveryGoalProgress: ctxSnapshot.recoveryGoalProgress !== undefined ? ctxSnapshot.recoveryGoalProgress : 40,

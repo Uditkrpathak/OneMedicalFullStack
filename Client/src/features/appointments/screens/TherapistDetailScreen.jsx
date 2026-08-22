@@ -142,6 +142,13 @@ export default function TherapistDetailScreen({ route, navigation }) {
     fetchDoc();
   }, [therapistId, token]);
 
+  const resolveLocationString = (loc) => {
+    if (!loc) return '';
+    if (typeof loc === 'string') return loc;
+    if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
+    return String(loc);
+  };
+
   const feeRupees = doctor.fee || (doctor.consultationFee ? (doctor.consultationFee >= 5000 ? Math.round(doctor.consultationFee / 100) : doctor.consultationFee) : 800);
   const heroImage = getDoctorImageUri(doctor);
 
@@ -184,7 +191,7 @@ export default function TherapistDetailScreen({ route, navigation }) {
           <View style={styles.locationFeeRow}>
             <View style={styles.metaIconRow}>
               <Ionicons name="location-outline" size={15} color="#003D9B" style={{ marginRight: 4 }} />
-              <Text style={styles.metaText}>{doctor.clinic || doctor.clinicName || 'One Medical Hub, Indiranagar'}</Text>
+              <Text style={styles.metaText}>{resolveLocationString(doctor.clinic) || resolveLocationString(doctor.clinicName) || 'One Medical Hub, Indiranagar'}</Text>
             </View>
             <View style={styles.metaIconRow}>
               <Ionicons name="cash-outline" size={15} color="#16a34a" style={{ marginRight: 4 }} />
@@ -276,9 +283,9 @@ export default function TherapistDetailScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.clinicNameBold}>{doctor.clinic || doctor.clinicName || 'One Medical Hub'}</Text>
+          <Text style={styles.clinicNameBold}>{resolveLocationString(doctor.clinic) || resolveLocationString(doctor.clinicName) || 'One Medical Hub'}</Text>
           <Text style={styles.clinicAddrText}>
-            {doctor.clinicLocation?.address || '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038'}
+            {resolveLocationString(doctor.clinicLocation) || '4th Floor, Health Tower, Indiranagar, Bengaluru, 560038'}
           </Text>
 
           {/* Clinic Photo & Map Box */}

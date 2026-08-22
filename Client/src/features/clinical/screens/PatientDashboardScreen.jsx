@@ -16,7 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import GradientView from '../../../shared/components/GradientView';
 import { useSocket } from '../../../context/SocketContext';
 import clinicalApi from '../api';
 import appointmentApi from '../../appointments/api';
@@ -39,6 +38,7 @@ export default function PatientDashboardScreen({ navigation }) {
     useCallback(() => {
       let isMounted = true;
       const fetchClinicalData = async () => {
+        if (!token) return;
         setLoading(true);
         try {
           const [progRes, exRes, therRes, apptRes] = await Promise.all([
@@ -91,39 +91,53 @@ export default function PatientDashboardScreen({ navigation }) {
 
   const getTherapistForAppointment = (appt) => {
     if (!appt || !therapists.length) return null;
-    return therapists.find(t => t.userId === appt.therapistId || t._id === appt.therapistId || (t.user && t.user._id === appt.therapistId));
+    const tId = (appt.therapistId || appt.doctor?._id || appt.doctorId || '').toString();
+    if (!tId) return null;
+    return therapists.find(t =>
+      (t.userId && t.userId.toString() === tId) ||
+      (t._id && t._id.toString() === tId) ||
+      (t.id && t.id.toString() === tId) ||
+      (t.user && (t.user._id?.toString() === tId || t.user.id?.toString() === tId || t.user === tId))
+    );
   };
 
   const formatTimeSafe = (dateVal) => {
-    if (!dateVal) return '10:00 AM';
+    if (!dateVal) return '11:00 am';
     const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return '10:00 AM';
+    if (isNaN(d.getTime())) return '11:00 am';
     try {
-      return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
     } catch (e) {
       return d.toTimeString().slice(0, 5);
     }
   };
 
   const formatDateSafe = (dateVal) => {
-    if (!dateVal) return 'Scheduled';
+    if (!dateVal) return 'Sat, 22 Aug, 2026';
     const d = new Date(dateVal);
     if (isNaN(d.getTime())) return 'Scheduled';
     try {
-      return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+      return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
     } catch (e) {
       return d.toDateString();
     }
+  };
+
+  const resolveLocationString = (loc) => {
+    if (!loc) return '';
+    if (typeof loc === 'string') return loc;
+    if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
+    return String(loc);
   };
 
   const handleOpenAppointmentDetails = (appt) => {
     if (!appt) return;
     const apptId = appt._id || appt.id || (typeof appt === 'string' ? appt : null);
     const therapist = getTherapistForAppointment(appt);
-    const doctorName = String(appt.therapistName || therapist?.user?.name || therapist?.name || 'Dr. Vivek Joshi');
+    const doctorName = String(appt.therapistName || therapist?.user?.name || therapist?.name || 'Dr. Ananya Sharma');
     const specialty = String(appt.serviceType?.replace(/_/g, ' ') || therapist?.specializations?.[0] || 'Orthopedic Physiotherapy');
-    const clinicName = typeof therapist?.clinicName === 'string' ? therapist.clinicName : (appt.clinicName || 'ONE MEDICAL Clinic');
-    const clinicAddress = typeof therapist?.clinicLocation === 'string' ? therapist.clinicLocation : (appt.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bangalore');
+    const clinicName = resolveLocationString(therapist?.clinicName) || (typeof appt.clinicName === 'string' ? appt.clinicName : 'OneMedical Indiranagar Clinic');
+    const clinicAddress = resolveLocationString(therapist?.clinicLocation) || resolveLocationString(appt.clinicLocation) || 'ONE MEDICAL Center, Indiranagar, Bangalore';
     const sDateStr = appt.startTime ? `${formatDateSafe(appt.startTime)} • ${formatTimeSafe(appt.startTime)}` : 'Scheduled Consultation';
 
     navigation.navigate('AppointmentDetail', {
@@ -149,7 +163,7 @@ export default function PatientDashboardScreen({ navigation }) {
 
   const handleGetDirections = (appt) => {
     const therapist = getTherapistForAppointment(appt);
-    const loc = typeof therapist?.clinicLocation === 'string' ? therapist.clinicLocation : (appt?.clinicLocation || 'ONE MEDICAL Center, Indiranagar, Bangalore');
+    const loc = resolveLocationString(therapist?.clinicLocation) || resolveLocationString(appt?.clinicLocation) || 'ONE MEDICAL Center, Indiranagar, Bangalore';
     const query = encodeURIComponent(loc);
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`).catch(() => {
       Alert.alert('Directions', `Location: ${loc}`);
@@ -218,13 +232,41 @@ export default function PatientDashboardScreen({ navigation }) {
       durationSec: e.durationSec || 30,
     };
   });
-
   const totalRoutineMinutes = displayExercises.reduce((acc, curr) => {
     const sets = curr.sets || 3;
     const hold = curr.durationSec || 30;
     const reps = curr.reps || 10;
     return acc + Math.round((sets * (reps * 2 + hold + 15)) / 60);
   }, 0) || Math.max(3, displayExercises.length * 4);
+
+  const heroDoc = todayAppointment ? getTherapistForAppointment(todayAppointment) : null;
+  const heroDoctorName = todayAppointment
+    ? (typeof todayAppointment.therapistName === 'string' && todayAppointment.therapistName.trim()
+        ? todayAppointment.therapistName
+        : (heroDoc?.user?.name || heroDoc?.name || 'Dr. Ananya Sharma'))
+    : 'Dr. Ananya Sharma';
+
+  const heroService = todayAppointment
+    ? (typeof todayAppointment.serviceType === 'string' && todayAppointment.serviceType.trim()
+        ? todayAppointment.serviceType.replace(/_/g, ' ').toUpperCase()
+        : (typeof todayAppointment.serviceName === 'string' && todayAppointment.serviceName.trim()
+            ? todayAppointment.serviceName.toUpperCase()
+            : (heroDoc?.specializations?.[0]?.toUpperCase() || 'PHYSIOTHERAPY SESSION')))
+    : 'PHYSIOTHERAPY SESSION';
+
+  const heroClinic = todayAppointment
+    ? (todayAppointment.appointmentPlace === 'VIDEO'
+        ? 'Virtual Telehealth Consultation'
+        : (todayAppointment.appointmentPlace === 'HOME'
+            ? 'Physiotherapist Home Visit'
+            : (resolveLocationString(todayAppointment.clinicName) || resolveLocationString(heroDoc?.clinicName) || resolveLocationString(todayAppointment.clinicLocation) || resolveLocationString(heroDoc?.clinicLocation) || 'OneMedical Indiranagar Clinic')))
+    : 'OneMedical Indiranagar Clinic';
+
+  const heroTimeFormatted = formatTimeSafe(todayAppointment?.startTime);
+  const heroDateFormatted = formatDateSafe(todayAppointment?.startTime);
+  const heroBadgeTitle = todayAppointment?.startTime && new Date(todayAppointment.startTime).toDateString() === new Date().toDateString()
+    ? "TODAY'S APPOINTMENT"
+    : "UPCOMING APPOINTMENT";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -248,8 +290,11 @@ export default function PatientDashboardScreen({ navigation }) {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.notificationBtn} onPress={() => navigation.navigate('Notifications')}>
-            <Ionicons name="notifications-outline" size={22} color="#0f172a" />
+          <TouchableOpacity
+            style={styles.notificationBtn}
+            onPress={() => navigation.navigate('Notifications')}
+          >
+            <Ionicons name="notifications-outline" size={20} color="#0f172a" />
             <View style={styles.notificationDot} />
           </TouchableOpacity>
         </View>
@@ -295,47 +340,40 @@ export default function PatientDashboardScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         ) : (
-          <GradientView
-            colors={['#046582', '#004c8f', '#002663']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.appointmentHeroCard}
-          >
+          <View style={styles.appointmentHeroCard}>
             <TouchableOpacity
               activeOpacity={0.92}
               onPress={() => handleOpenAppointmentDetails(todayAppointment)}
             >
               <View style={styles.heroHeaderRow}>
                 <Text style={styles.heroCardBadgeLabel} numberOfLines={1}>
-                  {todayAppointment?.startTime && new Date(todayAppointment.startTime).toDateString() === new Date().toDateString()
-                    ? "TODAY'S APPOINTMENT"
-                    : "UPCOMING APPOINTMENT"}
+                  {heroBadgeTitle}
                 </Text>
                 <View style={styles.heroDateBadge}>
                   <Ionicons name="calendar-outline" size={12} color="#ffffff" style={{ marginRight: 4 }} />
                   <Text style={styles.heroDateText} numberOfLines={1}>
-                    {formatDateSafe(todayAppointment?.startTime)}
+                    {heroDateFormatted}
                   </Text>
                 </View>
               </View>
 
               <Text style={styles.heroTimeText} numberOfLines={1}>
-                {formatTimeSafe(todayAppointment?.startTime)}
+                {heroTimeFormatted}
               </Text>
 
               <View style={styles.doctorInfoRow}>
                 <View style={styles.doctorIconBox}>
-                  <Ionicons name="person-outline" size={14} color="#38bdf8" />
+                  <Ionicons name="person-outline" size={15} color="#38bdf8" />
                   <View style={styles.doctorCheckBadge}>
                     <Ionicons name="checkmark" size={7} color="#ffffff" />
                   </View>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.doctorNameText} numberOfLines={1}>
-                    {todayAppointment.therapistName || getTherapistForAppointment(todayAppointment)?.user?.name || getTherapistForAppointment(todayAppointment)?.name || 'Dr. Vivek Joshi'}
+                    {heroDoctorName}
                   </Text>
                   <Text style={styles.doctorSpecialtyText} numberOfLines={1}>
-                    {todayAppointment.serviceType?.replace(/_/g, ' ') || getTherapistForAppointment(todayAppointment)?.specializations?.[0] || 'Orthopedic Physiotherapy'}
+                    {heroService}
                   </Text>
                 </View>
               </View>
@@ -343,11 +381,7 @@ export default function PatientDashboardScreen({ navigation }) {
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={15} color="#38bdf8" style={{ marginRight: 6 }} />
                 <Text style={styles.locationText} numberOfLines={1}>
-                  {todayAppointment.appointmentPlace === 'VIDEO'
-                    ? 'Virtual Telehealth Consultation'
-                    : todayAppointment.appointmentPlace === 'HOME'
-                    ? 'Physiotherapist Home Visit'
-                    : (typeof getTherapistForAppointment(todayAppointment)?.clinicName === 'string' ? getTherapistForAppointment(todayAppointment)?.clinicName : (todayAppointment.clinicName || 'ONE MEDICAL Clinic'))}
+                  {heroClinic}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -368,7 +402,7 @@ export default function PatientDashboardScreen({ navigation }) {
                 <Text style={styles.heroBtnSecondaryText} numberOfLines={1}>Get Directions</Text>
               </TouchableOpacity>
             </View>
-          </GradientView>
+          </View>
         )}
 
         {/* YOUR RECOVERY SECTION */}
@@ -903,15 +937,15 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   appointmentHeroCard: {
-    backgroundColor: '#003D9B',
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 20,
-    shadowColor: '#002663',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 3,
+    backgroundColor: '#034a86',
+    borderRadius: 22,
+    padding: 20,
+    marginBottom: 22,
+    shadowColor: '#001a40',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
     overflow: 'hidden',
   },
   heroHeaderRow: {

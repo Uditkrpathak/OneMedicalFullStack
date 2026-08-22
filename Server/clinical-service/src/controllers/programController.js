@@ -437,10 +437,7 @@ export const getPatientActiveProgram = async (req, res) => {
 // ─── GET TODAY'S PRESCRIBED EXERCISES ─────────────────────────────────────────
 export const getTodaysExercises = async (req, res) => {
   try {
-    const patientId = req.user?.userId || req.headers['x-user-id'];
-    if (!patientId) {
-      return res.json({ success: true, data: { exercises: [], message: 'Authentication required' } });
-    }
+    const patientId = req.user?.userId;
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0=Sun
 

@@ -1,11 +1,13 @@
 import { resilientFetch } from '../../shared/apiClient';
 
+const authHeaders = (token) => (token && token !== 'null' && token !== 'undefined' ? { Authorization: `Bearer ${token}` } : {});
+
 export const clinicalApi = {
   // ── Recovery Programs ──
   getActiveProgram: async (token) => {
     const res = await resilientFetch(
       '/programs/my/active',
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: authHeaders(token) }
     );
     return { success: res.success, data: res.data, source: res.source, error: res.error };
   },
@@ -13,7 +15,7 @@ export const clinicalApi = {
   getMyPrograms: async (token) => {
     const res = await resilientFetch(
       '/programs/my',
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: authHeaders(token) }
     );
     return { success: res.success, data: res.data, source: res.source, error: res.error };
   },
@@ -21,7 +23,7 @@ export const clinicalApi = {
   getPatientActiveProgram: async (patientId, token) => {
     const res = await resilientFetch(
       `/programs/patient/${patientId}/active`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: authHeaders(token) }
     );
     return { success: res.success, data: res.data, source: res.source, error: res.error };
   },
@@ -29,7 +31,7 @@ export const clinicalApi = {
   getTodaysExercises: async (token) => {
     const res = await resilientFetch(
       '/programs/my/today',
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: authHeaders(token) }
     );
     return { success: res.success, data: res.data, source: res.source, error: res.error };
   },
