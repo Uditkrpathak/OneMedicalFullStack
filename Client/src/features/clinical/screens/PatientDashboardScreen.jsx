@@ -135,7 +135,7 @@ export default function PatientDashboardScreen({ navigation }) {
     if (!appt) return;
     const apptId = appt._id || appt.id || (typeof appt === 'string' ? appt : null);
     const therapist = getTherapistForAppointment(appt);
-    const doctorName = String(appt.therapistName || therapist?.user?.name || therapist?.name || 'Dr. Ananya Sharma');
+    const doctorName = String(appt.therapistName || therapist?.user?.name || therapist?.name || 'Dr. Vivek Joshi');
     const specialty = String(appt.serviceType?.replace(/_/g, ' ') || therapist?.specializations?.[0] || 'Orthopedic Physiotherapy');
     const clinicName = resolveLocationString(therapist?.clinicName) || (typeof appt.clinicName === 'string' ? appt.clinicName : 'OneMedical Indiranagar Clinic');
     const clinicAddress = resolveLocationString(therapist?.clinicLocation) || resolveLocationString(appt.clinicLocation) || 'ONE MEDICAL Center, Indiranagar, Bangalore';
@@ -240,12 +240,12 @@ export default function PatientDashboardScreen({ navigation }) {
     return acc + Math.round((sets * (reps * 2 + hold + 15)) / 60);
   }, 0) || Math.max(3, displayExercises.length * 4);
 
-  const heroDoc = todayAppointment ? getTherapistForAppointment(todayAppointment) : null;
+  const heroDoc = todayAppointment ? getTherapistForAppointment(todayAppointment) : (therapists[0] || null);
   const heroDoctorName = todayAppointment
     ? (typeof todayAppointment.therapistName === 'string' && todayAppointment.therapistName.trim()
         ? todayAppointment.therapistName
-        : (heroDoc?.user?.name || heroDoc?.name || 'Dr. Ananya Sharma'))
-    : 'Dr. Ananya Sharma';
+        : (heroDoc?.user?.name || heroDoc?.name || 'Dr. Vivek Joshi'))
+    : (therapists[0]?.user?.name || therapists[0]?.name || 'Dr. Vivek Joshi');
 
   const heroService = todayAppointment
     ? (typeof todayAppointment.serviceType === 'string' && todayAppointment.serviceType.trim()
@@ -594,10 +594,7 @@ export default function PatientDashboardScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.doctorHorizontalList}
         >
-          {(therapists.length > 0 ? therapists : [
-            { _id: 'th1', user: { name: 'Dr. Ananya Iyer' }, specializations: ['Senior MSK Specialist'], experienceYears: 12, ratingAvg: 4.9 },
-            { _id: 'th2', user: { name: 'Dr. Arjun Mehta' }, specializations: ['Sports Rehab Specialist'], experienceYears: 10, ratingAvg: 4.8 }
-          ]).map((item, idx) => {
+          {therapists.map((item, idx) => {
             const docName = item.user?.name || item.name || 'Specialist';
             const spec = Array.isArray(item.specializations) ? item.specializations[0] : (item.specialization || 'Physiotherapist');
             return (

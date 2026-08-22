@@ -48,12 +48,12 @@ export default function TherapistCompleteProfileScreen({ navigation }) {
 
   const [selectedDays, setSelectedDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [form, setForm] = useState({
-    name: user?.name || 'Dr. Ananya Iyer',
+    name: user?.name || '',
     medicalId: 'OMP-1024',
-    clinicName: 'One Medical - Downtown',
-    department: 'Sports Physiotherapy',
-    designation: 'Senior Physiotherapist',
-    contactNumber: user?.phoneNumber || '+91 98765 43210',
+    clinicName: 'One Medical Clinic',
+    department: 'Physiotherapy',
+    designation: 'Specialist',
+    contactNumber: user?.phoneNumber || '',
     yearsOfExperience: '8+ Years',
     primarySpecialization: "Sports Rehabilitation",
     secondarySpecialization: 'Post-Op Care',
