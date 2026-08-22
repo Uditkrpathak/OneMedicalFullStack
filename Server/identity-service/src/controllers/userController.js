@@ -268,8 +268,16 @@ export const internalGetUsersByIds = async (req, res) => {
 // ─── SAVED THERAPISTS ─────────────────────────────────────────────────────────
 export const getSavedTherapists = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'];
-    if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    let userId = req.user?.userId || req.headers['x-user-id'];
+    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      const forwardedId = req.headers['x-user-id'];
+      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
+        userId = forwardedId;
+      }
+    }
+    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    }
 
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
@@ -371,9 +379,17 @@ export const getSavedTherapists = async (req, res) => {
 
 export const saveTherapist = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'];
+    let userId = req.user?.userId || req.headers['x-user-id'];
+    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      const forwardedId = req.headers['x-user-id'];
+      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
+        userId = forwardedId;
+      }
+    }
     const { therapistId } = req.params;
-    if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    }
     if (!therapistId) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required' } });
 
     // Store therapistId and linked profile/user IDs if valid ObjectId
@@ -417,9 +433,17 @@ export const saveTherapist = async (req, res) => {
 
 export const removeSavedTherapist = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'];
+    let userId = req.user?.userId || req.headers['x-user-id'];
+    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      const forwardedId = req.headers['x-user-id'];
+      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
+        userId = forwardedId;
+      }
+    }
     const { therapistId } = req.params;
-    if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    }
     if (!therapistId) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required' } });
 
     const idsToRemove = [];

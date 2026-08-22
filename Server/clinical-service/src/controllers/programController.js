@@ -330,7 +330,7 @@ export const assignProgram = async (req, res) => {
 // ─── GET PATIENT'S ACTIVE PROGRAM ────────────────────────────────────────────
 export const getMyActiveProgram = async (req, res) => {
   try {
-    const patientId = req.user?.userId;
+    const patientId = req.user?.userId || req.user?.id || req.user?._id || req.headers['x-user-id'];
     if (!patientId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
@@ -387,7 +387,10 @@ export const getPatientPrograms = async (req, res) => {
 // ─── GET PATIENT'S PROGRAM HISTORY ────────────────────────────────────────────
 export const getMyPrograms = async (req, res) => {
   try {
-    const patientId = req.user?.userId;
+    const patientId = req.user?.userId || req.user?.id || req.user?._id || req.headers['x-user-id'];
+    if (!patientId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
     const programs = await PatientProgram.find({ patientId: patientId.toString(), isDeleted: false })
       .populate({ path: 'programId', populate: { path: 'exercises.exerciseId' } })
       .sort({ createdAt: -1 })
@@ -403,7 +406,7 @@ export const getMyPrograms = async (req, res) => {
 // ─── GET ACTIVE PROGRAM FOR SPECIFIC PATIENT (Therapist/Admin) ────────────────
 export const getPatientActiveProgram = async (req, res) => {
   try {
-    const requesterId = req.user?.userId;
+    const requesterId = req.user?.userId || req.user?.id || req.user?._id || req.headers['x-user-id'];
     const requesterRole = req.user?.role;
     const { patientId } = req.params;
 
@@ -437,7 +440,10 @@ export const getPatientActiveProgram = async (req, res) => {
 // ─── GET TODAY'S PRESCRIBED EXERCISES ─────────────────────────────────────────
 export const getTodaysExercises = async (req, res) => {
   try {
-    const patientId = req.user?.userId;
+    const patientId = req.user?.userId || req.user?.id || req.user?._id || req.headers['x-user-id'];
+    if (!patientId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0=Sun
 
