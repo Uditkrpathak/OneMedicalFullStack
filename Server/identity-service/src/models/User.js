@@ -19,6 +19,7 @@ const UserSchema = new mongoose.Schema({
   email:         { type: String, trim: true, lowercase: true },
   phoneNumber:   { type: String, trim: true },
   profileImageUrl: { type: String },
+  avatarUrl:       { type: String },
   passwordHash:  { type: String },          // staff/therapist/admin only
   otp:           { type: OtpSchema, default: {} },
   isPhoneVerified: { type: Boolean, default: false },

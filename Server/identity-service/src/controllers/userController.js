@@ -75,7 +75,13 @@ export const updatePatientProfile = async (req, res) => {
     if (req.body.name) userUpdates.name = req.body.name;
     if (req.body.fullName) userUpdates.name = req.body.fullName;
     if (req.body.email) userUpdates.email = req.body.email;
-    if (req.body.avatarUrl) userUpdates.avatarUrl = req.body.avatarUrl;
+    if (req.body.avatarUrl || req.body.profileImageUrl) {
+      const img = req.body.avatarUrl || req.body.profileImageUrl;
+      userUpdates.avatarUrl = img;
+      userUpdates.profileImageUrl = img;
+      updates.profileImageUrl = img;
+      updates.avatarUrl = img;
+    }
     const updatedUser = await User.findByIdAndUpdate(userId, userUpdates, { new: true });
 
     const profile = await PatientProfile.findOneAndUpdate({ userId }, updates, { new: true, upsert: true, runValidators: true });

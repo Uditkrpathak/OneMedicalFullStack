@@ -427,13 +427,16 @@ export const getMyAppointments = async (req, res) => {
         ]
       };
       // Include appointments from the beginning of today onwards (IST)
-      const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      const nowIST = new Date(Date.now() + 5.5 * 60 * 1000);
       const startOfTodayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - 5.5 * 60 * 60 * 1000);
       filter.startTime = { $gte: startOfTodayIST };
     } else if (view === 'past') {
+      const nowIST = new Date(Date.now() + 5.5 * 60 * 1000);
+      const startOfTodayIST = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - 5.5 * 60 * 60 * 1000);
       filter.$or = [
-        { status: { $in: ['COMPLETED', 'completed', 'NO_SHOW', 'no_show', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE'] } },
-        { status: { $in: ['CONFIRMED', 'confirmed', 'CHECKED_IN', 'IN_PROGRESS'] }, endTime: { $lt: now } }
+        { status: { $in: ['COMPLETED', 'completed', 'DOCUMENTED', 'documented', 'DOCUMENTATION_PENDING', 'documentation_pending', 'NO_SHOW', 'no_show', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE'] } },
+        { endTime: { $lt: now } },
+        { startTime: { $lt: startOfTodayIST } },
       ];
     } else if (view === 'cancelled') {
       filter.$or = [

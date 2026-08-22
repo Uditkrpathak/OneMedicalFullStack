@@ -195,6 +195,8 @@ export default function EditPatientProfileScreen({ navigation }) {
       const payload = {
         name: name.trim(),
         email: email.trim(),
+        avatarUrl: avatarUrl.trim(),
+        profileImageUrl: avatarUrl.trim(),
         dob: formattedDob,
         gender: gender.toLowerCase(),
         height: heightNum,
@@ -217,6 +219,8 @@ export default function EditPatientProfileScreen({ navigation }) {
         updateProfile({
           name: updatedUser.name || name.trim(),
           email: updatedUser.email || email.trim(),
+          avatarUrl: updatedUser.avatarUrl || avatarUrl.trim(),
+          profileImageUrl: updatedUser.profileImageUrl || avatarUrl.trim(),
           phoneNumber: updatedUser.phoneNumber || phone || user?.phoneNumber,
           dob: formattedDob,
           gender: gender.toLowerCase(),
@@ -230,7 +234,7 @@ export default function EditPatientProfileScreen({ navigation }) {
       );
 
       setSaving(false);
-      Alert.alert('Profile Saved', 'Your profile updates have been successfully saved to MongoDB.', [
+      Alert.alert('Profile Saved', 'Your profile updates and photo have been successfully saved to MongoDB.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err) {
@@ -240,14 +244,28 @@ export default function EditPatientProfileScreen({ navigation }) {
   };
 
   const handlePickPhoto = () => {
-    Alert.alert('Profile Photo', 'Choose an option', [
+    Alert.alert('Profile Photo', 'Select an option to update your photo:', [
       {
-        text: 'Default Avatar 1',
-        onPress: () => setAvatarUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400'),
+        text: 'Avatar 1 (Male)',
+        onPress: () => setAvatarUrl('https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400'),
       },
       {
-        text: 'Default Avatar 2',
-        onPress: () => setAvatarUrl('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400'),
+        text: 'Avatar 2 (Female)',
+        onPress: () => setAvatarUrl('https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400'),
+      },
+      {
+        text: 'Avatar 3 (Athletic)',
+        onPress: () => setAvatarUrl('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400'),
+      },
+      {
+        text: 'Custom Image URL',
+        onPress: () => {
+          Alert.prompt
+            ? Alert.prompt('Custom Photo URL', 'Paste direct image URL:', (text) => {
+                if (text && text.trim().startsWith('http')) setAvatarUrl(text.trim());
+              })
+            : setAvatarUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400');
+        },
       },
       { text: 'Cancel', style: 'cancel' },
     ]);

@@ -95,13 +95,13 @@ export default function MyBookingsScreen({ navigation }) {
   const filteredBookings = bookings.filter(b => {
     const raw = (b.rawStatus || b.status || '').toUpperCase();
     if (tab === 'upcoming') {
-      return raw === 'CONFIRMED' || raw === 'HELD' || raw === 'UPCOMING' || raw === 'PENDING' || raw === 'RESERVED';
+      return ['CONFIRMED', 'HELD', 'UPCOMING', 'PENDING', 'RESERVED', 'CHECKED_IN', 'IN_PROGRESS', 'SCHEDULED'].includes(raw);
     }
     if (tab === 'past') {
-      return raw === 'COMPLETED' || raw === 'PAST';
+      return ['COMPLETED', 'PAST', 'DOCUMENTED', 'DOCUMENTATION_PENDING', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'SEALED', 'CONFIRMED'].includes(raw);
     }
     if (tab === 'cancelled') {
-      return raw === 'CANCELLED' || raw === 'EXPIRED' || raw === 'NO_SHOW';
+      return ['CANCELLED', 'EXPIRED', 'PAYMENT_EXPIRED', 'REFUNDED', 'REFUND_PENDING', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW'].includes(raw);
     }
     return true;
   });

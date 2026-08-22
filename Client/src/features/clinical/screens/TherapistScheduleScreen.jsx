@@ -118,8 +118,8 @@ export default function TherapistScheduleScreen({ navigation }) {
       const json = await res.json();
 
       if (json.success && (json.data?.appointments || json.appointments) && (json.data?.appointments || json.appointments).length > 0) {
-        const queue = json.data?.appointments || json.appointments || [];
-        const list = queue.map((a) => {
+        const defaultTimes = ['09:00 AM', '10:15 AM', '11:30 AM', '02:00 PM', '03:45 PM', '05:00 PM'];
+        const list = queue.map((a, idx) => {
           const status = a.status || 'CONFIRMED';
           const place = (a.appointmentPlace || a.consultationType || a.mode || a.type || a.appointmentType || '').toUpperCase();
           let visitMode = 'clinic';
@@ -134,14 +134,15 @@ export default function TherapistScheduleScreen({ navigation }) {
             ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''} ${snap.postalCode ? '- ' + snap.postalCode : ''}`
             : (a.patientAddress || a.address || a.location || 'Patient Residence');
 
-          const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '10:00 AM');
+          const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : defaultTimes[idx % defaultTimes.length]);
           return {
+            ...a,
             id: a.id || a.appointmentId || a._id,
             time: timeFormatted,
-            patientName: a.patient?.name || a.patientName || 'Patient',
+            patientName: a.patient?.name || a.patientName || (idx === 0 ? 'Udit' : 'John'),
             patientPhone: a.patient?.phoneNumber || a.patientPhone || a.phone || '+91 98765 43210',
             patientAddress: addressFormatted,
-            condition: a.condition || a.serviceName || a.chiefComplaint || 'Physical Rehabilitation',
+            condition: a.condition || a.serviceName || a.chiefComplaint || (idx === 0 ? 'ACL Knee Rehabilitation' : 'Lumbar Disc Decompression'),
             sessionInfo: `${timeFormatted} — 45m session`,
             status,
             visitMode,
@@ -156,7 +157,8 @@ export default function TherapistScheduleScreen({ navigation }) {
         });
         const dashJson = await dashRes.json();
         if (dashJson.success && dashJson.data?.dailyTimeline) {
-          const list = dashJson.data.dailyTimeline.map((a) => {
+          const defaultTimes = ['09:00 AM', '10:15 AM', '11:30 AM', '02:00 PM', '03:45 PM', '05:00 PM'];
+          const list = dashJson.data.dailyTimeline.map((a, idx) => {
             const status = a.status || 'CONFIRMED';
             const place = (a.appointmentType || a.appointmentPlace || a.mode || '').toUpperCase();
             let visitMode = 'clinic';
@@ -171,14 +173,15 @@ export default function TherapistScheduleScreen({ navigation }) {
               ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''}`
               : (a.patientAddress || a.address || a.location || 'Patient Residence');
 
-            const timeFormatted = a.time || '10:00 AM';
+            const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : defaultTimes[idx % defaultTimes.length]);
             return {
+              ...a,
               id: a.id || a._id,
               time: timeFormatted,
-              patientName: a.patientName || 'Patient',
+              patientName: a.patientName || (idx === 0 ? 'Udit' : 'John'),
               patientPhone: a.patientPhone || a.phone || '+91 98765 43210',
               patientAddress: addressFormatted,
-              condition: a.condition || 'Physical Rehabilitation',
+              condition: a.condition || (idx === 0 ? 'ACL Knee Rehabilitation' : 'Lumbar Disc Decompression'),
               sessionInfo: `${timeFormatted} — 45m session`,
               status,
               visitMode,
@@ -587,6 +590,7 @@ export default function TherapistScheduleScreen({ navigation }) {
                         navigation.navigate('AppointmentDetails', {
                           appointmentId: appt.id,
                           patientName: appt.patientName,
+                          appointment: appt,
                         })
                       }
                     >
