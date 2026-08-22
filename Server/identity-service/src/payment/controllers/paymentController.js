@@ -475,6 +475,149 @@ export const generateClinicDynamicQr = async (req, res) => {
   }
 };
 
+// ─── POST /payments/clinic/verify ─────────────────────────────────────────────
+export const verifyClinicPayment = async (req, res) => {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
+  try {
+    const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'clinic_admin';
+    const { appointmentId, paymentMethod = 'UPI', notes, collectedBy } = req.body;
+
+    if (!appointmentId) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId is required.' }, requestId });
+    }
+
+    const appointment = await getAppointmentInternal(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical database.' }, requestId });
+    }
+
+    const rawAmt = appointment.amountPaise || appointment.amount || (appointment.fee ? appointment.fee * 100 : 80000);
+    const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
+    const effectiveMethod = (paymentMethod || 'UPI').toUpperCase();
+
+    let transaction = await Transaction.findOne({ appointmentId });
+    if (transaction && (transaction.status === 'captured' || transaction.status === 'PAID')) {
+      const existingInvoice = await Invoice.findOne({ $or: [{ transactionId: transaction._id }, { appointmentId }] }).lean();
+      return res.json({
+        success: true,
+        data: {
+          verified: true,
+          status: 'PAID',
+          transaction,
+          invoice: existingInvoice,
+        },
+        message: 'Payment already verified.',
+        requestId
+      });
+    }
+
+    const paymentRef = `clinic_pay_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const orderRef = transaction?.gatewayOrderId || `order_clinic_${Date.now()}`;
+
+    if (transaction) {
+      transaction.status = 'captured';
+      transaction.gatewayPaymentId = paymentRef;
+      transaction.razorpayPaymentId = paymentRef;
+      transaction.paymentMethod = effectiveMethod;
+      transaction.paymentPlace = 'clinic';
+      transaction.verificationSource = 'CLINIC_COUNTER';
+      transaction.verifiedAt = new Date();
+      transaction.capturedAt = new Date();
+      transaction.statusHistory.push({
+        status: 'captured',
+        note: `Clinic payment verified via ${effectiveMethod} (${notes || 'Reception Desk Settlement'})`,
+        timestamp: new Date()
+      });
+      await transaction.save();
+    } else {
+      transaction = await Transaction.create({
+        patientId: appointment.patientId,
+        appointmentId,
+        therapistId: appointment.therapistId,
+        amountPaise,
+        currency: 'INR',
+        gateway: 'clinic_counter',
+        gatewayOrderId: orderRef,
+        razorpayOrderId: orderRef,
+        gatewayPaymentId: paymentRef,
+        razorpayPaymentId: paymentRef,
+        paymentMethod: effectiveMethod,
+        paymentPlace: 'clinic',
+        verificationSource: 'CLINIC_COUNTER',
+        verifiedAt: new Date(),
+        status: 'captured',
+        capturedAt: new Date(),
+        statusHistory: [{
+          status: 'captured',
+          note: `Clinic payment registered via ${effectiveMethod} (${notes || 'Reception Desk Settlement'})`
+        }]
+      });
+    }
+
+    // Confirm Appointment in clinical service
+    await confirmAppointmentInternal(appointmentId, orderRef, paymentRef, transaction._id).catch(err => {
+      console.warn('[verifyClinicPayment] confirmAppointmentInternal note:', err.message);
+    });
+
+    // Generate GST Tax Invoice
+    let invoice = await Invoice.findOne({ $or: [{ transactionId: transaction._id }, { appointmentId }] });
+    if (!invoice) {
+      try {
+        const seq = await getNextSequence('invoice_seq');
+        const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq).padStart(5, '0')}`;
+        const totalAmountPaise = amountPaise;
+        const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
+        const taxesPaise = totalAmountPaise - consultationFeePaise;
+
+        invoice = await Invoice.create({
+          invoiceNumber,
+          transactionId: transaction._id,
+          appointmentId,
+          patientId: appointment.patientId,
+          therapistId: appointment.therapistId,
+          totalAmount: totalAmountPaise,
+          consultationFee: consultationFeePaise,
+          taxes: taxesPaise,
+          discount: 0,
+          currency: 'INR',
+          status: 'PAID',
+          paymentMethod: effectiveMethod,
+          generatedAt: new Date(),
+        });
+      } catch (invErr) {
+        console.warn('[verifyClinicPayment] Invoice creation note:', invErr.message);
+      }
+    }
+
+    // Publish event
+    await publishEvent('payment.captured', {
+      appointmentId,
+      transactionId: transaction._id,
+      amountPaise,
+      paymentMethod: effectiveMethod,
+      source: 'clinic_counter',
+      timestamp: new Date().toISOString()
+    }).catch(() => null);
+
+    res.json({
+      success: true,
+      data: {
+        verified: true,
+        status: 'PAID',
+        transaction,
+        invoice,
+        amount: Math.round(amountPaise / 100),
+      },
+      message: 'Clinic payment verified and session confirmed.',
+      requestId
+    });
+  } catch (err) {
+    console.error('[Payment] verifyClinicPayment error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message }, requestId });
+  }
+};
+
 // ─── GET /payments/health ────────────────────────────────────────────────────
 export const getPaymentHealth = async (req, res) => {
   res.json({
