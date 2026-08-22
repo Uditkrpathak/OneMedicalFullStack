@@ -102,8 +102,8 @@ const normalizeServiceType = (raw) => {
 // The DB compound index { therapistId, startTime } is for QUERY PERFORMANCE only — not the guard.
 export const createHold = async (req, res) => {
   const requestId = uuidv4();
-  const requesterId = req.headers['x-user-id'];
-  const userRole    = req.headers['x-user-role'];
+  const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+  const userRole    = req.user?.role || req.headers['x-user-role'];
 
   const allowedRoles = ['patient', 'clinic_admin', 'super_admin', 'admin', 'therapist'];
   if (!allowedRoles.includes(userRole)) {
@@ -137,6 +137,10 @@ export const createHold = async (req, res) => {
   const therapistName = therapistProfile.user?.name || therapistProfile.name || therapistProfile.userId?.name || '';
   const normalizedServiceType = normalizeServiceType(serviceType);
 
+  const resolvedPlace = (appointmentPlace || 'CLINIC').toUpperCase();
+  const isHomeVisit = resolvedPlace === 'HOME' || normalizedServiceType === 'HOME_VISIT';
+  const HOME_VISIT_TRAVEL_BUFFER_MS = 30 * 60 * 1000;
+
   const lockKey = times.start.toISOString();
   let lockAcquired = false;
   try {
@@ -146,19 +150,34 @@ export const createHold = async (req, res) => {
       return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'This slot is no longer available. Please choose another.' } });
     }
 
-    // Step 2: Atomic DB conflict check with strict slot overlap logic
-    const conflict = await Appointment.findOne({
+    // Step 2: Atomic DB conflict check with Travel Buffer support
+    const checkStart = new Date(times.start.getTime() - (isHomeVisit ? HOME_VISIT_TRAVEL_BUFFER_MS : 0));
+    const checkEnd   = new Date(times.end.getTime()   + (isHomeVisit ? HOME_VISIT_TRAVEL_BUFFER_MS : 0));
+
+    const potentialConflicts = await Appointment.find({
       therapistId,
       isDeleted: false,
-      startTime: { $lt: times.end },
-      endTime: { $gt: times.start },
+      startTime: { $lt: checkEnd },
+      endTime: { $gt: checkStart },
       $or: [
         { status: { $in: ['CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN', 'DOCUMENTATION_PENDING', 'DOCUMENTED', 'RESCHEDULE_REQUESTED'] } },
         { status: 'HELD', holdExpiresAt: { $gt: new Date() } },
       ],
     });
-    if (conflict) {
-      return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'This slot is no longer available. Please choose another.' } });
+
+    const hasConflict = potentialConflicts.some(existing => {
+      const isExistingHome = (existing.appointmentPlace || '').toUpperCase() === 'HOME' || existing.serviceType === 'HOME_VISIT';
+      const effExistingStart = isExistingHome ? new Date(existing.startTime.getTime() - HOME_VISIT_TRAVEL_BUFFER_MS) : existing.startTime;
+      const effExistingEnd   = isExistingHome ? new Date(existing.endTime.getTime()   + HOME_VISIT_TRAVEL_BUFFER_MS) : existing.endTime;
+
+      const effReqStart = isHomeVisit ? new Date(times.start.getTime() - HOME_VISIT_TRAVEL_BUFFER_MS) : times.start;
+      const effReqEnd   = isHomeVisit ? new Date(times.end.getTime()   + HOME_VISIT_TRAVEL_BUFFER_MS) : times.end;
+
+      return effExistingStart < effReqEnd && effExistingEnd > effReqStart;
+    });
+
+    if (hasConflict) {
+      return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'This slot (or required travel buffer for Home Visit) is unavailable. Please choose another.' } });
     }
 
     // Step 3: Create hold
@@ -175,13 +194,120 @@ export const createHold = async (req, res) => {
       }
     }
 
+    // Extract & Authoritatively Construct Home Visit Address Snapshot
+    let patientAddressSnapshot = undefined;
+
+    if (isHomeVisit) {
+      const rawAddr = req.body.homeVisitAddress || req.body.address || req.body.patientAddress || req.body.patientAddressSnapshot || {};
+      const addrLine1 = typeof rawAddr === 'string' ? rawAddr.trim() : String(rawAddr.addressLine1 || rawAddr.street || rawAddr.address || '').trim();
+      const addrLine2 = typeof rawAddr === 'object' ? String(rawAddr.addressLine2 || '').trim() : '';
+      const landmark = typeof rawAddr === 'object' ? String(rawAddr.landmark || '').trim() : '';
+      const city = typeof rawAddr === 'object' ? String(rawAddr.city || '').trim() : '';
+      const state = typeof rawAddr === 'object' ? String(rawAddr.state || '').trim() : '';
+      const postalCode = typeof rawAddr === 'object' ? String(rawAddr.postalCode || rawAddr.pincode || '').trim() : '';
+      const country = typeof rawAddr === 'object' ? String(rawAddr.country || 'India').trim() : 'India';
+
+      if (!addrLine1 || !city || !state || !postalCode) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'ADDRESS_INCOMPLETE', message: 'Complete address (Street, City, State, Pincode) is required for Home Visit consultations.' }
+        });
+      }
+
+      const hasRawCoords = typeof rawAddr === 'object' && (rawAddr.latitude !== undefined || rawAddr.lat !== undefined || rawAddr.longitude !== undefined || rawAddr.lng !== undefined);
+      let lat = typeof rawAddr === 'object' ? Number(rawAddr.latitude ?? rawAddr.lat) : NaN;
+      let lng = typeof rawAddr === 'object' ? Number(rawAddr.longitude ?? rawAddr.lng) : NaN;
+
+      if (hasRawCoords) {
+        const areCoordsValid =
+          Number.isFinite(lat) && Number.isFinite(lng) &&
+          lat >= -90 && lat <= 90 &&
+          lng >= -180 && lng <= 180;
+
+        if (!areCoordsValid) {
+          return res.status(400).json({
+            success: false,
+            error: { code: 'INVALID_COORDINATES', message: 'Invalid GPS coordinates. Latitude must be between -90 and 90, Longitude between -180 and 180.' }
+          });
+        }
+      }
+
+      const hasValidCoords =
+        Number.isFinite(lat) && Number.isFinite(lng) &&
+        lat >= -90 && lat <= 90 &&
+        lng >= -180 && lng <= 180;
+
+      patientAddressSnapshot = {
+        addressLine1: addrLine1,
+        addressLine2: addrLine2 || undefined,
+        landmark: landmark || undefined,
+        city,
+        state,
+        postalCode,
+        country,
+        location: hasValidCoords ? {
+          type: 'Point',
+          coordinates: [lng, lat], // GeoJSON order: [longitude, latitude]
+        } : undefined,
+        latitude: hasValidCoords ? lat : undefined,
+        longitude: hasValidCoords ? lng : undefined,
+        capturedAt: new Date(),
+      };
+
+      // Non-blocking asynchronous update to Identity Service if saveToProfile requested
+      if (req.body.saveToProfile && patientId) {
+        (async () => {
+          const normalizedAddress = {
+            addressLine1: addrLine1,
+            addressLine2: addrLine2,
+            landmark,
+            city: city || 'Bengaluru',
+            state: state || 'Karnataka',
+            postalCode: postalCode || '560038',
+            country: country || 'India',
+          };
+          const eventId = `evt_addr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+          // Publish event to RabbitMQ event bus
+          try {
+            await publishEvent('patient.address_updated', {
+              eventId,
+              patientId,
+              address: normalizedAddress,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (evtErr) {
+            // Silently fall back to direct internal API if broker is unreachable
+            try {
+              const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
+              await fetch(`${identityUrl}/api/v1/patients/${patientId}/profile`, {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
+                  'x-user-role': 'patient',
+                  'x-user-id': patientId,
+                },
+                body: JSON.stringify({ address: normalizedAddress, eventId })
+              });
+            } catch (httpErr) {
+              console.warn('[holdAppointment] Non-blocking profile address sync failed:', httpErr.message);
+            }
+          }
+        })();
+      }
+    } else {
+      patientAddressSnapshot = undefined;
+    }
+
     const appointment = await Appointment.create({
       patientId,
       patientName:  resolvedPatientName || undefined,
       therapistId,
       therapistName,
       serviceType:  normalizedServiceType,
-      appointmentPlace: (appointmentPlace || 'CLINIC').toUpperCase(),
+      appointmentPlace: resolvedPlace,
+      patientAddressSnapshot,
       startTime:   times.start,
       endTime:     times.end,
       durationMin: Math.round((times.end - times.start) / 60000),
@@ -205,6 +331,7 @@ export const createHold = async (req, res) => {
       therapistName:appointment.therapistName,
       patientName:  appointment.patientName,
       serviceType:  appointment.serviceType,
+      patientAddressSnapshot: appointment.patientAddressSnapshot,
     }}});
   } catch (err) {
     console.error('[createHold] Error:', err);
@@ -219,11 +346,9 @@ export const confirmAppointment = async (req, res) => {
   try {
     const internalKey = req.headers['x-internal-key'];
     const userRole = req.user?.role || req.headers['x-user-role'];
-    const userId = req.user?.userId || req.headers['x-user-id'];
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     const validKeys = [
-      process.env.INTERNAL_API_KEY,
-      'onemedical_internal_key_production_2026',
-      'onemedical_internal_key_change_in_prod'
+      process.env.INTERNAL_API_KEY
     ].filter(Boolean);
 
     const allowedRoles = ['clinic_admin', 'super_admin', 'admin', 'therapist'];
@@ -310,27 +435,26 @@ export const cancelAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId   = req.headers['x-user-id'];
-    const userRole = req.headers['x-user-role'];
+    const userId   = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'];
 
     const appointment = await Appointment.findById(id);
     if (!appointment || appointment.isDeleted) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
     }
 
-    if (userRole === 'patient'   && appointment.patientId   !== userId) return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only cancel your own appointments.' } });
-    if (userRole === 'therapist' && appointment.therapistId !== userId) return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only cancel appointments on your schedule.' } });
+    if (userRole === 'patient'   && appointment.patientId?.toString()   !== userId?.toString()) return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only cancel your own appointments.' } });
+    if (userRole === 'therapist' && appointment.therapistId?.toString() !== userId?.toString()) return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only cancel appointments on your schedule.' } });
 
-    if (['COMPLETED', 'NO_SHOW', 'EXPIRED'].includes(appointment.status)) {
-      return res.status(400).json({ success: false, error: { code: 'CANNOT_CANCEL', message: `Appointment in status '${appointment.status}' cannot be cancelled.` } });
-    }
+    const isClinicAdmin = userRole === 'clinic_admin' || userRole === 'super_admin' || Boolean(req.headers['x-internal-key']);
+    const isTherapist = userRole === 'therapist';
+    const isProviderFault = /therapist|doctor|clinic|admin|emergency|not join|no show|absent|hospital/i.test(reason || '');
+
+    // State machine check
+    assertAppointmentTransition(appointment.status, 'CANCELLED', isClinicAdmin);
 
     let cancellationPolicy = 'NOT_APPLICABLE';
     let eventName = 'appointment.cancelled';
-
-    const isClinicAdmin = userRole === 'clinic_admin' || userRole === 'super_admin' || req.headers['x-internal-key'];
-    const isTherapist = userRole === 'therapist';
-    const isProviderFault = /therapist|doctor|clinic|admin|emergency|not join|no show|absent|hospital/i.test(reason || '');
 
     if (appointment.status === 'CONFIRMED' || appointment.status === 'HELD') {
       const hoursAway = (appointment.startTime - new Date()) / (1000 * 60 * 60);
@@ -360,7 +484,8 @@ export const cancelAppointment = async (req, res) => {
 
     res.json({ success: true, data: { appointment } });
   } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    const status = err.statusCode || 500;
+    res.status(status).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
@@ -369,12 +494,38 @@ export const completeAppointment = async (req, res) => {
   try {
     const { id } = req.params;
     const { sessionSummary } = req.body;
-    const appointment = await Appointment.findByIdAndUpdate(id, { status: 'COMPLETED', sessionSummary }, { new: true });
-    if (!appointment) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
-    await publishEvent('appointment.completed', { appointmentId: id, patientId: appointment.patientId, therapistId: appointment.therapistId });
+    const userId   = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'];
+
+    const appointment = await Appointment.findById(id);
+    if (!appointment || appointment.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+
+    const isAdmin = ['clinic_admin', 'super_admin', 'admin'].includes(userRole);
+    if (userRole === 'therapist' && appointment.therapistId?.toString() !== userId?.toString()) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only complete appointments on your own schedule.' } });
+    }
+
+    // State machine validation
+    assertAppointmentTransition(appointment.status, 'COMPLETED', isAdmin);
+
+    appointment.status = 'COMPLETED';
+    appointment.completedAt = new Date();
+    if (sessionSummary) appointment.sessionSummary = sessionSummary;
+    await appointment.save();
+
+    await publishEvent('appointment.completed', {
+      appointmentId: id,
+      patientId: appointment.patientId,
+      therapistId: appointment.therapistId,
+      completedAt: appointment.completedAt,
+    });
+
     res.json({ success: true, data: { appointment } });
   } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+    const status = err.statusCode || 500;
+    res.status(status).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
@@ -505,10 +656,10 @@ export const getAppointmentById = async (req, res) => {
       try {
         const users = await fetchUsersByIds([appointment.patientId]);
         if (users?.[0]) {
-          appointment.patientName = appointment.patientName || users[0].name || 'Patient';
-          appointment.patientPhone = users[0].phoneNumber || '+91 98765 43210';
-          appointment.patientAge = users[0].age || users[0].profile?.age || 30;
-          appointment.patientGender = users[0].gender || users[0].profile?.gender || 'Patient';
+          appointment.patientName = appointment.patientName || users[0].name || undefined;
+          appointment.patientPhone = users[0].phoneNumber || undefined;
+          appointment.patientAge = users[0].age || users[0].profile?.age || undefined;
+          appointment.patientGender = users[0].gender || users[0].profile?.gender || undefined;
         }
       } catch (err) {
         console.warn('[getAppointmentById] Error fetching patient info:', err.message);
@@ -520,13 +671,13 @@ export const getAppointmentById = async (req, res) => {
       try {
         const therapistProfile = await fetchTherapistProfile(appointment.therapistId);
         if (therapistProfile) {
-          appointment.therapistName = therapistProfile.name || therapistProfile.fullName || appointment.therapistName || 'Dr. Specialist';
-          appointment.therapistSpecialty = therapistProfile.specialty || therapistProfile.specialization || 'Orthopedic Physiotherapy';
-          appointment.therapistAvatarUrl = therapistProfile.profileImageUrl || therapistProfile.avatarUrl || therapistProfile.avatar;
-          appointment.therapistPhone = therapistProfile.phoneNumber || therapistProfile.phone || '+91 80 4965 2100';
-          appointment.clinicLocation = therapistProfile.clinicLocation || 'ONE MEDICAL Central Clinic, Indiranagar, Bengaluru';
-          appointment.doctorRegNo = therapistProfile.registrationNumber || therapistProfile.regNumber || 'KMC-72941-PT';
-          appointment.ratingAvg = therapistProfile.ratingAvg || 4.9;
+          appointment.therapistName = therapistProfile.name || therapistProfile.fullName || appointment.therapistName || undefined;
+          appointment.therapistSpecialty = therapistProfile.specialty || therapistProfile.specialization || undefined;
+          appointment.therapistAvatarUrl = therapistProfile.profileImageUrl || therapistProfile.avatarUrl || therapistProfile.avatar || undefined;
+          appointment.therapistPhone = therapistProfile.phoneNumber || therapistProfile.phone || undefined;
+          appointment.clinicLocation = therapistProfile.clinicLocation || undefined;
+          appointment.doctorRegNo = therapistProfile.registrationNumber || therapistProfile.regNumber || undefined;
+          appointment.ratingAvg = therapistProfile.ratingAvg || undefined;
         }
       } catch (err) {
         console.warn('[getAppointmentById] Error fetching therapist info:', err.message);
@@ -635,79 +786,132 @@ export const getSlotAvailability = async (req, res) => {
   }
 };
 
-// â”€â”€â”€ RESCHEDULE APPOINTMENT (hold-then-release pattern) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Creates new HELD first â€” only cancels old appointment AFTER new hold is secured.
+// ─── RESCHEDULE APPOINTMENT (In-Place Mutation Pattern) ─────────────────────────
+// Mutates existing appointment slot in-place: preserves appointmentId, financial fields,
+// paymentStatus, and transaction reference without generating duplicate records.
 export const rescheduleAppointment = async (req, res) => {
   const requestId = uuidv4();
-  const userId    = req.headers['x-user-id'];
-  const userRole  = req.headers['x-user-role'];
+  const userId    = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+  const userRole  = req.user?.role || req.headers['x-user-role'];
   const { id }    = req.params;
-  const { startTime: newStartRaw, endTime: newEndRaw } = req.body;
-
-  const times = parseSlotTimes(newStartRaw, newEndRaw);
-  if (!times) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid startTime/endTime.' } });
-  if (times.start <= new Date()) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Cannot reschedule to a slot in the past.' } });
 
   let newLockAcquired = false;
   let newLockTherapistId = null;
-  try {
-    const oldAppt = await Appointment.findById(id);
-    if (!oldAppt || oldAppt.isDeleted) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
-    if (userRole === 'patient'   && oldAppt.patientId   !== userId) return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only reschedule your own appointments.' } });
-    if (oldAppt.status !== 'CONFIRMED') return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: 'Only CONFIRMED appointments can be rescheduled.' } });
+  let times = null;
 
-    newLockTherapistId = oldAppt.therapistId;
+  try {
+    const appt = await Appointment.findById(id);
+    if (!appt || appt.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
+    }
+
+    if (userRole === 'patient' && appt.patientId?.toString() !== userId?.toString()) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only reschedule your own appointments.' } });
+    }
+
+    const reschedulableStatuses = ['CONFIRMED', 'HELD', 'SCHEDULED', 'RESCHEDULE_REQUESTED'];
+    if (!reschedulableStatuses.includes(appt.status)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot reschedule appointment in ${appt.status} status.` } });
+    }
+
+    const rawStart = req.body.startTime || req.body.newStartTime;
+    let rawEnd   = req.body.endTime || req.body.newEndTime;
+
+    if (rawStart && !rawEnd) {
+      const s = new Date(rawStart);
+      const dur = appt.durationMin || 45;
+      rawEnd = new Date(s.getTime() + dur * 60 * 1000).toISOString();
+    }
+
+    times = parseSlotTimes(rawStart, rawEnd);
+    if (!times) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid startTime/endTime.' } });
+    }
+    if (times.start <= new Date()) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Cannot reschedule to a slot in the past.' } });
+    }
+
+    newLockTherapistId = appt.therapistId;
     const newLockKey = times.start.toISOString();
 
     // Step 1: Lock new slot
     newLockAcquired = await acquireSlotLock(newLockTherapistId, newLockKey, requestId);
-    if (!newLockAcquired) return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'The new slot is no longer available.' } });
+    if (!newLockAcquired) {
+      return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'The new slot is no longer available.' } });
+    }
 
-    // Step 2: Conflict check on new slot
-    const conflict = await Appointment.findOne({
-      therapistId: newLockTherapistId, startTime: times.start, isDeleted: false,
-      $or: [{ status: 'CONFIRMED' }, { status: 'HELD', holdExpiresAt: { $gt: new Date() } }],
+    // Step 2: Conflict check with Travel Buffer (strictly exclude current appointment ID)
+    const isReschedHome = (appt.appointmentPlace || '').toUpperCase() === 'HOME' || appt.serviceType === 'HOME_VISIT';
+    const HOME_VISIT_TRAVEL_BUFFER_MS = 30 * 60 * 1000;
+    const checkStart = new Date(times.start.getTime() - (isReschedHome ? HOME_VISIT_TRAVEL_BUFFER_MS : 0));
+    const checkEnd   = new Date(times.end.getTime()   + (isReschedHome ? HOME_VISIT_TRAVEL_BUFFER_MS : 0));
+
+    const potentialConflicts = await Appointment.find({
+      _id: { $ne: appt._id },
+      therapistId: newLockTherapistId,
+      startTime: { $lt: checkEnd },
+      endTime: { $gt: checkStart },
+      isDeleted: false,
+      $or: [
+        { status: { $in: ['CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN', 'DOCUMENTATION_PENDING', 'DOCUMENTED', 'RESCHEDULE_REQUESTED'] } },
+        { status: 'HELD', holdExpiresAt: { $gt: new Date() } }
+      ],
     });
-    if (conflict) return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'The new slot is no longer available.' } });
 
-    // Step 3: Create new HOLD (old appointment still CONFIRMED at this point â€” safe)
-    const newAppt = await Appointment.create({
-      patientId: oldAppt.patientId, therapistId: oldAppt.therapistId,
-      therapistName: oldAppt.therapistName, serviceType: oldAppt.serviceType,
-      appointmentPlace: oldAppt.appointmentPlace,
-      startTime: times.start, endTime: times.end,
-      durationMin: Math.round((times.end - times.start) / 60000),
-      status: 'HELD', holdExpiresAt: new Date(Date.now() + HOLD_MINUTES * 60 * 1000),
-      amount: oldAppt.amount, currency: oldAppt.currency,
-      paymentStatus: 'PENDING', createdBy: 'patient',
+    const hasConflict = potentialConflicts.some(existing => {
+      const isExistingHome = (existing.appointmentPlace || '').toUpperCase() === 'HOME' || existing.serviceType === 'HOME_VISIT';
+      const effExistingStart = isExistingHome ? new Date(existing.startTime.getTime() - HOME_VISIT_TRAVEL_BUFFER_MS) : existing.startTime;
+      const effExistingEnd   = isExistingHome ? new Date(existing.endTime.getTime()   + HOME_VISIT_TRAVEL_BUFFER_MS) : existing.endTime;
+
+      const effReqStart = isReschedHome ? new Date(times.start.getTime() - HOME_VISIT_TRAVEL_BUFFER_MS) : times.start;
+      const effReqEnd   = isReschedHome ? new Date(times.end.getTime()   + HOME_VISIT_TRAVEL_BUFFER_MS) : times.end;
+
+      return effExistingStart < effReqEnd && effExistingEnd > effReqStart;
     });
 
-    // Step 4: Cancel old â€” only now, after new hold is safely created
-    oldAppt.status             = 'CANCELLED';
-    oldAppt.cancellationReason = 'Rescheduled by patient';
-    oldAppt.cancellationPolicy = 'NOT_APPLICABLE';
-    await oldAppt.save();
+    if (hasConflict) {
+      return res.status(409).json({ success: false, error: { code: 'SLOT_UNAVAILABLE', message: 'The new slot (or required travel buffer for Home Visit) is unavailable.' } });
+    }
 
-    // Step 5: Create audit trail in AppointmentReschedule
+    // Capture old time window for audit record
+    const oldStartTime = appt.startTime;
+    const oldEndTime   = appt.endTime;
+
+    // Step 3: In-Place Mutation on SAME appointment record
+    appt.startTime       = times.start;
+    appt.endTime         = times.end;
+    appt.durationMin     = Math.round((times.end - times.start) / 60000);
+    appt.status          = 'CONFIRMED';
+    appt.holdExpiresAt   = null;
+    appt.rescheduleCount = (appt.rescheduleCount || 0) + 1;
+    appt.rescheduledAt   = new Date();
+    appt.rescheduledBy   = userRole === 'therapist' ? 'DOCTOR' : (userRole === 'clinic_admin' || userRole === 'super_admin' ? 'CLINIC_ADMIN' : 'PATIENT');
+    appt.proposedReschedule = undefined;
+    appt.cancellationReason = undefined;
+    appt.cancellationPolicy = undefined;
+    // Retain all existing financial fields unchanged (amount, currency, paymentStatus, transactionId, paymentOrderId, paymentId)
+    await appt.save();
+
+    // Step 4: Record audit trail in AppointmentReschedule with ZERO fee difference
     try {
       await AppointmentReschedule.create({
-        appointmentId:    newAppt._id,
-        patientId:        oldAppt.patientId,
-        oldTherapistId:   oldAppt.therapistId,
-        oldTherapistName: oldAppt.therapistName,
-        oldStartTime:     oldAppt.startTime,
-        oldEndTime:       oldAppt.endTime,
-        newTherapistId:   newAppt.therapistId,
-        newTherapistName: newAppt.therapistName,
-        newStartTime:     newAppt.startTime,
-        newEndTime:       newAppt.endTime,
-        requestedBy:      userRole === 'therapist' ? 'DOCTOR' : (userRole === 'clinic_admin' || userRole === 'super_admin' ? 'CLINIC_ADMIN' : 'PATIENT'),
-        reason:           req.body.reason || 'Rescheduled by user',
+        appointmentId:    appt._id,
+        patientId:        appt.patientId,
+        oldTherapistId:   appt.therapistId,
+        oldTherapistName: appt.therapistName,
+        oldStartTime,
+        oldEndTime,
+        newTherapistId:   appt.therapistId,
+        newTherapistName: appt.therapistName,
+        newStartTime:     appt.startTime,
+        newEndTime:       appt.endTime,
+        requestedBy:      appt.rescheduledBy,
+        reason:           req.body.reason || req.body.notes || 'Rescheduled by user',
         status:           'APPLIED',
         feeAdjustment: {
-          originalFee:   oldAppt.amount || 0,
-          newFee:        newAppt.amount || 0,
-          difference:    (newAppt.amount || 0) - (oldAppt.amount || 0),
+          originalFee:   appt.amount || 0,
+          newFee:        appt.amount || 0,
+          difference:    0,
           paymentStatus: 'ZERO_DIFF',
         },
         acceptedAt: new Date(),
@@ -716,17 +920,21 @@ export const rescheduleAppointment = async (req, res) => {
       console.warn('[rescheduleAppointment] Audit log warning:', auditErr.message);
     }
 
+    // Step 5: Publish domain event
     await publishEvent('appointment.rescheduled', {
-      oldAppointmentId: oldAppt._id, newAppointmentId: newAppt._id,
-      patientId: oldAppt.patientId, therapistId: oldAppt.therapistId,
+      appointmentId: appt._id,
+      patientId:     appt.patientId,
+      therapistId:   appt.therapistId,
+      oldStartTime,
+      newStartTime:  appt.startTime,
     });
 
-    res.json({ success: true, data: { appointment: newAppt } });
+    res.json({ success: true, data: { appointment: appt } });
   } catch (err) {
     console.error('[rescheduleAppointment] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   } finally {
-    if (newLockAcquired && newLockTherapistId) {
+    if (newLockAcquired && newLockTherapistId && times?.start) {
       await releaseSlotLock(newLockTherapistId, times.start.toISOString(), requestId);
     }
   }
@@ -1194,8 +1402,10 @@ export const updateAppointmentStatus = async (req, res) => {
     // Allowed Transitions State Machine:
     const ALLOWED_TRANSITIONS = {
       'HELD': ['CONFIRMED', 'EXPIRED', 'CANCELLED'],
-      'CONFIRMED': ['IN_PROGRESS', 'CHECKED_IN', 'CANCELLED', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE', 'RESCHEDULE_REQUESTED', 'COMPLETED'],
-      'RESCHEDULE_REQUESTED': ['CONFIRMED', 'CANCELLED'],
+      'CONFIRMED': ['EN_ROUTE', 'ARRIVED', 'CHECKED_IN', 'IN_PROGRESS', 'CANCELLED', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'NO_ATTENDANCE', 'TECHNICAL_FAILURE', 'RESCHEDULE_REQUESTED', 'COMPLETED'],
+      'RESCHEDULE_REQUESTED': ['CONFIRMED', 'CANCELLED', 'HELD'],
+      'EN_ROUTE': ['ARRIVED', 'CHECKED_IN', 'CANCELLED'],
+      'ARRIVED': ['CHECKED_IN', 'IN_PROGRESS', 'CANCELLED'],
       'CHECKED_IN': ['IN_PROGRESS', 'CANCELLED', 'NO_SHOW', 'PROVIDER_NO_SHOW', 'PATIENT_NO_SHOW', 'TECHNICAL_FAILURE'],
       'IN_PROGRESS': ['DOCUMENTATION_PENDING', 'DOCUMENTED', 'COMPLETED', 'TECHNICAL_FAILURE', 'CANCELLED'],
       'DOCUMENTATION_PENDING': ['DOCUMENTED', 'COMPLETED'],
@@ -1224,6 +1434,21 @@ export const updateAppointmentStatus = async (req, res) => {
           allowedTransitions: ALLOWED_TRANSITIONS[currentStatus] || []
         }
       });
+    }
+
+    // Capture Home Visit Arrival & Check-In Verification
+    if (nextStatus === 'ARRIVED' || nextStatus === 'CHECKED_IN') {
+      const lat = Number(req.body.latitude ?? req.body.lat);
+      const lng = Number(req.body.longitude ?? req.body.lng);
+      const hasValidCoords = Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+      appt.arrivalLocation = {
+        latitude: hasValidCoords ? lat : (appt.arrivalLocation?.latitude || appt.patientAddressSnapshot?.latitude),
+        longitude: hasValidCoords ? lng : (appt.arrivalLocation?.longitude || appt.patientAddressSnapshot?.longitude),
+        capturedAt: now,
+      };
+      if (nextStatus === 'CHECKED_IN') {
+        appt.checkedInAt = now;
+      }
     }
 
     // Timestamp Validations:

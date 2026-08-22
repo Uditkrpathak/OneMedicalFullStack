@@ -278,9 +278,9 @@ export default function PaymentsPage() {
               <tbody>
                 {invoices.map(inv => (
                   <tr key={inv._id}>
-                    <td className="font-mono font-bold">#{inv._id?.slice(-6)?.toUpperCase()}</td>
+                    <td className="font-mono font-bold">{inv.invoiceNumber || `#${inv._id?.slice(-6)?.toUpperCase()}`}</td>
                     <td>{inv.patientName || 'Patient'}</td>
-                    <td className="font-bold">{fmt(inv.amount)}</td>
+                    <td className="font-bold">{fmt(inv.totalAmount ?? inv.amountRupees ?? inv.amount)}</td>
                     <td><span className="badge badge-blue text-[10px]">● {inv.status || 'ISSUED'}</span></td>
                   </tr>
                 ))}

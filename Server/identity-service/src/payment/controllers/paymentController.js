@@ -737,7 +737,20 @@ export const getInvoiceById = async (req, res) => {
     if (place.includes('HOME')) {
       consultationMode = 'Home Visit (At-Home Care)';
       defaultService = 'At-Home Physiotherapy Consultation & Care';
-      serviceLocation = appt?.patientAddress || appt?.address || 'Patient Residence (At-Home Clinical Care)';
+      const snap = appt?.patientAddressSnapshot;
+      if (snap && (snap.addressLine1 || snap.city)) {
+        serviceLocation = [
+          snap.addressLine1,
+          snap.addressLine2,
+          snap.landmark ? `(Near ${snap.landmark})` : null,
+          snap.city,
+          snap.state,
+          snap.postalCode ? `- ${snap.postalCode}` : null,
+          snap.country
+        ].filter(Boolean).join(', ');
+      } else {
+        serviceLocation = appt?.patientAddress || appt?.address || 'Patient Residence (At-Home Clinical Care)';
+      }
     } else if (place.includes('VIDEO') || place.includes('TELEHEALTH') || place.includes('ONLINE')) {
       consultationMode = 'Online Video Consultation';
       defaultService = 'Online Video Telehealth Consultation';

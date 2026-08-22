@@ -45,10 +45,14 @@ const AppointmentSchema = new mongoose.Schema({
     enum: [
       'HELD',
       'CONFIRMED',
+      'RESCHEDULE_REQUESTED',
       'RESCHEDULED',
+      'EN_ROUTE',
+      'ARRIVED',
       'CHECKED_IN',
       'IN_PROGRESS',
       'DOCUMENTATION_PENDING',
+      'DOCUMENTED',
       'COMPLETED',
       'CANCELLED',
       'EXPIRED',
@@ -150,13 +154,44 @@ const AppointmentSchema = new mongoose.Schema({
   patientAddressSnapshot: {
     addressLine1: { type: String },
     addressLine2: { type: String },
+    landmark:     { type: String },
     city:         { type: String },
     state:        { type: String },
     postalCode:   { type: String },
     country:      { type: String, default: 'India' },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number],
+        validate: {
+          validator: function(val) {
+            if (!val || val.length === 0) return true;
+            if (val.length !== 2) return false;
+            const [lng, lat] = val;
+            return (
+              Number.isFinite(lng) && Number.isFinite(lat) &&
+              lng >= -180 && lng <= 180 &&
+              lat >= -90 && lat <= 90
+            );
+          },
+          message: 'coordinates must be [longitude (-180..180), latitude (-90..90)]'
+        }
+      },
+    },
     latitude:     { type: Number },
     longitude:    { type: Number },
     capturedAt:   { type: Date, default: Date.now },
+  },
+
+  // ─── Home Visit Arrival & Check-In Verification ───────────────────────────
+  arrivalLocation: {
+    latitude:   { type: Number },
+    longitude:  { type: Number },
+    capturedAt: { type: Date },
   },
 
   // ─── Session ──────────────────────────────────────────────────────────────

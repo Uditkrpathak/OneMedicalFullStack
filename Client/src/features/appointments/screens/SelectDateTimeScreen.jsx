@@ -5,6 +5,8 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  Switch,
   Image,
   Modal,
   Dimensions,
@@ -78,7 +80,7 @@ const generateStandardSlots = (dateStr) => {
 };
 
 export default function SelectDateTimeScreen({ route, navigation }) {
-  const { token } = useSelector((state) => state.auth);
+  const { token, user } = useSelector((state) => state.auth);
   const doctor = route.params?.doctor || {
     name: 'Dr. Ananya Sharma',
     specialty: 'Senior Physiotherapist • One Medical Hub',
@@ -87,6 +89,25 @@ export default function SelectDateTimeScreen({ route, navigation }) {
     avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=300',
   };
   const therapistId = route.params?.therapistId || doctor?.id || doctor?._id;
+
+  const isHomeVisit = (route.params?.appointmentPlace || '').toUpperCase() === 'HOME' || route.params?.consultMode === 'home';
+
+  // Home Visit Address State
+  const initialAddress = {
+    addressLine1: user?.profile?.address?.addressLine1 || user?.address?.addressLine1 || '',
+    addressLine2: user?.profile?.address?.addressLine2 || user?.address?.addressLine2 || '',
+    landmark: user?.profile?.address?.landmark || user?.address?.landmark || '',
+    city: user?.profile?.address?.city || user?.address?.city || 'Bengaluru',
+    state: user?.profile?.address?.state || user?.address?.state || 'Karnataka',
+    postalCode: user?.profile?.address?.postalCode || user?.address?.postalCode || '',
+    country: 'India',
+  };
+
+  const [homeAddress, setHomeAddress] = useState(initialAddress);
+  const [tempAddress, setTempAddress] = useState(initialAddress);
+  const [isAddressConfirmed, setIsAddressConfirmed] = useState(Boolean(initialAddress.addressLine1));
+  const [saveToProfile, setSaveToProfile] = useState(true);
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   const datesList = generateDates();
   const [selectedDateObj, setSelectedDateObj] = useState(datesList[0]);
@@ -146,11 +167,34 @@ export default function SelectDateTimeScreen({ route, navigation }) {
     }
   };
 
+  const handleSaveAddressFromModal = () => {
+    if (!tempAddress.addressLine1?.trim()) {
+      Alert.alert('Address Required', 'Please enter Flat/House No. and building details.');
+      return;
+    }
+    setHomeAddress({ ...tempAddress });
+    setIsAddressConfirmed(true);
+    setShowAddressModal(false);
+  };
+
   const handleContinue = async () => {
+    if (isHomeVisit) {
+      if (!homeAddress.addressLine1?.trim()) {
+        setShowAddressModal(true);
+        Alert.alert('Home Address Required', 'Please enter your residence address for the Home Visit consultation.');
+        return;
+      }
+      if (!isAddressConfirmed) {
+        Alert.alert('Confirmation Required', 'Please check the box confirming this address for your Home Visit.');
+        return;
+      }
+    }
+
     if (!selectedSlot) {
       Alert.alert('Select a Time', 'Please select an available time slot to continue.');
       return;
     }
+
     setBookingLoading(true);
     try {
       const effectiveTherapistId = therapistId || '6a852af5de9306b009a7bc88';
@@ -159,7 +203,9 @@ export default function SelectDateTimeScreen({ route, navigation }) {
         startTime: selectedSlot.startTime,
         endTime:   selectedSlot.endTime,
         serviceType: route.params?.serviceType || 'PHYSIOTHERAPY_SESSION',
-        appointmentPlace: route.params?.appointmentPlace || 'CLINIC',
+        appointmentPlace: isHomeVisit ? 'HOME' : (route.params?.appointmentPlace || 'CLINIC'),
+        homeVisitAddress: isHomeVisit ? homeAddress : undefined,
+        saveToProfile: isHomeVisit ? saveToProfile : undefined,
       }, token);
 
       if (res?.success && res?.data?.appointment?._id) {
@@ -285,6 +331,68 @@ export default function SelectDateTimeScreen({ route, navigation }) {
             </View>
           </View>
         </View>
+
+        {/* HOME VISIT DESTINATION ADDRESS CARD */}
+        {isHomeVisit && (
+          <View style={styles.homeAddressCard}>
+            <View style={styles.homeAddressHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="home" size={16} color="#003D9B" />
+                <Text style={styles.homeAddressCardTitle}>Home Visit Destination</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.changeAddressBtn}
+                onPress={() => {
+                  setTempAddress({ ...homeAddress });
+                  setShowAddressModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.changeAddressBtnText}>
+                  {homeAddress.addressLine1 ? 'Change' : '+ Add Address'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {homeAddress.addressLine1 ? (
+              <View style={styles.addressDisplayBox}>
+                <Text style={styles.addressDisplayText}>
+                  {[
+                    homeAddress.addressLine1,
+                    homeAddress.addressLine2,
+                    homeAddress.landmark ? `(Near ${homeAddress.landmark})` : null,
+                    homeAddress.city,
+                    homeAddress.state,
+                    homeAddress.postalCode ? `- ${homeAddress.postalCode}` : null,
+                  ].filter(Boolean).join(', ')}
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.emptyAddressPrompt}
+                onPress={() => {
+                  setTempAddress({ ...homeAddress });
+                  setShowAddressModal(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="location-outline" size={18} color="#003D9B" style={{ marginRight: 6 }} />
+                <Text style={styles.emptyAddressPromptText}>Tap to enter your home address</Text>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.saveProfileToggleRow}>
+              <Text style={styles.saveProfileToggleText}>Save as default home address in my profile</Text>
+              <Switch
+                value={saveToProfile}
+                onValueChange={setSaveToProfile}
+                trackColor={{ false: '#cbd5e1', true: '#003D9B' }}
+                thumbColor="#ffffff"
+                style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+              />
+            </View>
+          </View>
+        )}
 
         {/* SELECT DATE SECTION HEADER */}
         <View style={styles.sectionHeaderRow}>
@@ -588,6 +696,85 @@ export default function SelectDateTimeScreen({ route, navigation }) {
                 <Text style={styles.quickDateBtnText}>Next Week</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* HOME VISIT ADDRESS EDIT MODAL */}
+      <Modal visible={showAddressModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="home" size={18} color="#003D9B" />
+                <Text style={styles.modalTitle}>Home Visit Destination</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAddressModal(false)}>
+                <Ionicons name="close-circle" size={24} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 10 }}>
+              <Text style={styles.inputLabel}>Flat / House No. & Building *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Flat 402, Green Glen Layout"
+                placeholderTextColor="#94a3b8"
+                value={tempAddress.addressLine1}
+                onChangeText={(val) => setTempAddress((prev) => ({ ...prev, addressLine1: val }))}
+              />
+
+              <Text style={styles.inputLabel}>Street / Area / Sector</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Outer Ring Road, Bellandur"
+                placeholderTextColor="#94a3b8"
+                value={tempAddress.addressLine2}
+                onChangeText={(val) => setTempAddress((prev) => ({ ...prev, addressLine2: val }))}
+              />
+
+              <Text style={styles.inputLabel}>Nearby Landmark</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Near Central Mall / Metro Pillar 42"
+                placeholderTextColor="#94a3b8"
+                value={tempAddress.landmark}
+                onChangeText={(val) => setTempAddress((prev) => ({ ...prev, landmark: val }))}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>City</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Bengaluru"
+                    placeholderTextColor="#94a3b8"
+                    value={tempAddress.city}
+                    onChangeText={(val) => setTempAddress((prev) => ({ ...prev, city: val }))}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Pincode</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="560103"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={tempAddress.postalCode}
+                    onChangeText={(val) => setTempAddress((prev) => ({ ...prev, postalCode: val }))}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.saveAddressModalBtn}
+                onPress={handleSaveAddressFromModal}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.saveAddressModalBtnText}>Confirm Destination Address</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -989,5 +1176,114 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#003D9B',
+  },
+  // Home Visit Address Card & Form Styles
+  homeAddressCard: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#bbf7d0',
+    marginBottom: 20,
+  },
+  homeAddressHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  homeAddressCardTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#166534',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  changeAddressBtn: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  changeAddressBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  addressDisplayBox: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dcfce7',
+    marginBottom: 10,
+  },
+  addressDisplayText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1e293b',
+    lineHeight: 19,
+  },
+  emptyAddressPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    marginBottom: 10,
+  },
+  emptyAddressPromptText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#003D9B',
+  },
+  saveProfileToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+  },
+  saveProfileToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#15803d',
+    flex: 1,
+    marginRight: 8,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  textInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  saveAddressModalBtn: {
+    backgroundColor: '#003D9B',
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  saveAddressModalBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

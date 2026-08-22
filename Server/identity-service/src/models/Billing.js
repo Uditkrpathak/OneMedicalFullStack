@@ -18,6 +18,7 @@ const InvoiceSchema = new mongoose.Schema({
   isDeleted:        { type: Boolean, default: false },
 }, { timestamps: true });
 
+InvoiceSchema.index({ appointmentId: 1, transactionId: 1 }, { unique: true });
 InvoiceSchema.index({ transactionId: 1 }, { unique: true });
 InvoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
 InvoiceSchema.index({ appointmentId: 1 }, { unique: true, sparse: true });

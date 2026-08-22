@@ -73,7 +73,11 @@ export default function AppointmentDetailsPage() {
           date: startDate.toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' }),
           time: startDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
           duration: `${apt.durationMin || 45} mins`,
-          location: apt.appointmentPlace || 'Clinic Visit',
+          location: apt.appointmentPlace === 'HOME'
+            ? 'Home Visit (At-Home Care)'
+            : (apt.appointmentPlace === 'VIDEO' ? 'Online Video Consultation' : 'In-Person Clinic Visit'),
+          patientAddressSnapshot: apt.patientAddressSnapshot,
+          arrivalLocation: apt.arrivalLocation,
           patient: {
             id: apt.patientId,
             name: pName,
@@ -459,6 +463,48 @@ export default function AppointmentDetailsPage() {
                 <div className="text-blue-600 font-bold">{appointment.time} ({appointment.duration})</div>
               </div>
             </div>
+
+            {/* Home Visit Address Snapshot Card */}
+            {appointment.patientAddressSnapshot && (
+              <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-bold text-emerald-800 uppercase flex items-center gap-1.5">
+                    <MapPin size={12} className="text-emerald-700" /> Patient Home Residence (Snapshot)
+                  </div>
+                  {appointment.arrivalLocation?.capturedAt && (
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                      Specialist Arrived: {new Date(appointment.arrivalLocation.capturedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+                <div className="font-semibold text-slate-900 leading-snug">
+                  {[
+                    appointment.patientAddressSnapshot.addressLine1,
+                    appointment.patientAddressSnapshot.addressLine2,
+                    appointment.patientAddressSnapshot.landmark ? `(Near ${appointment.patientAddressSnapshot.landmark})` : null,
+                    appointment.patientAddressSnapshot.city,
+                    appointment.patientAddressSnapshot.state,
+                    appointment.patientAddressSnapshot.postalCode ? `- ${appointment.patientAddressSnapshot.postalCode}` : null,
+                  ].filter(Boolean).join(', ')}
+                </div>
+                <div className="pt-1 flex items-center gap-3">
+                  <a
+                    href={
+                      Number.isFinite(Number(appointment.patientAddressSnapshot.latitude)) && Number.isFinite(Number(appointment.patientAddressSnapshot.longitude))
+                        ? `https://www.google.com/maps/dir/?api=1&destination=${appointment.patientAddressSnapshot.latitude},${appointment.patientAddressSnapshot.longitude}`
+                        : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                            [appointment.patientAddressSnapshot.addressLine1, appointment.patientAddressSnapshot.city, appointment.patientAddressSnapshot.postalCode].filter(Boolean).join(', ')
+                          )}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline"
+                  >
+                    Open Location in Google Maps ↗
+                  </a>
+                </div>
+              </div>
+            )}
 
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-1 text-xs">
               <div className="text-[10px] font-bold text-slate-400 uppercase">Pre-session Clinical Notes</div>

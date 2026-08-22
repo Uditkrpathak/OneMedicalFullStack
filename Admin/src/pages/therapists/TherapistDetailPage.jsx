@@ -152,14 +152,22 @@ export default function TherapistDetailPage() {
 
       let totalRev = 0;
       let compCount = 0;
+      const validRevenueStatuses = ['COMPLETED', 'DOCUMENTED', 'CONFIRMED', 'IN_PROGRESS', 'CHECKED_IN'];
+      const nonActiveStatuses = ['CANCELLED', 'REJECTED', 'RESCHEDULED', 'EXPIRED', 'PAYMENT_EXPIRED'];
+      const PAID_STATUSES = ['PAID', 'SETTLED'];
+
       apptsList.forEach((a) => {
-        const isCancelled = a.status === 'CANCELLED';
+        const isInactive = nonActiveStatuses.includes(a.status);
         const isRefunded = a.paymentStatus === 'REFUNDED';
-        if (!isCancelled && !isRefunded) {
-          if (['COMPLETED', 'DOCUMENTED', 'CONFIRMED', 'IN_PROGRESS'].includes(a.status) || a.paymentStatus === 'PAID') {
+        const isPaid = PAID_STATUSES.includes(String(a.paymentStatus || '').toUpperCase());
+
+        if (!isInactive && !isRefunded) {
+          if (validRevenueStatuses.includes(a.status)) {
             compCount++;
-            const amt = a.paidAmount || a.amount || 0;
-            totalRev += amt >= 5000 ? Math.round(amt / 100) : amt;
+            if (isPaid) {
+              const amt = a.paidAmount || a.amount || 0;
+              totalRev += amt >= 5000 ? Math.round(amt / 100) : amt;
+            }
           }
         }
       });

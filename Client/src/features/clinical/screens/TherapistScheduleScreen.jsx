@@ -130,9 +130,23 @@ export default function TherapistScheduleScreen({ navigation }) {
           }
 
           const snap = a.patientAddressSnapshot;
-          const addressFormatted = snap?.addressLine1
-            ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''} ${snap.postalCode ? '- ' + snap.postalCode : ''}`
-            : (a.patientAddress || a.address || a.location || 'Patient Residence');
+          const formattedSnapshotAddress = snap ? [
+            snap.addressLine1,
+            snap.addressLine2,
+            snap.landmark ? `(Near ${snap.landmark})` : null,
+            snap.city,
+            snap.state,
+            snap.postalCode ? `- ${snap.postalCode}` : null,
+            snap.country,
+          ].filter(Boolean).join(', ') : null;
+
+          const addressFormatted = formattedSnapshotAddress || a.patientAddress || a.address || a.location || 'Patient Residence';
+          const lat = Number(snap?.latitude);
+          const lng = Number(snap?.longitude);
+          const hasValidCoords = Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+          const mapDestinationUrl = hasValidCoords
+            ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+            : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressFormatted)}`;
 
           const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : defaultTimes[idx % defaultTimes.length]);
           return {
@@ -142,6 +156,7 @@ export default function TherapistScheduleScreen({ navigation }) {
             patientName: a.patient?.name || a.patientName || (idx === 0 ? 'Udit' : 'John'),
             patientPhone: a.patient?.phoneNumber || a.patientPhone || a.phone || '+91 98765 43210',
             patientAddress: addressFormatted,
+            mapDestinationUrl,
             condition: a.condition || a.serviceName || a.chiefComplaint || (idx === 0 ? 'ACL Knee Rehabilitation' : 'Lumbar Disc Decompression'),
             sessionInfo: `${timeFormatted} — 45m session`,
             status,
@@ -169,9 +184,23 @@ export default function TherapistScheduleScreen({ navigation }) {
             }
 
             const snap = a.patientAddressSnapshot;
-            const addressFormatted = snap?.addressLine1
-              ? `${snap.addressLine1}${snap.addressLine2 ? ', ' + snap.addressLine2 : ''}, ${snap.city || ''}`
-              : (a.patientAddress || a.address || a.location || 'Patient Residence');
+            const formattedSnapshotAddress = snap ? [
+              snap.addressLine1,
+              snap.addressLine2,
+              snap.landmark ? `(Near ${snap.landmark})` : null,
+              snap.city,
+              snap.state,
+              snap.postalCode ? `- ${snap.postalCode}` : null,
+              snap.country,
+            ].filter(Boolean).join(', ') : null;
+
+            const addressFormatted = formattedSnapshotAddress || a.patientAddress || a.address || a.location || 'Patient Residence';
+            const lat = Number(snap?.latitude);
+            const lng = Number(snap?.longitude);
+            const hasValidCoords = Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+            const mapDestinationUrl = hasValidCoords
+              ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addressFormatted)}`;
 
             const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : defaultTimes[idx % defaultTimes.length]);
             return {
@@ -181,6 +210,7 @@ export default function TherapistScheduleScreen({ navigation }) {
               patientName: a.patientName || (idx === 0 ? 'Udit' : 'John'),
               patientPhone: a.patientPhone || a.phone || '+91 98765 43210',
               patientAddress: addressFormatted,
+              mapDestinationUrl,
               condition: a.condition || (idx === 0 ? 'ACL Knee Rehabilitation' : 'Lumbar Disc Decompression'),
               sessionInfo: `${timeFormatted} — 45m session`,
               status,
@@ -471,7 +501,7 @@ export default function TherapistScheduleScreen({ navigation }) {
                       <View style={styles.homeLocationActionsRow}>
                         <TouchableOpacity
                           style={styles.homeMapNavBtn}
-                          onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(appt.patientAddress)}`)}
+                          onPress={() => Linking.openURL(appt.mapDestinationUrl || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(appt.patientAddress)}`)}
                           activeOpacity={0.8}
                         >
                           <Ionicons name="navigate" size={12} color="#003D9B" style={{ marginRight: 4 }} />
@@ -480,7 +510,13 @@ export default function TherapistScheduleScreen({ navigation }) {
 
                         <TouchableOpacity
                           style={styles.homeCallPatientBtn}
-                          onPress={() => Linking.openURL(`tel:${appt.patientPhone}`)}
+                          onPress={() => {
+                            if (['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'CHECKED_IN', 'IN_PROGRESS'].includes(appt.status)) {
+                              Linking.openURL(`tel:${appt.patientPhone}`);
+                            } else {
+                              Alert.alert('Contact Restricted', 'Patient contact is enabled once the appointment is confirmed.');
+                            }
+                          }}
                           activeOpacity={0.8}
                         >
                           <Ionicons name="call" size={12} color="#16a34a" style={{ marginRight: 4 }} />

@@ -115,9 +115,14 @@ export default function RescheduleAppointmentPage() {
       if (meridiem === 'AM' && hours === 12) hours = 0;
 
       const newStartTime = new Date(`${selectedSlot.dateShort}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00.000Z`);
+      const durMin = appointment?.durationMin || 45;
+      const newEndTime = new Date(newStartTime.getTime() + durMin * 60 * 1000);
 
       await api.rescheduleAppointment(token, id, {
+        startTime: newStartTime.toISOString(),
+        endTime: newEndTime.toISOString(),
         newStartTime: newStartTime.toISOString(),
+        newEndTime: newEndTime.toISOString(),
         reason: rescheduleReason,
         notes: internalNotes,
       });

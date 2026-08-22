@@ -188,6 +188,10 @@ export const getRecoveryProgress = async (req, res) => {
 
 export const getRecoveryProgressAnalytics = getRecoveryProgress;
 
+const REVENUE_STATUSES = ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'DOCUMENTED', 'CHECKED_IN'];
+const NON_ACTIVE_STATUSES = ['CANCELLED', 'REJECTED', 'RESCHEDULED', 'EXPIRED', 'PAYMENT_EXPIRED'];
+const PAID_STATUSES = ['PAID', 'SETTLED'];
+
 // ─── ADMIN: SUMMARY KPIS (AUTHORITATIVE BACKEND CALCULATION) ────────────────
 export const getAnalyticsSummary = async (req, res) => {
   try {
@@ -204,9 +208,13 @@ export const getAnalyticsSummary = async (req, res) => {
       uniquePatients,
       uniqueTherapists,
     ] = await Promise.all([
-      Appointment.countDocuments({ isDeleted: false, status: { $nin: ['CANCELLED', 'REJECTED'] } }),
-      Appointment.countDocuments({ isDeleted: false, startTime: { $gte: startOfToday }, status: { $nin: ['CANCELLED', 'REJECTED'] } }),
-      Appointment.find({ isDeleted: false, status: { $in: ['CONFIRMED', 'COMPLETED', 'DOCUMENTED', 'IN_PROGRESS'] } }, 'amount paise paidAmount').lean(),
+      Appointment.countDocuments({ isDeleted: false, status: { $nin: NON_ACTIVE_STATUSES } }),
+      Appointment.countDocuments({ isDeleted: false, startTime: { $gte: startOfToday }, status: { $nin: NON_ACTIVE_STATUSES } }),
+      Appointment.find({
+        isDeleted: false,
+        status: { $in: REVENUE_STATUSES },
+        paymentStatus: { $in: ['PAID', 'paid', 'SETTLED', 'settled'] }
+      }, 'amount paise paidAmount').lean(),
       PatientProgram.countDocuments({ isDeleted: false, status: 'active' }),
       SessionLog.countDocuments({ isDeleted: false, status: 'completed' }),
       Appointment.distinct('patientId', { isDeleted: false }),
@@ -255,11 +263,13 @@ export const getAnalyticsSummary = async (req, res) => {
       enrolledTherapistsCount = uniqueTherapists.filter(id => !id.startsWith('test_') && !id.startsWith('therapist_')).length || uniqueTherapists.length;
     }
 
-    // Sum revenue in Rupees (amounts in paise divided by 100 or raw amount)
+    // Sum revenue in Rupees strictly from valid settled consultation records
     let totalRevenue = 0;
     confirmedAppointments.forEach(a => {
-      const amt = a.amount || a.paidAmount || (a.paise ? a.paise / 100 : 0) || 500; // Default ₹500 standard session fee if not specified
-      totalRevenue += amt >= 5000 ? Math.round(amt / 100) : amt; // Handle paise vs rupees
+      const amt = a.amount || a.paidAmount || (a.paise ? a.paise / 100 : 0);
+      if (amt) {
+        totalRevenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+      }
     });
 
     const completionRate = totalAppointments > 0 ? Math.round((completedSessionsCount / Math.max(1, totalAppointments)) * 100) : 85;
@@ -310,10 +320,15 @@ export const getRevenueChart = async (req, res) => {
       if (!a.startTime) return;
       const dStr = new Date(a.startTime).toISOString().slice(0, 10);
       if (dayMap[dStr]) {
-        dayMap[dStr].appointments += 1;
-        if (a.status === 'CONFIRMED' || a.status === 'COMPLETED') {
+        if (!NON_ACTIVE_STATUSES.includes(a.status)) {
+          dayMap[dStr].appointments += 1;
+        }
+        const isPaid = PAID_STATUSES.includes(String(a.paymentStatus || '').toUpperCase());
+        if (REVENUE_STATUSES.includes(a.status) && isPaid) {
           const amt = a.amount || a.paidAmount || (a.paise ? a.paise / 100 : 0);
-          dayMap[dStr].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+          if (amt) {
+            dayMap[dStr].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+          }
         }
       }
     });
@@ -343,11 +358,16 @@ export const getTherapistStats = async (req, res) => {
           activePatients: new Set(),
         };
       }
-      statsMap[tId].sessions += 1;
+      if (!NON_ACTIVE_STATUSES.includes(a.status)) {
+        statsMap[tId].sessions += 1;
+      }
       if (a.patientId) statsMap[tId].activePatients.add(a.patientId);
-      if (a.status === 'CONFIRMED' || a.status === 'COMPLETED') {
+      const isPaid = PAID_STATUSES.includes(String(a.paymentStatus || '').toUpperCase());
+      if (REVENUE_STATUSES.includes(a.status) && isPaid) {
         const amt = a.amount || (a.paise ? a.paise / 100 : 0);
-        statsMap[tId].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+        if (amt) {
+          statsMap[tId].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+        }
       }
     });
 
