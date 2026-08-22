@@ -656,41 +656,57 @@ export const adminCreateTherapist = async (req, res) => {
       isDeleted: false
     });
 
+    let user = existing;
     if (existing) {
-      return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'User with this email or mobile number already exists.' } });
+      const existingProfile = await TherapistProfile.findOne({ userId: existing._id, isDeleted: false });
+      if (existingProfile) {
+        return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'Specialist with this email or mobile number already exists.' } });
+      }
+      // Re-use existing orphaned user account
+      user.name = name.trim();
+      user.role = 'therapist';
+      user.isActive = true;
+      user.status = 'active';
+      user.isProfileCompleted = true;
+      await user.save();
+    } else {
+      user = await User.create({
+        name: name.trim(),
+        email: cleanEmail,
+        phoneNumber: cleanPhone,
+        role: 'therapist',
+        status: 'active',
+        isActive: true,
+        isProfileCompleted: true,
+      });
     }
 
     const rawFee = Number(consultationFee || 80000);
     const feePaise = rawFee < 5000 ? rawFee * 100 : rawFee;
 
-    const user = await User.create({
-      name: name.trim(),
-      email: cleanEmail,
-      phoneNumber: cleanPhone,
-      role: 'therapist',
-      status: 'pending',
-      isActive: false,
-      isProfileCompleted: true,
-    });
+    const resolvedLocation = typeof clinicLocation === 'object' && clinicLocation !== null
+      ? { address: clinicLocation.address || 'Bengaluru, Karnataka', lat: Number(clinicLocation.lat || 12.9716), lng: Number(clinicLocation.lng || 77.5946) }
+      : { address: clinicLocation || 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946 };
 
-    const profile = await TherapistProfile.create({
-      userId: user._id,
-      name: name.trim(),
-      specializations: Array.isArray(specializations) ? specializations : ['Orthopedic Physiotherapy'],
-      qualifications: Array.isArray(qualifications) ? qualifications : ['MPT - Orthopedics'],
-      experienceYears: Number(experienceYears) || 0,
-      consultationFee: feePaise,
-      clinicName: clinicName || 'OneMedical Care Center',
-      clinicLocation: clinicLocation || 'Bengaluru, Karnataka',
-      bio: bio || '',
-      verificationStatus: 'verified',
-      isVerified: true,
-      verifiedAt: new Date(),
-    });
-
-    user.isActive = true;
-    user.status = 'active';
-    await user.save();
+    const profile = await TherapistProfile.findOneAndUpdate(
+      { userId: user._id },
+      {
+        userId: user._id,
+        name: name.trim(),
+        specializations: Array.isArray(specializations) ? specializations : ['Orthopedic Physiotherapy'],
+        qualifications: Array.isArray(qualifications) ? qualifications : ['MPT - Orthopedics'],
+        experienceYears: Number(experienceYears) || 0,
+        consultationFee: feePaise,
+        clinicName: clinicName || 'OneMedical Care Center',
+        clinicLocation: resolvedLocation,
+        bio: bio || '',
+        verificationStatus: 'verified',
+        isVerified: true,
+        verifiedAt: new Date(),
+        isDeleted: false,
+      },
+      { upsert: true, new: true }
+    );
 
     res.status(201).json({ success: true, data: { user: user.toSafeObject(), profile } });
   } catch (err) {
@@ -713,9 +729,14 @@ export const adminUpdateTherapist = async (req, res) => {
     if (req.body.status) userUpdates.status = req.body.status;
     if (req.body.isActive !== undefined) userUpdates.isActive = req.body.isActive;
 
+    const updates = { ...req.body };
+    if (updates.clinicLocation && typeof updates.clinicLocation === 'string') {
+      updates.clinicLocation = { address: updates.clinicLocation, lat: 12.9716, lng: 77.5946 };
+    }
+
     const profile = await TherapistProfile.findOneAndUpdate(
       { $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] },
-      req.body,
+      updates,
       { new: true }
     );
 
