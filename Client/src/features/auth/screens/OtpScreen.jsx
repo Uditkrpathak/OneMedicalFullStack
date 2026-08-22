@@ -106,16 +106,6 @@ export default function OtpScreen({ route, navigation }) {
       if (res?.success && res?.data) {
         const { accessToken, user } = res.data;
         dispatch(loginSuccess({ user, token: accessToken }));
-
-        // Navigate strictly based on authenticated user role and completion state from backend
-        const targetScreen = user?.role === 'therapist'
-          ? (user?.isProfileCompleted ? 'TherapistHome' : 'TherapistCompleteProfile')
-          : (user?.isProfileCompleted ? 'PatientHome' : 'CompleteProfile');
-
-        navigation.reset({
-          index: 0,
-          routes: [{ name: targetScreen }],
-        });
         return;
       }
       throw new Error(res.error?.message || 'Verification failed');

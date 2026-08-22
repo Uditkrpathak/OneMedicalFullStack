@@ -156,7 +156,8 @@ export default function CompleteProfileScreen({ navigation }) {
     try {
       const res = await updatePatientProfile(profilePayload).unwrap();
       if (res?.success && res?.data?.user) {
-        dispatch(loginSuccess({ user: res.data.user, token }));
+        // Keep profile completion pending in Redux until permissions and all-set screens finish
+        dispatch(loginSuccess({ user: { ...res.data.user, isProfileCompleted: false }, token }));
         navigation.navigate('EnablePermissions');
         return;
       }

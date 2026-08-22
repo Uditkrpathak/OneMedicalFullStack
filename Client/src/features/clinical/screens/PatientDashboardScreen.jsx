@@ -343,21 +343,22 @@ export default function PatientDashboardScreen({ navigation }) {
           <View style={styles.appointmentHeroCard}>
             <TouchableOpacity
               activeOpacity={0.92}
+              style={{ width: '100%' }}
               onPress={() => handleOpenAppointmentDetails(todayAppointment)}
             >
               <View style={styles.heroHeaderRow}>
-                <Text style={styles.heroCardBadgeLabel} numberOfLines={1}>
+                <Text style={styles.heroCardBadgeLabel}>
                   {heroBadgeTitle}
                 </Text>
                 <View style={styles.heroDateBadge}>
                   <Ionicons name="calendar-outline" size={12} color="#ffffff" style={{ marginRight: 4 }} />
-                  <Text style={styles.heroDateText} numberOfLines={1}>
+                  <Text style={styles.heroDateText}>
                     {heroDateFormatted}
                   </Text>
                 </View>
               </View>
 
-              <Text style={styles.heroTimeText} numberOfLines={1}>
+              <Text style={styles.heroTimeText}>
                 {heroTimeFormatted}
               </Text>
 
@@ -369,10 +370,10 @@ export default function PatientDashboardScreen({ navigation }) {
                   </View>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.doctorNameText} numberOfLines={1}>
+                  <Text style={styles.doctorNameText}>
                     {heroDoctorName}
                   </Text>
-                  <Text style={styles.doctorSpecialtyText} numberOfLines={1}>
+                  <Text style={styles.doctorSpecialtyText}>
                     {heroService}
                   </Text>
                 </View>
@@ -380,7 +381,7 @@ export default function PatientDashboardScreen({ navigation }) {
 
               <View style={styles.locationRow}>
                 <Ionicons name="location-outline" size={15} color="#38bdf8" style={{ marginRight: 6 }} />
-                <Text style={styles.locationText} numberOfLines={1}>
+                <Text style={styles.locationText}>
                   {heroClinic}
                 </Text>
               </View>
@@ -392,14 +393,14 @@ export default function PatientDashboardScreen({ navigation }) {
                 activeOpacity={0.82}
                 onPress={() => handleOpenAppointmentDetails(todayAppointment)}
               >
-                <Text style={styles.heroBtnPrimaryText} numberOfLines={1}>View Details</Text>
+                <Text style={styles.heroBtnPrimaryText}>View Details</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.heroBtnSecondary}
                 activeOpacity={0.82}
                 onPress={() => handleGetDirections(todayAppointment)}
               >
-                <Text style={styles.heroBtnSecondaryText} numberOfLines={1}>Get Directions</Text>
+                <Text style={styles.heroBtnSecondaryText}>Get Directions</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -990,17 +991,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 10,
     elevation: 4,
-    overflow: 'hidden',
   },
   heroHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
-    gap: 8,
   },
   heroCardBadgeLabel: {
-    flex: 1,
     fontSize: 11,
     fontWeight: '700',
     color: 'rgba(255, 255, 255, 0.75)',
@@ -1013,7 +1011,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 14,
-    flexShrink: 0,
   },
   heroDateText: {
     fontSize: 11,
@@ -1040,7 +1037,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
-    position: 'relative',
   },
   doctorCheckBadge: {
     position: 'absolute',
@@ -1080,11 +1076,13 @@ const styles = StyleSheet.create({
   },
   heroActionsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
   },
   heroBtnPrimary: {
     flex: 1,
+    marginRight: 6,
     backgroundColor: '#ffffff',
     height: 42,
     borderRadius: 21,
@@ -1104,6 +1102,7 @@ const styles = StyleSheet.create({
   },
   heroBtnSecondary: {
     flex: 1,
+    marginLeft: 6,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',

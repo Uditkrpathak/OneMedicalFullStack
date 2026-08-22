@@ -65,8 +65,8 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   const eDate = apptDoc.endTime ? new Date(apptDoc.endTime) : (isValidSDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
   const isValidEDate = Boolean(eDate && !isNaN(eDate.getTime()));
 
-  let resolvedDate = ctxSnapshot.appointmentDate || 'Scheduled Consultation';
-  let resolvedTime = ctxSnapshot.appointmentTime || '10:30 AM';
+  let resolvedDate = ctxSnapshot.appointmentDate || apptDoc.dateString || apptDoc.date || 'Scheduled Consultation';
+  let resolvedTime = ctxSnapshot.appointmentTime || apptDoc.timeString || apptDoc.time || apptDoc.timeSlot || '10:30 AM';
 
   if (isValidSDate) {
     try {
@@ -81,6 +81,12 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
       resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} (${durationMins} mins)`;
     } catch (e) {
       resolvedTime = `${sDate.toTimeString().slice(0, 5)} (${durationMins} mins)`;
+    }
+  } else if (isValidSDate) {
+    try {
+      resolvedTime = sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch (e) {
+      resolvedTime = '10:30 AM';
     }
   }
 

@@ -10,20 +10,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { loginSuccess } from '../authSlice';
 import { colors } from '../../../theme/colors';
 
 const { height } = Dimensions.get('window');
 
 export default function SetupCompleteScreen({ navigation }) {
-  const { user } = useSelector((state) => state.auth);
+  const { user, token } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
 
   const handleEnterApp = () => {
-    const isTherapist = user?.role === 'therapist';
-    navigation.reset({
-      index: 0,
-      routes: [{ name: isTherapist ? 'TherapistHome' : 'PatientHome' }],
-    });
+    dispatch(loginSuccess({ user: { ...user, isProfileCompleted: true }, token }));
   };
 
   return (
