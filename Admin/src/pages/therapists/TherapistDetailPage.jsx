@@ -83,7 +83,9 @@ export default function TherapistDetailPage() {
       const exp = t.experienceYears || 0;
       const rawFee = t.consultationFee || 75000;
       const feeInRupees = rawFee >= 5000 ? Math.round(rawFee / 100) : rawFee;
-      const img = t.profileImageUrl || t.user?.profileImageUrl || null;
+      const img = t.profileImageUrl || t.avatarUrl || t.avatar || t.userId?.profileImageUrl || t.userId?.avatarUrl || t.user?.profileImageUrl || t.user?.avatarUrl || null;
+      const rawPhone = t.phoneNumber || t.phone || t.userId?.phoneNumber || t.userId?.phone || t.user?.phoneNumber || t.user?.phone || '—';
+      const rawEmail = t.email || t.userId?.email || t.user?.email || '—';
 
       const tObj = {
         _id: effectiveProfileId,
@@ -102,8 +104,8 @@ export default function TherapistDetailPage() {
         verificationStatus: t.verificationStatus || (t.isVerified ? 'verified' : 'pending'),
         isVerified: t.verificationStatus === 'verified' || t.isVerified === true,
         avatar: img,
-        phone: t.phoneNumber || t.user?.phoneNumber || '—',
-        email: t.email || t.user?.email || '—',
+        phone: rawPhone,
+        email: rawEmail,
         bio: t.bio || 'Experienced Rehabilitation and Movement Specialist.',
         clinicName: t.clinicName || 'One Medical Main Clinic',
         consultationFee: feeInRupees,

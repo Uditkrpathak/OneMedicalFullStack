@@ -191,6 +191,12 @@ export const getTherapists = async (req, res) => {
       id: prof._id,
       userId: prof.userId?._id || prof.userId,
       name: prof.userId?.name || prof.name || 'Specialist',
+      email: prof.userId?.email || prof.email || '',
+      phoneNumber: prof.userId?.phoneNumber || prof.phoneNumber || '',
+      phone: prof.userId?.phoneNumber || prof.phoneNumber || '',
+      profileImageUrl: prof.profileImageUrl || prof.userId?.profileImageUrl || null,
+      avatarUrl: prof.profileImageUrl || prof.userId?.profileImageUrl || null,
+      avatar: prof.profileImageUrl || prof.userId?.profileImageUrl || null,
       specializations: prof.specializations || ['Orthopedic Physiotherapy'],
       qualifications: prof.qualifications || [],
       experienceYears: prof.experienceYears !== undefined ? prof.experienceYears : null,
@@ -202,6 +208,13 @@ export const getTherapists = async (req, res) => {
       clinicName: prof.clinicName || 'OneMedical Care Center',
       clinicLocation: prof.clinicLocation || 'Bengaluru, Karnataka',
       verificationStatus: prof.verificationStatus || 'verified',
+      user: prof.userId ? {
+        _id: prof.userId._id || prof.userId,
+        name: prof.userId.name || prof.name,
+        email: prof.userId.email,
+        phoneNumber: prof.userId.phoneNumber,
+        profileImageUrl: prof.profileImageUrl || prof.userId.profileImageUrl,
+      } : undefined,
     }));
 
     res.json({
@@ -243,6 +256,12 @@ export const getTherapistById = async (req, res) => {
       id: profile._id,
       userId: profile.userId?._id || profile.userId,
       name: profile.userId?.name || profile.name || 'Specialist',
+      email: profile.userId?.email || profile.email || '',
+      phoneNumber: profile.userId?.phoneNumber || profile.phoneNumber || '',
+      phone: profile.userId?.phoneNumber || profile.phoneNumber || '',
+      profileImageUrl: profile.profileImageUrl || profile.userId?.profileImageUrl || null,
+      avatarUrl: profile.profileImageUrl || profile.userId?.profileImageUrl || null,
+      avatar: profile.profileImageUrl || profile.userId?.profileImageUrl || null,
       specializations: profile.specializations || ['Orthopedic Physiotherapy'],
       qualifications: profile.qualifications || [],
       experienceYears: profile.experienceYears !== undefined ? profile.experienceYears : null,
@@ -256,6 +275,13 @@ export const getTherapistById = async (req, res) => {
       verificationStatus: profile.verificationStatus || 'verified',
       availabilityTemplate: profile.availabilityTemplate || {},
       leaveExceptions: profile.leaveExceptions || [],
+      user: profile.userId ? {
+        _id: profile.userId._id || profile.userId,
+        name: profile.userId.name || profile.name,
+        email: profile.userId.email,
+        phoneNumber: profile.userId.phoneNumber,
+        profileImageUrl: profile.profileImageUrl || profile.userId.profileImageUrl,
+      } : undefined,
     };
 
     res.json({ success: true, data });
@@ -468,15 +494,45 @@ export const listPatientsAdmin = async (req, res) => {
       ];
     }
 
-    const patients = await User.find(filter)
-      .select('name email phoneNumber profileImageUrl status isActive isProfileCompleted createdAt')
+    const users = await User.find(filter)
+      .select('name email phoneNumber profileImageUrl avatarUrl status isActive isProfileCompleted createdAt')
       .skip(skip)
       .limit(parseInt(limit))
       .sort({ createdAt: -1 })
       .lean();
 
+    const userIds = users.map(u => u._id);
+    const profiles = await PatientProfile.find({ userId: { $in: userIds } }).lean();
+    const profileMap = {};
+    profiles.forEach(p => {
+      profileMap[p.userId.toString()] = p;
+    });
+
+    const enriched = users.map(u => {
+      const prof = profileMap[u._id.toString()] || {};
+      let age = null;
+      if (prof.dob) {
+        const diff = Date.now() - new Date(prof.dob).getTime();
+        age = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+      }
+      return {
+        ...u,
+        phone: u.phoneNumber || '',
+        phoneNumber: u.phoneNumber || '',
+        avatar: u.profileImageUrl || prof.profileImageUrl || u.avatarUrl || null,
+        profileImageUrl: u.profileImageUrl || prof.profileImageUrl || u.avatarUrl || null,
+        profile: {
+          ...prof,
+          age,
+          gender: prof.gender || 'Not Specified',
+          primaryConcern: prof.primaryConcern || 'Physiotherapy Care',
+          recoveryScore: prof.recoveryScore || 70,
+        }
+      };
+    });
+
     const total = await User.countDocuments(filter);
-    res.json({ success: true, data: patients, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
+    res.json({ success: true, data: enriched, pagination: { page: parseInt(page), limit: parseInt(limit), total } });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
@@ -509,16 +565,30 @@ export const adminListUsers = async (req, res) => {
 export const adminGetUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = await User.findById(id).select('-passwordHash -otp').lean();
+    const isObjectId = mongoose.isValidObjectId(id);
+
+    let user = await User.findOne({
+      $or: [
+        ...(isObjectId ? [{ _id: id }] : [])
+      ]
+    }).select('-passwordHash -otp').lean();
+
+    let profile = null;
+    if (!user) {
+      profile = await PatientProfile.findById(id).lean() || await TherapistProfile.findById(id).lean();
+      if (profile?.userId) {
+        user = await User.findById(profile.userId).select('-passwordHash -otp').lean();
+      }
+    }
+
     if (!user) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
     }
 
-    let profile = null;
     if (user.role === 'patient') {
-      profile = await PatientProfile.findOne({ userId: id }).lean();
+      profile = profile || await PatientProfile.findOne({ userId: user._id }).lean();
     } else if (user.role === 'therapist') {
-      profile = await TherapistProfile.findOne({ userId: id }).lean();
+      profile = profile || await TherapistProfile.findOne({ userId: user._id }).lean();
     }
 
     res.json({ success: true, data: { user, profile } });
@@ -535,13 +605,20 @@ export const adminCreatePatient = async (req, res) => {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
     }
 
-    const { name, email, phoneNumber, dob, gender, address, primaryConcern } = req.body;
-    if (!name || (!email && !phoneNumber)) {
+    const {
+      name, email, phoneNumber, phone,
+      profileImageUrl, avatarUrl, photoUrl,
+      dob, gender, address, primaryConcern
+    } = req.body;
+
+    const rawPhone = phoneNumber || phone;
+    if (!name || (!email && !rawPhone)) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name and email or phoneNumber required.' } });
     }
 
     const cleanEmail = email ? email.toLowerCase().trim() : undefined;
-    const cleanPhone = phoneNumber ? normalizePhone(phoneNumber) : undefined;
+    const cleanPhone = rawPhone ? normalizePhone(rawPhone) : undefined;
+    const cleanImg = profileImageUrl || avatarUrl || photoUrl || undefined;
 
     const existing = await User.findOne({
       $or: [
@@ -551,27 +628,47 @@ export const adminCreatePatient = async (req, res) => {
       isDeleted: false
     });
 
+    let user = existing;
     if (existing) {
-      return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'User already exists.' } });
+      const existingProfile = await PatientProfile.findOne({ userId: existing._id, isDeleted: false });
+      if (existingProfile) {
+        return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'Patient with this email or mobile number already exists.' } });
+      }
+      user.name = name.trim();
+      if (cleanEmail) user.email = cleanEmail;
+      if (cleanPhone) user.phoneNumber = cleanPhone;
+      if (cleanImg) user.profileImageUrl = cleanImg;
+      user.role = 'patient';
+      user.isActive = true;
+      user.status = 'active';
+      user.isProfileCompleted = true;
+      await user.save();
+    } else {
+      user = await User.create({
+        name: name.trim(),
+        email: cleanEmail,
+        phoneNumber: cleanPhone,
+        profileImageUrl: cleanImg,
+        role: 'patient',
+        isActive: true,
+        status: 'active',
+        isProfileCompleted: true,
+      });
     }
 
-    const user = await User.create({
-      name: name.trim(),
-      email: cleanEmail,
-      phoneNumber: cleanPhone,
-      role: 'patient',
-      isActive: true,
-      status: 'active',
-      isProfileCompleted: true,
-    });
-
-    const profile = await PatientProfile.create({
-      userId: user._id,
-      dob: dob ? new Date(dob) : undefined,
-      gender: gender || 'other',
-      address,
-      primaryConcern,
-    });
+    const profile = await PatientProfile.findOneAndUpdate(
+      { userId: user._id },
+      {
+        userId: user._id,
+        dob: dob ? new Date(dob) : undefined,
+        gender: gender || 'other',
+        address,
+        primaryConcern,
+        profileImageUrl: cleanImg,
+        isDeleted: false
+      },
+      { upsert: true, new: true }
+    );
 
     res.status(201).json({ success: true, data: { user: user.toSafeObject(), profile } });
   } catch (err) {
@@ -590,21 +687,31 @@ export const adminUpdatePatient = async (req, res) => {
     const { id } = req.params;
     const userUpdates = {};
     if (req.body.name) userUpdates.name = req.body.name.trim();
+    if (req.body.phoneNumber || req.body.phone) userUpdates.phoneNumber = normalizePhone(req.body.phoneNumber || req.body.phone);
+    if (req.body.email) userUpdates.email = req.body.email.trim().toLowerCase();
+    if (req.body.profileImageUrl || req.body.avatarUrl || req.body.photoUrl) {
+      const img = req.body.profileImageUrl || req.body.avatarUrl || req.body.photoUrl;
+      userUpdates.profileImageUrl = img;
+    }
     if (req.body.status) userUpdates.status = req.body.status;
     if (req.body.isActive !== undefined) userUpdates.isActive = req.body.isActive;
-
-    const updatedUser = await User.findOneAndUpdate({ _id: id, role: 'patient' }, userUpdates, { new: true });
-    if (!updatedUser) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Patient not found.' } });
-    }
 
     const profileUpdates = { ...req.body };
     delete profileUpdates.name;
     delete profileUpdates.status;
     delete profileUpdates.isActive;
+    if (userUpdates.profileImageUrl) profileUpdates.profileImageUrl = userUpdates.profileImageUrl;
 
-    const profile = await PatientProfile.findOneAndUpdate({ userId: id }, profileUpdates, { new: true, upsert: true });
-    res.json({ success: true, data: { user: updatedUser.toSafeObject(), profile } });
+    const profile = await PatientProfile.findOneAndUpdate(
+      { $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] },
+      profileUpdates,
+      { new: true, upsert: true }
+    );
+
+    const effectiveUserId = profile?.userId || id;
+    const updatedUser = await User.findByIdAndUpdate(effectiveUserId, userUpdates, { new: true });
+
+    res.json({ success: true, data: { user: updatedUser ? updatedUser.toSafeObject() : null, profile } });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
@@ -639,14 +746,21 @@ export const adminCreateTherapist = async (req, res) => {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
     }
 
-    const { name, email, phoneNumber, specializations, qualifications, experienceYears, consultationFee, clinicName, clinicLocation, bio } = req.body;
+    const {
+      name, email, phoneNumber, phone,
+      profileImageUrl, avatarUrl, photoUrl,
+      specializations, qualifications, experienceYears,
+      consultationFee, clinicName, clinicLocation, bio
+    } = req.body;
 
-    if (!name || (!email && !phoneNumber)) {
+    const rawPhone = phoneNumber || phone;
+    if (!name || (!email && !rawPhone)) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name and email or phoneNumber are required.' } });
     }
 
     const cleanEmail = email ? email.toLowerCase().trim() : undefined;
-    const cleanPhone = phoneNumber ? normalizePhone(phoneNumber) : undefined;
+    const cleanPhone = rawPhone ? normalizePhone(rawPhone) : undefined;
+    const cleanImg = profileImageUrl || avatarUrl || photoUrl || undefined;
 
     const existing = await User.findOne({
       $or: [
@@ -664,6 +778,9 @@ export const adminCreateTherapist = async (req, res) => {
       }
       // Re-use existing orphaned user account
       user.name = name.trim();
+      if (cleanEmail) user.email = cleanEmail;
+      if (cleanPhone) user.phoneNumber = cleanPhone;
+      if (cleanImg) user.profileImageUrl = cleanImg;
       user.role = 'therapist';
       user.isActive = true;
       user.status = 'active';
@@ -674,6 +791,7 @@ export const adminCreateTherapist = async (req, res) => {
         name: name.trim(),
         email: cleanEmail,
         phoneNumber: cleanPhone,
+        profileImageUrl: cleanImg,
         role: 'therapist',
         status: 'active',
         isActive: true,
@@ -693,6 +811,7 @@ export const adminCreateTherapist = async (req, res) => {
       {
         userId: user._id,
         name: name.trim(),
+        profileImageUrl: cleanImg,
         specializations: Array.isArray(specializations) ? specializations : ['Orthopedic Physiotherapy'],
         qualifications: Array.isArray(qualifications) ? qualifications : ['MPT - Orthopedics'],
         experienceYears: Number(experienceYears) || 0,
@@ -726,10 +845,17 @@ export const adminUpdateTherapist = async (req, res) => {
     const { id } = req.params;
     const userUpdates = {};
     if (req.body.name) userUpdates.name = req.body.name.trim();
+    if (req.body.phoneNumber || req.body.phone) userUpdates.phoneNumber = normalizePhone(req.body.phoneNumber || req.body.phone);
+    if (req.body.email) userUpdates.email = req.body.email.trim().toLowerCase();
+    if (req.body.profileImageUrl || req.body.avatarUrl || req.body.photoUrl) {
+      const img = req.body.profileImageUrl || req.body.avatarUrl || req.body.photoUrl;
+      userUpdates.profileImageUrl = img;
+    }
     if (req.body.status) userUpdates.status = req.body.status;
     if (req.body.isActive !== undefined) userUpdates.isActive = req.body.isActive;
 
     const updates = { ...req.body };
+    if (userUpdates.profileImageUrl) updates.profileImageUrl = userUpdates.profileImageUrl;
     if (updates.clinicLocation && typeof updates.clinicLocation === 'string') {
       updates.clinicLocation = { address: updates.clinicLocation, lat: 12.9716, lng: 77.5946 };
     }
