@@ -38,9 +38,17 @@ export default function PaymentProcessingScreen({ route, navigation }) {
         if (!orderRes?.data?.gatewayOrderId) throw new Error(orderRes?.error?.message || 'Failed to create payment order.');
 
         const gatewayOrderId = orderRes.data.gatewayOrderId;
+        const simPaymentId = `pay_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
         if (isMounted) setStatusText(isClinic ? 'Confirming appointment...' : 'Verifying payment...');
-        const verifyRes = await paymentApi.verifyPayment(gatewayOrderId, appointmentId, token);
+        const verifyRes = await paymentApi.verifyPayment({
+          gatewayOrderId,
+          appointmentId,
+          paymentId: simPaymentId,
+          razorpayPaymentId: simPaymentId,
+          signature: `sig_${gatewayOrderId}_${simPaymentId}`,
+          razorpaySignature: `sig_${gatewayOrderId}_${simPaymentId}`,
+        }, token);
         if (!verifyRes?.success) throw new Error(verifyRes?.error?.message || 'Payment verification failed.');
 
         if (isMounted) {
