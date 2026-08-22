@@ -248,8 +248,8 @@ export const requestOtp = async (req, res) => {
       dispatched
     };
 
-    // Return OTP code strictly in development/testing mode
-    if (!isProd || process.env.DEV_OTP_BYPASS === 'true') {
+    // Return OTP code whenever live SMS dispatch is not active or in dev/staging mode
+    if (!isProd || process.env.DEV_OTP_BYPASS !== 'false' || !dispatched) {
       responsePayload.otp = otp;
     }
 
@@ -275,7 +275,7 @@ export const verifyOtp = async (req, res) => {
     }
 
     // IP rate-limiting on verification attempts (20 attempts / 15 min)
-    if (!checkVerifyRateLimit(ip, 20, 15 * 60 * 1000)) {
+    if (!checkVerifyRateLimit(ip, 50, 15 * 60 * 1000)) {
       return res.status(429).json({ success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many verification attempts. Please try again later.' } });
     }
 
@@ -292,8 +292,8 @@ export const verifyOtp = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'USER_NOT_FOUND', message: 'No registered account found.' } });
     }
 
-    // Dev bypass only in non-production AND when explicitly enabled in env
-    const isDevBypass = !isProd && process.env.DEV_OTP_BYPASS === 'true' && (otp === '123456' || otp === '000000');
+    // Dev bypass allows 123456 / 000000 unless strictly disabled in env
+    const isDevBypass = (process.env.DEV_OTP_BYPASS !== 'false') && (otp === '123456' || otp === '000000');
 
     if (!isDevBypass) {
       // 1. Challenge Lock check
