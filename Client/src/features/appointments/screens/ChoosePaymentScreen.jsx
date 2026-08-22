@@ -172,38 +172,35 @@ export default function ChoosePaymentScreen({ route, navigation }) {
           )}
         </TouchableOpacity>
 
-        {/* OPTION 2: PAY VIA UPI AT CLINIC RECEPTION (IN-CLINIC VISITS ONLY) */}
-        {appointment?.appointmentPlace === 'telehealth' || appointment?.serviceType === 'online_consultation' ? (
-          <View style={[styles.optionCard, { opacity: 0.6, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }]}>
-            <View style={styles.optionHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.optionTitle, { color: '#64748b' }]}>Pay at Clinic (Disabled for Telehealth)</Text>
-                <Text style={styles.optionSub}>
-                  Online video sessions require upfront UPI payment confirmation to connect with the specialist.
-                </Text>
+        {/* OPTION 2: PAY AT CLINIC RECEPTION (FOR IN-PERSON CLINIC VISITS ONLY) */}
+        {(() => {
+          const place = String(appointment?.appointmentPlace || 'CLINIC').toUpperCase();
+          const UPFRONT_ONLY_PLACES = ['VIDEO', 'ONLINE', 'TELEHEALTH', 'HOME'];
+
+          if (UPFRONT_ONLY_PLACES.includes(place)) {
+            return null; // Do not show Pay at Clinic for Online Video or Home Visit bookings
+          }
+
+          return (
+            <TouchableOpacity
+              style={[styles.optionCard, paymentType === 'clinic' && styles.optionCardSelected, { marginTop: 12 }]}
+              activeOpacity={0.9}
+              onPress={() => setPaymentType('clinic')}
+            >
+              <View style={styles.optionHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionTitle}>Pay at Clinic Reception</Text>
+                  <Text style={styles.optionSub}>
+                    Pay upon arrival at the clinic reception desk (Cash, UPI QR, or POS Machine).
+                  </Text>
+                </View>
+                <View style={[styles.radioCircle, paymentType === 'clinic' && styles.radioCircleActive]}>
+                  {paymentType === 'clinic' && <View style={styles.radioInner} />}
+                </View>
               </View>
-              <Ionicons name="lock-closed" size={18} color="#94a3b8" />
-            </View>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.optionCard, paymentType === 'clinic' && styles.optionCardSelected]}
-            activeOpacity={0.9}
-            onPress={() => setPaymentType('clinic')}
-          >
-            <View style={styles.optionHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.optionTitle}>Pay at Clinic Reception</Text>
-                <Text style={styles.optionSub}>
-                  Pay upon arrival at the clinic reception desk (Cash, UPI QR, or Counter).
-                </Text>
-              </View>
-              <View style={[styles.radioCircle, paymentType === 'clinic' && styles.radioCircleActive]}>
-                {paymentType === 'clinic' && <View style={styles.radioInner} />}
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
+            </TouchableOpacity>
+          );
+        })()}
 
         {/* PAYMENT SUMMARY */}
         <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 12 }]}>Payment Summary</Text>

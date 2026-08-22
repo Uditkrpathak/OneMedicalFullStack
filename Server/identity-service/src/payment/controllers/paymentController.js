@@ -406,6 +406,17 @@ export const generateClinicDynamicQr = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
     }
 
+    const place = String(appointment.appointmentPlace || 'CLINIC').toUpperCase();
+    if (['VIDEO', 'ONLINE', 'TELEHEALTH', 'HOME'].includes(place)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'UPFRONT_PAYMENT_REQUIRED',
+          message: `Pay-at-clinic is not permitted for ${place} appointments. Upfront online payment is required.`
+        }
+      });
+    }
+
     const rawAmt = appointment.amountPaise || appointment.amount || (appointment.fee ? appointment.fee * 100 : undefined);
     if (!rawAmt || isNaN(rawAmt) || rawAmt <= 0) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'Appointment amount is invalid.' } });
@@ -490,6 +501,18 @@ export const verifyClinicPayment = async (req, res) => {
     const appointment = await getAppointmentInternal(appointmentId);
     if (!appointment) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found in clinical database.' }, requestId });
+    }
+
+    const place = String(appointment.appointmentPlace || 'CLINIC').toUpperCase();
+    if (['VIDEO', 'ONLINE', 'TELEHEALTH', 'HOME'].includes(place)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'UPFRONT_PAYMENT_REQUIRED',
+          message: `Pay-at-clinic is not permitted for ${place} appointments. Upfront online payment is required.`
+        },
+        requestId
+      });
     }
 
     const rawAmt = appointment.amountPaise || appointment.amount || (appointment.fee ? appointment.fee * 100 : 80000);
