@@ -44,15 +44,18 @@ export function isAuthorizedAdmin(req) {
 
 export function getCanonicalRevenueInr(appointment) {
   if (!appointment) return 0;
-  if (typeof appointment.amount === 'number') {
-    return Math.max(0, appointment.amount);
+  if (typeof appointment.amount === 'number' && appointment.amount > 0) {
+    return appointment.amount;
   }
-  if (typeof appointment.paidAmount === 'number') {
-    return Math.max(0, appointment.paidAmount);
+  if (typeof appointment.paidAmount === 'number' && appointment.paidAmount > 0) {
+    return appointment.paidAmount;
+  }
+  if (typeof appointment.amountPaise === 'number' && appointment.amountPaise > 0) {
+    return Math.round(appointment.amountPaise / 100);
   }
   if (appointment.amount) {
     const num = Number(appointment.amount);
-    if (!isNaN(num)) return Math.max(0, num);
+    if (!isNaN(num) && num > 0) return num;
   }
   return 0;
 }
@@ -431,7 +434,7 @@ export const getTherapistStats = async (req, res) => {
                     { $in: [{ $toUpper: '$paymentStatus' }, PAID_STATUSES] }
                   ]
                 },
-                { $ifNull: ['$amount', 0] },
+                { $round: [{ $divide: [{ $ifNull: ['$amount', 0] }, 100] }, 0] },
                 0
               ]
             }

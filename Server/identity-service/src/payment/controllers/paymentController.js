@@ -5,19 +5,22 @@ import { Invoice, Refund, Payout } from '../../models/Billing.js';
 import { getNextSequence } from '../../models/Counter.js';
 import User from '../../models/User.js';
 import TherapistProfile from '../../models/TherapistProfile.js';
-import { createRazorpayOrder, verifyRazorpaySignature } from '../services/razorpayService.js';
+import { createRazorpayOrder, verifyRazorpaySignature, createRazorpayRefund } from '../services/razorpayService.js';
 import { confirmAppointmentInternal, getAppointmentInternal } from '../services/appointmentConfirm.js';
 import { publishEvent } from '../../utils/rabbitmq.js';
 
 const IS_DEV = process.env.NODE_ENV !== 'production';
+const ALLOWED_ADMIN_ROLES = ['clinic_admin', 'super_admin', 'admin'];
+
+export const isAdminRole = (role) => ALLOWED_ADMIN_ROLES.includes(role);
 
 // ─── POST /payments/orders ────────────────────────────────────────────────────
 // Server-side authoritative order generation — amount is never accepted from client
 export const createOrder = async (req, res) => {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
   try {
-    const requesterId = req.user?.userId || req.headers['x-user-id'];
-    const userRole    = req.user?.role   || req.headers['x-user-role'];
+    const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'patient';
     const { appointmentId, paymentMethod = 'upi', paymentPlace = 'online', idempotencyKey, upiApp = 'OTHER' } = req.body;
 
     if (!appointmentId) {
@@ -31,7 +34,7 @@ export const createOrder = async (req, res) => {
     }
 
     // 2. Validate patient ownership or administrative privilege
-    if (userRole === 'patient' && requesterId && appointment.patientId && appointment.patientId !== requesterId) {
+    if (userRole === 'patient' && requesterId && appointment.patientId && String(appointment.patientId) !== String(requesterId)) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You can only pay for your own appointments.' }, requestId });
     }
 
@@ -46,6 +49,14 @@ export const createOrder = async (req, res) => {
     if (appointment.status !== 'HELD' && appointment.status !== 'CONFIRMED') {
       return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Appointment is not in a payable state (current: ${appointment.status}).` }, requestId });
     }
+
+    // Authoritative Amount Resolution (No Arbitrary Hardcoded Default)
+    const rawAmt = appointment.amountPaise || appointment.amount || (appointment.fee ? appointment.fee * 100 : undefined);
+    if (!rawAmt || isNaN(rawAmt) || rawAmt <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_APPOINTMENT_AMOUNT', message: 'Authoritative appointment pricing is missing or invalid.' }, requestId });
+    }
+    const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
+    const currency = appointment.currency || 'INR';
 
     // 3. Idempotency: check if transaction already exists for this appointment
     const effectiveIdempotencyKey = idempotencyKey || appointmentId;
@@ -71,9 +82,6 @@ export const createOrder = async (req, res) => {
         requestId
       });
     }
-
-    const amountPaise = appointment.amount || 75000;
-    const currency = appointment.currency || 'INR';
 
     // 4. Create or retrieve Razorpay gateway order
     let gatewayOrderId = transaction?.gatewayOrderId || transaction?.razorpayOrderId;
@@ -135,12 +143,11 @@ export const createOrder = async (req, res) => {
   }
 };
 
-// ─── POST /payments/verify (STRICT 10-POINT GATEWAY VERIFICATION) ─────────────
-// Server-side cryptographic signature verification and atomic appointment confirmation
+// ─── POST /payments/verify (STRICT GATEWAY VERIFICATION) ──────────────────────
 export const verifyPayment = async (req, res) => {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
   try {
-    const requesterId = req.user?.userId || req.headers['x-user-id'];
+    const requesterId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
     const {
       appointmentId,
       gatewayOrderId,
@@ -154,11 +161,39 @@ export const verifyPayment = async (req, res) => {
     } = req.body;
 
     const effectiveOrderId = razorpayOrderId || gatewayOrderId;
-    const effectivePaymentId = razorpayPaymentId || paymentId || `pay_sim_${Date.now()}`;
     const effectiveSignature = razorpaySignature || signature;
+    let effectivePaymentId = razorpayPaymentId || paymentId;
 
     if (!appointmentId || !effectiveOrderId) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'appointmentId and orderId are required.' }, requestId });
+    }
+
+    // Strict Gateway Signature Verification in Production
+    if (process.env.NODE_ENV === 'production') {
+      if (!effectivePaymentId || !effectiveSignature) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'PAYMENT_VERIFICATION_DATA_MISSING',
+            message: 'Payment verification data is incomplete (paymentId and signature are required).'
+          },
+          requestId
+        });
+      }
+
+      const isValid = verifyRazorpaySignature(effectiveOrderId, effectivePaymentId, effectiveSignature);
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'PAYMENT_SIGNATURE_INVALID', message: 'Razorpay HMAC signature verification failed.' },
+          requestId
+        });
+      }
+    } else {
+      // Isolated development simulation only when no real payment ID provided
+      if (!effectivePaymentId) {
+        effectivePaymentId = `pay_sim_${Date.now()}`;
+      }
     }
 
     // 1. Fast Idempotency Check on Transaction
@@ -206,11 +241,15 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'PAYMENT_APPOINTMENT_CANCELLED', message: 'Cannot verify payment on cancelled appointment.' }, requestId });
     }
 
-    const amountPaise = appointment.amount || transaction?.amountPaise || 75000;
+    const rawAmt = appointment.amountPaise || appointment.amount || transaction?.amountPaise;
+    if (!rawAmt || isNaN(rawAmt) || rawAmt <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'Appointment pricing is missing.' }, requestId });
+    }
+    const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
     const currency = appointment.currency || 'INR';
 
     // 3. Strict Amount Validation
-    if (transaction?.amountPaise && appointment?.amount && transaction.amountPaise !== appointment.amount) {
+    if (transaction?.amountPaise && amountPaise && transaction.amountPaise !== amountPaise) {
       await PaymentAttempt.create({
         appointmentId,
         patientId: requesterId || appointment.patientId,
@@ -226,27 +265,7 @@ export const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'PAYMENT_AMOUNT_MISMATCH', message: 'Payment amount mismatch with authoritative appointment pricing.' }, requestId });
     }
 
-    // 4. Cryptographic HMAC Signature Verification
-    if (effectiveSignature && process.env.NODE_ENV === 'production') {
-      const isValid = verifyRazorpaySignature(effectiveOrderId, effectivePaymentId, effectiveSignature);
-      if (!isValid) {
-        await PaymentAttempt.create({
-          appointmentId,
-          patientId: requesterId || appointment.patientId,
-          gatewayOrderId: effectiveOrderId,
-          gatewayPaymentId: effectivePaymentId,
-          amountPaise,
-          status: 'FAILED',
-          failureCode: 'PAYMENT_SIGNATURE_INVALID',
-          failureReason: 'Razorpay HMAC signature verification failed.',
-          requestId,
-        }).catch(() => null);
-
-        return res.status(400).json({ success: false, error: { code: 'PAYMENT_SIGNATURE_INVALID', message: 'Razorpay HMAC signature verification failed.' }, requestId });
-      }
-    }
-
-    // 5. Atomic Transition on Transaction (Optimistic versioning)
+    // 4. Atomic Transition on Transaction (Optimistic versioning)
     let capturedTxn;
     if (transaction) {
       capturedTxn = await Transaction.findOneAndUpdate(
@@ -310,16 +329,16 @@ export const verifyPayment = async (req, res) => {
       requestId,
     }).catch(() => null);
 
-    // 6. Authoritatively Confirm Appointment in Clinical Service (with transaction reference)
+    // 5. Authoritatively Confirm Appointment in Clinical Service (with transaction reference)
     await confirmAppointmentInternal(appointmentId, effectiveOrderId, effectivePaymentId, capturedTxn._id);
 
-    // 7. Generate GST Tax Invoice atomically & idempotently
+    // 6. Generate GST Tax Invoice atomically & idempotently
     let invoice = await Invoice.findOne({ $or: [{ transactionId: capturedTxn._id }, { appointmentId }] });
     if (!invoice) {
       try {
         const seq = await getNextSequence('invoice_seq');
         const invoiceNumber = `INV-${new Date().getFullYear()}-${String(seq).padStart(5, '0')}`;
-        const totalAmountPaise = amountPaise || 75000;
+        const totalAmountPaise = amountPaise;
         const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
         const taxesPaise = totalAmountPaise - consultationFeePaise;
 
@@ -338,7 +357,6 @@ export const verifyPayment = async (req, res) => {
           generatedAt: new Date()
         });
       } catch (invoiceErr) {
-        // Fallback in case of concurrent invoice creation race condition
         invoice = await Invoice.findOne({ $or: [{ transactionId: capturedTxn._id }, { appointmentId }] });
       }
     }
@@ -357,7 +375,7 @@ export const verifyPayment = async (req, res) => {
       amount: invoice.totalAmount,
       invoiceNumber: invoice.invoiceNumber,
       paymentId: effectivePaymentId
-    });
+    }).catch(e => console.warn('[Payment] Event publish warning:', e.message));
 
     res.json({
       success: true,
@@ -376,7 +394,6 @@ export const verifyPayment = async (req, res) => {
 };
 
 // ─── POST /payments/clinic/dynamic-qr ─────────────────────────────────────────
-// Generates an authoritative dynamic UPI QR payload for in-clinic patient payment
 export const generateClinicDynamicQr = async (req, res) => {
   try {
     const { appointmentId } = req.body;
@@ -389,7 +406,10 @@ export const generateClinicDynamicQr = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
     }
 
-    const rawAmt = appointment.amount || appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 80000);
+    const rawAmt = appointment.amountPaise || appointment.amount || (appointment.fee ? appointment.fee * 100 : undefined);
+    if (!rawAmt || isNaN(rawAmt) || rawAmt <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_AMOUNT', message: 'Appointment amount is invalid.' } });
+    }
     const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
     const amountRupees = Math.round(amountPaise / 100);
 
@@ -455,70 +475,6 @@ export const generateClinicDynamicQr = async (req, res) => {
   }
 };
 
-// ─── POST /payments/clinic/verify ─────────────────────────────────────────────
-// Server-side verification for in-clinic UPI payment — NO unverified mark paid!
-export const verifyClinicPayment = async (req, res) => {
-  try {
-    const { appointmentId, gatewayOrderId, paymentId } = req.body;
-    return verifyPayment({
-      ...req,
-      body: {
-        appointmentId,
-        gatewayOrderId,
-        paymentId: paymentId || `pay_clinic_upi_${Date.now()}`,
-        paymentMethod: 'UPI',
-      }
-    }, res);
-  } catch (err) {
-    console.error('[Payment] verifyClinicPayment error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── GET /payments/transactions/my ────────────────────────────────────────────
-export const getMyTransactions = async (req, res) => {
-  try {
-    const requesterId = req.user?.userId || req.headers['x-user-id'];
-    const userRole = req.user?.role || req.headers['x-user-role'];
-    const { patientId: queryPatientId } = req.query;
-
-    const filter = {};
-    if (userRole === 'patient') {
-      filter.patientId = requesterId;
-    } else if (queryPatientId) {
-      filter.patientId = queryPatientId;
-    } else if (userRole !== 'clinic_admin' && userRole !== 'super_admin') {
-      filter.patientId = requesterId;
-    }
-
-    let txns = await Transaction.find(filter).sort({ createdAt: -1 }).lean();
-
-    // Enrich therapist names from TherapistProfile/User
-    const therapistIds = Array.from(new Set(txns.map(t => t.therapistId).filter(Boolean)));
-    if (therapistIds.length > 0) {
-      const therapists = await TherapistProfile.find({
-        $or: [{ userId: { $in: therapistIds } }, { _id: { $in: therapistIds } }]
-      }).populate('userId', 'name').lean();
-
-      const tMap = new Map();
-      therapists.forEach(t => {
-        const name = t.userId?.name || t.fullName || t.name;
-        if (t.userId?._id) tMap.set(t.userId._id.toString(), name);
-        if (t._id) tMap.set(t._id.toString(), name);
-      });
-
-      txns = txns.map(t => ({
-        ...t,
-        therapistName: tMap.get(t.therapistId?.toString()) || 'Dr. Ananya Iyer',
-      }));
-    }
-
-    res.json({ success: true, data: txns });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
 // ─── GET /payments/invoices/my ────────────────────────────────────────────────
 export const getMyInvoices = async (req, res) => {
   return getInvoices(req, res);
@@ -528,45 +484,15 @@ export const getMyInvoices = async (req, res) => {
 export const getInvoices = async (req, res) => {
   try {
     const userRole = req.user?.role || req.headers['x-user-role'];
-    const userId = req.user?.userId || req.headers['x-user-id'];
-    const filter = (userRole === 'clinic_admin' || userRole === 'super_admin') ? {} : { patientId: userId };
-    let invoices = await Invoice.find(filter).sort({ createdAt: -1 }).lean();
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const isAdmin = isAdminRole(userRole);
 
-    // If no direct invoice documents exist, also check Transactions for this patient
-    if (userId) {
-      const txns = await Transaction.find({ patientId: userId }).sort({ createdAt: -1 }).lean();
-      const existingTxnIds = new Set(invoices.map(i => i.transactionId?.toString()).filter(Boolean));
-
-      for (const t of txns) {
-        if (!existingTxnIds.has(t._id.toString())) {
-          const totalAmountPaise = t.amountPaise || 75000;
-          const consultationFeePaise = Math.round(totalAmountPaise / 1.18);
-          const taxesPaise = totalAmountPaise - consultationFeePaise;
-          const invNum = t.invoiceNumber || `INV-${new Date(t.createdAt || Date.now()).getFullYear()}-${String(t._id).slice(-5).toUpperCase()}`;
-
-          const isRefunded = t.status === 'refunded' || t.status === 'REFUNDED';
-          const isPaid = t.status === 'captured' || t.status === 'PAID';
-
-          invoices.push({
-            _id: t.invoiceId || t._id,
-            invoiceNumber: invNum,
-            transactionId: t._id,
-            appointmentId: t.appointmentId,
-            patientId: t.patientId,
-            therapistId: t.therapistId,
-            consultationFee: consultationFeePaise,
-            taxes: taxesPaise,
-            discount: 0,
-            totalAmount: totalAmountPaise,
-            currency: 'INR',
-            status: isRefunded ? 'REFUNDED' : (isPaid ? 'PAID' : (t.status?.toUpperCase() || 'PENDING')),
-            refundedAt: t.refundedAt,
-            generatedAt: t.capturedAt || t.createdAt || new Date(),
-            createdAt: t.createdAt || new Date(),
-          });
-        }
-      }
+    if (!userId && !isAdmin) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
     }
+
+    const filter = isAdmin ? {} : { patientId: String(userId) };
+    let invoices = await Invoice.find(filter).sort({ createdAt: -1 }).lean();
 
     // Enrich therapist details and formatting
     const therapistIds = Array.from(new Set(invoices.map(i => i.therapistId).filter(Boolean)));
@@ -585,12 +511,12 @@ export const getInvoices = async (req, res) => {
 
     // Fetch patient user info
     let patientName = 'Patient';
-    let patientPhone = '+91 98765 43210';
+    let patientPhone = '';
     if (userId) {
       const u = await User.findById(userId).lean();
       if (u) {
         patientName = u.name || patientName;
-        patientPhone = u.phoneNumber || patientPhone;
+        patientPhone = u.phoneNumber || '';
       }
     }
 
@@ -599,7 +525,7 @@ export const getInvoices = async (req, res) => {
       const feeVal = inv.consultationFee > 5000 ? Math.round(inv.consultationFee / 100) : (inv.consultationFee || amtVal);
       const taxVal = inv.taxes > 5000 ? Math.round(inv.taxes / 100) : (inv.taxes || 0);
 
-      const dName = tMap.get(inv.therapistId?.toString()) || inv.doctorName || 'Dr. Specialist';
+      const dName = tMap.get(inv.therapistId?.toString()) || inv.doctorName || 'Attending Specialist';
       const genDate = inv.generatedAt || inv.createdAt || new Date();
       const isRefunded = inv.status === 'REFUNDED' || inv.status === 'refunded';
 
@@ -634,17 +560,18 @@ export const getInvoices = async (req, res) => {
   }
 };
 
-// ─── GET /payments/invoices/:id ───────────────────────────────────────────────
+// ─── GET /payments/invoices/:id (AUTHORIZATION VERIFIED) ──────────────────────
 export const getInvoiceById = async (req, res) => {
   try {
     const { id } = req.params;
-    let invoice = null;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'patient';
+    const isAdmin = isAdminRole(userRole);
 
+    let invoice = null;
     try {
       invoice = await Invoice.findById(id).lean();
-    } catch {
-      // not a valid ObjectId for invoice
-    }
+    } catch {}
 
     if (!invoice) {
       invoice = await Invoice.findOne({ $or: [{ transactionId: id }, { appointmentId: id }, { invoiceNumber: id }] }).lean();
@@ -656,9 +583,7 @@ export const getInvoiceById = async (req, res) => {
     } else {
       try {
         txn = await Transaction.findOne({ $or: [{ _id: id }, { appointmentId: id }, { gatewayOrderId: id }, { razorpayOrderId: id }] }).lean();
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     let appt = null;
@@ -666,22 +591,21 @@ export const getInvoiceById = async (req, res) => {
     if (targetApptId) {
       try {
         appt = await getAppointmentInternal(targetApptId);
-      } catch {
-        // ignore
-      }
-    }
-
-    let refundDoc = null;
-    if (txn?._id) {
-      refundDoc = await Refund.findOne({ transactionId: txn._id }).lean();
+      } catch {}
     }
 
     if (!invoice && !txn && !appt) {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found for the requested transaction.' } });
     }
 
+    // Ownership & Privacy Authorization Check
+    const targetPatientId = String(invoice?.patientId || txn?.patientId || appt?.patientId || '');
+    if (!isAdmin && userId && targetPatientId && String(userId) !== targetPatientId) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You are not authorized to view this invoice.' } });
+    }
+
     // Resolve therapist name
-    let therapistName = appt?.therapistName || 'Dr. Specialist';
+    let therapistName = appt?.therapistName || 'Attending Specialist';
     const targetTherapistId = invoice?.therapistId || txn?.therapistId || appt?.therapistId;
     if (targetTherapistId) {
       const t = await TherapistProfile.findOne({
@@ -692,17 +616,15 @@ export const getInvoiceById = async (req, res) => {
 
     // Resolve patient details
     let patientName = appt?.patientName || 'Patient';
-    let patientPhone = '+91 98765 43210';
-    const targetPatientId = invoice?.patientId || txn?.patientId || appt?.patientId || req.user?.userId;
+    let patientPhone = '';
     if (targetPatientId) {
       const pUser = await User.findById(targetPatientId).lean();
       if (pUser) {
         patientName = pUser.name || patientName;
-        patientPhone = pUser.phoneNumber || patientPhone;
+        patientPhone = pUser.phoneNumber || '';
       }
     }
 
-    // Calculate real amounts accurately in Rupees
     const rawAmount = invoice?.totalAmount || txn?.amountPaise || appt?.amount || 0;
     const totalAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
     const consultationFee = invoice?.consultationFee
@@ -711,95 +633,29 @@ export const getInvoiceById = async (req, res) => {
     const taxes = invoice?.taxes ? (invoice.taxes > 5000 ? Math.round(invoice.taxes / 100) : invoice.taxes) : 0;
     const discount = invoice?.discount ? (invoice.discount > 5000 ? Math.round(invoice.discount / 100) : invoice.discount) : 0;
 
-    const isRefunded =
-      txn?.status === 'refunded' ||
-      txn?.status === 'REFUNDED' ||
-      appt?.paymentStatus === 'REFUNDED' ||
-      refundDoc?.status === 'processed' ||
-      invoice?.status === 'REFUNDED';
-
-    const isRefundPending =
-      appt?.paymentStatus === 'REFUND_PENDING' ||
-      refundDoc?.status === 'initiated';
-
-    const refundAmountRaw = refundDoc?.amountPaise || txn?.amountPaise || rawAmount;
-    const refundAmount = refundAmountRaw > 5000 ? Math.round(refundAmountRaw / 100) : refundAmountRaw;
-
+    const isRefunded = txn?.status === 'refunded' || txn?.status === 'REFUNDED' || appt?.paymentStatus === 'REFUNDED' || invoice?.status === 'REFUNDED';
     const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`;
     const genDate = invoice?.generatedAt || txn?.capturedAt || txn?.createdAt || appt?.createdAt || new Date();
 
-    // Resolve Mode and Location
-    const place = (appt?.appointmentPlace || appt?.appointmentType || appt?.serviceType || '').toUpperCase();
-    let consultationMode = 'In-Person Clinic Visit';
-    let defaultService = 'In-Clinic Physiotherapy Consultation & Rehabilitation';
-    let serviceLocation = 'ONE MEDICAL Clinic & Rehabilitation Hub • 4th Floor, Health Tower, Indiranagar, Bengaluru';
-
-    if (place.includes('HOME')) {
-      consultationMode = 'Home Visit (At-Home Care)';
-      defaultService = 'At-Home Physiotherapy Consultation & Care';
-      const snap = appt?.patientAddressSnapshot;
-      if (snap && (snap.addressLine1 || snap.city)) {
-        serviceLocation = [
-          snap.addressLine1,
-          snap.addressLine2,
-          snap.landmark ? `(Near ${snap.landmark})` : null,
-          snap.city,
-          snap.state,
-          snap.postalCode ? `- ${snap.postalCode}` : null,
-          snap.country
-        ].filter(Boolean).join(', ');
-      } else {
-        serviceLocation = appt?.patientAddress || appt?.address || 'Patient Residence (At-Home Clinical Care)';
-      }
-    } else if (place.includes('VIDEO') || place.includes('TELEHEALTH') || place.includes('ONLINE')) {
-      consultationMode = 'Online Video Consultation';
-      defaultService = 'Online Video Telehealth Consultation';
-      serviceLocation = 'OneMedical Encrypted WebRTC Telehealth Suite (Online Virtual Room)';
-    }
-
-    const isPaidOnline = txn?.paymentPlace === 'online' || txn?.gateway === 'razorpay' || (!txn?.paymentPlace && txn?.gatewayOrderId);
-    const paymentChannelStr = isPaidOnline ? 'Paid Online (UPI / Card / Instant Gateway)' : 'Paid at Clinic Reception Desk';
-
     const result = {
-      _id: invoice?._id || txn?._id || id,
+      invoiceId: invoice?._id || txn?._id,
       invoiceNumber: invNumber,
-      transactionId: txn?._id || invoice?.transactionId || String(id),
-      gatewayPaymentId: txn?.gatewayPaymentId || txn?.razorpayPaymentId || `pay_${String(id).slice(-8)}`,
-      gatewayOrderId: txn?.gatewayOrderId || txn?.razorpayOrderId || `order_${String(id).slice(-8)}`,
+      transactionId: txn?._id || invoice?.transactionId,
+      gatewayOrderId: txn?.gatewayOrderId || txn?.razorpayOrderId,
+      gatewayPaymentId: txn?.gatewayPaymentId || txn?.razorpayPaymentId,
       appointmentId: targetApptId,
       patientId: targetPatientId,
       patientName,
       patientPhone,
-      doctorName: therapistName,
-      consultationMode,
-      serviceLocation,
-      paymentChannel: paymentChannelStr,
-      department: appt?.serviceType?.replace(/_/g, ' ') || 'Orthopedic Physiotherapy & Rehabilitation',
-      serviceName: appt?.serviceName || defaultService,
-      clinicName: 'ONE MEDICAL Clinic & Rehabilitation Hub',
-      address: '4th Floor, Health Tower, 100 Feet Rd, Indiranagar, Bengaluru, Karnataka 560038',
-      gstin: '29AABCU9603R1ZM',
-      cin: 'U85110KA2026PTC154201',
-      sacCode: '999312',
-      natureOfSupply: 'Healthcare & Medical Rehabilitation Services (Exempt under GST Notification No. 12/2017-CT)',
+      therapistName,
       totalAmount,
       consultationFee,
       taxes,
       discount,
       currency: 'INR',
-      amountFormatted: `₹${totalAmount.toLocaleString('en-IN')}`,
-      status: isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND_PENDING' : (invoice?.status || (txn?.status === 'captured' ? 'PAID' : (txn?.status?.toUpperCase() || 'PAID')))),
-      isRefunded,
-      isRefundPending,
-      refundAmount: isRefunded || isRefundPending ? refundAmount : 0,
-      refundDate: isRefunded ? (txn?.refundedAt || refundDoc?.updatedAt || new Date()) : null,
-      refundReason: refundDoc?.reason || appt?.cancellationReason || 'Appointment Cancelled / Free Cancellation Policy',
-      gatewayRefundId: refundDoc?.gatewayRefundId || `rfnd_${String(txn?._id || id).slice(-8)}`,
-      paymentMethod: `${(txn?.paymentMethod || appt?.paymentMethod || 'UPI').toUpperCase()} • ${paymentChannelStr}`,
-      generatedAt: genDate,
+      status: isRefunded ? 'REFUNDED' : 'PAID',
       issuedDate: new Date(genDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       issuedTime: new Date(genDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
-      taxExemptionNote: 'Eligible for Tax Exemption under Section 80D of the Income Tax Act for preventive medical healthcare & physiotherapy consultations.',
       isComputerGenerated: true,
     };
 
@@ -810,17 +666,19 @@ export const getInvoiceById = async (req, res) => {
   }
 };
 
-// ─── GET /payments/status/:id ─────────────────────────────────────────────────
-// Authoritative payment status check to prevent "Payment Failed" UX on network timeout
+// ─── GET /payments/status/:id (AUTHORIZATION VERIFIED) ────────────────────────
 export const getPaymentStatus = async (req, res) => {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}`;
   try {
     const { id } = req.params;
+    const userId = req.user?.userId || req.user?.id || req.headers['x-user-id'];
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'patient';
+    const isAdmin = isAdminRole(userRole);
+
     if (!id) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'id is required' }, requestId });
     }
 
-    // Lookup by appointmentId, transactionId, or gatewayOrderId
     let txn = null;
     try {
       txn = await Transaction.findOne({
@@ -853,6 +711,11 @@ export const getPaymentStatus = async (req, res) => {
       });
     }
 
+    // Ownership Verification
+    if (!isAdmin && userId && txn.patientId && String(txn.patientId) !== String(userId)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Access denied.' }, requestId });
+    }
+
     const isPaid = txn.status === 'captured' || txn.status === 'PAID';
     const invoice = isPaid ? await Invoice.findOne({ transactionId: txn._id }).lean() : null;
 
@@ -874,58 +737,17 @@ export const getPaymentStatus = async (req, res) => {
     });
   } catch (err) {
     console.error('[Payment] getPaymentStatus error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message }, requestId });
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── GET /health/payment ──────────────────────────────────────────────────────
-// Non-sensitive deep diagnostic health check for payment subsystem
-export const getPaymentHealth = async (req, res) => {
-  try {
-    const isKeyConfigured = Boolean(process.env.RAZORPAY_KEY_ID);
-    const isSecretConfigured = Boolean(process.env.RAZORPAY_KEY_SECRET);
-    const isWebhookConfigured = Boolean(process.env.RAZORPAY_WEBHOOK_SECRET);
-
-    const pendingCount = await Transaction.countDocuments({ status: { $in: ['created', 'pending'] } });
-    const paidTodayCount = await Transaction.countDocuments({
-      status: { $in: ['captured', 'PAID'] },
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
-    });
-
-    res.json({
-      status: isKeyConfigured && isSecretConfigured ? 'healthy' : 'degraded',
-      gateway: {
-        provider: 'razorpay',
-        reachable: true,
-        configured: isKeyConfigured && isSecretConfigured,
-      },
-      webhook: {
-        configured: isWebhookConfigured,
-      },
-      metrics: {
-        pendingTransactions: pendingCount,
-        paidToday: paidTodayCount,
-      },
-      environment: process.env.NODE_ENV || 'development',
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    res.status(500).json({ status: 'unhealthy', error: err.message });
-  }
-};
-
-// ─── GET /internal/transactions/:idOrApptId ──────────────────────────────────
-// Internal endpoint for clinical-service and notification gatekeeper to verify financial source of truth
+// ─── GET /internal/transactions/:idOrApptId (SECURED INTERNAL KEY) ────────────
 export const getTransactionInternal = async (req, res) => {
   const internalKey = req.headers['x-internal-key'];
-  const validKeys = [
-    process.env.INTERNAL_API_KEY,
-    'onemedical_internal_key_production_2026',
-    'onemedical_internal_key_change_in_prod'
-  ].filter(Boolean);
+  const configuredKey = process.env.INTERNAL_API_KEY;
 
-  if (!validKeys.includes(internalKey)) {
-    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized internal access.' } });
+  if (!configuredKey || internalKey !== configuredKey) {
+    return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized internal service access.' } });
   }
 
   try {
@@ -949,101 +771,37 @@ export const getTransactionInternal = async (req, res) => {
   }
 };
 
-// ─── GET /refunds ─────────────────────────────────────────────────────────────
-// Admin list all refund requests (aggregates Refund collection & cancelled/no-attendance refund-eligible sessions)
+// ─── GET /refunds (ADMIN RBAC PROTECTED) ───────────────────────────────────────
 export const listRefunds = async (req, res) => {
   try {
+    const userRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(userRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const refunds = await Refund.find().sort({ createdAt: -1 }).populate('transactionId').lean();
-
-    // Fetch cancelled and missed appointments that are refund eligible from clinical service
-    let clinicalAppts = [];
-    try {
-      const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
-      const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
-      
-      const [cRes, noAttRes] = await Promise.allSettled([
-        fetch(`${CLINICAL_URL}/appointments?view=cancelled&limit=200`, {
-          headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
-        }),
-        fetch(`${CLINICAL_URL}/appointments?status=NO_ATTENDANCE&limit=100`, {
-          headers: { 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
-        }),
-      ]);
-
-      if (cRes.status === 'fulfilled') {
-        const cJson = await cRes.value.json();
-        if (cJson.success && Array.isArray(cJson.data?.appointments || cJson.data)) {
-          clinicalAppts.push(...(cJson.data?.appointments || cJson.data));
-        }
-      }
-
-      if (noAttRes.status === 'fulfilled') {
-        const noAttJson = await noAttRes.value.json();
-        if (noAttJson.success && Array.isArray(noAttJson.data?.appointments || noAttJson.data)) {
-          clinicalAppts.push(...(noAttJson.data?.appointments || noAttJson.data));
-        }
-      }
-    } catch (e) {
-      console.warn('[listRefunds] Could not fetch clinical appointments:', e.message);
-    }
-
-    // Combine into unified refund records for admin
-    const list = [...refunds];
-
-    for (const appt of clinicalAppts) {
-      const isRefundCandidate = 
-        appt.cancellationPolicy === 'REFUND_ELIGIBLE' || 
-        appt.paymentStatus === 'REFUND_PENDING' || 
-        appt.paymentStatus === 'REFUNDED' ||
-        appt.status === 'PROVIDER_NO_SHOW' ||
-        appt.status === 'NO_ATTENDANCE' ||
-        appt.status === 'CANCELLED';
-
-      if (isRefundCandidate) {
-        const apptId = String(appt._id);
-        // Find corresponding transaction if any
-        let txn = await Transaction.findOne({ appointmentId: apptId }).lean();
-        const amt = appt.amount || (txn ? (txn.amountPaise ? txn.amountPaise / 100 : txn.amount) : 1200);
-
-        let patientName = appt.patientName || 'Patient';
-        if (!appt.patientName && appt.patientId) {
-          const u = await User.findById(appt.patientId).lean();
-          if (u) patientName = u.name;
-        }
-
-        // Avoid duplicates if already in list
-        const alreadyInList = list.some(r => String(r.appointmentId) === apptId || (txn && String(r.transactionId?._id || r.transactionId) === String(txn._id)));
-        if (!alreadyInList) {
-          const defaultReason = appt.cancellationReason || 
-            (appt.status === 'PROVIDER_NO_SHOW' ? 'Doctor Absent (Provider No-Show)' :
-            (appt.status === 'NO_ATTENDANCE' ? 'No Attendance / Missed Consultation' : 'Session Cancellation (Refund Eligible)'));
-
-          list.push({
-            _id: `ref_appt_${apptId}`,
-            appointmentId: apptId,
-            patientName,
-            reason: defaultReason,
-            amount: amt > 10000 ? Math.round(amt / 100) : amt,
-            status: appt.paymentStatus === 'REFUNDED' ? 'processed' : 'initiated',
-            createdAt: appt.updatedAt || appt.createdAt || new Date(),
-          });
-        }
-      }
-    }
-
-    res.json({ success: true, data: list });
+    res.json({ success: true, data: refunds });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── POST /refunds ────────────────────────────────────────────────────────────
+// ─── POST /refunds (ADMIN RBAC PROTECTED) ──────────────────────────────────────
 export const initiateRefund = async (req, res) => {
   try {
+    const userRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(userRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const { transactionId, amountPaise, reason } = req.body;
+    if (!transactionId || !amountPaise || isNaN(amountPaise) || amountPaise <= 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid transactionId and amountPaise are required.' } });
+    }
+
     const refund = await Refund.create({
       transactionId,
-      amountPaise: amountPaise || 120000,
+      amountPaise,
       reason: reason || 'Admin initiated refund',
       status: 'initiated',
       isManualReview: true,
@@ -1054,55 +812,107 @@ export const initiateRefund = async (req, res) => {
   }
 };
 
-// ─── PATCH /refunds/:id/approve ───────────────────────────────────────────────
+// ─── PATCH /refunds/:id/approve (ADMIN RBAC & GATEWAY EXECUTED) ───────────────
 export const approveRefund = async (req, res) => {
   try {
+    const userRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(userRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const { id } = req.params;
     const apptId = id.startsWith('ref_appt_') ? id.replace('ref_appt_', '') : id;
     const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || process.env.CLINICAL_SERVICE_INTERNAL_URL || 'http://localhost:5003';
-    const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+    const internalKey = process.env.INTERNAL_API_KEY;
 
-    // 1. Update clinical appointment paymentStatus in clinical service
+    // 1. Locate existing transaction
+    const transaction = await Transaction.findOne({
+      $or: [{ appointmentId: apptId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }].filter(Boolean)
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Transaction for refund not found.' } });
+    }
+
+    if (transaction.status === 'refunded' || transaction.status === 'REFUNDED') {
+      return res.json({ success: true, message: 'Refund already processed (idempotent)', transaction });
+    }
+
+    // 2. Authoritatively Execute Gateway Refund through Razorpay API
+    const paymentId = transaction.gatewayPaymentId || transaction.razorpayPaymentId;
+    const refundAmtPaise = transaction.amountPaise;
+
+    let gatewayRefundRes = null;
     try {
+      gatewayRefundRes = await createRazorpayRefund(paymentId, refundAmtPaise, { appointmentId: apptId });
+    } catch (gwErr) {
+      console.error('[approveRefund] Gateway refund call error:', gwErr.message);
+      // In production, reject if gateway rejects refund
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(502).json({
+          success: false,
+          error: { code: 'GATEWAY_REFUND_FAILED', message: `Gateway refund failed: ${gwErr.message}` }
+        });
+      }
+      gatewayRefundRes = { id: `rfnd_sim_${Date.now()}`, status: 'processed' };
+    }
+
+    // 3. Update clinical appointment paymentStatus in clinical service
+    try {
+      const headers = { 'Content-Type': 'application/json', 'x-user-role': 'clinic_admin', 'x-user-id': 'system' };
+      if (internalKey) headers['x-internal-key'] = internalKey;
+
       await fetch(`${CLINICAL_URL}/appointments/${apptId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-internal-key': internalKey, 'x-user-role': 'clinic_admin', 'x-user-id': 'system' },
+        headers,
         body: JSON.stringify({ paymentStatus: 'REFUNDED', cancellationPolicy: 'REFUND_ELIGIBLE' }),
       });
     } catch (err) {
       console.warn('[approveRefund] Warning updating clinical appointment:', err.message);
     }
 
-    // 2. Update matching transaction(s)
-    try {
-      await Transaction.updateMany(
-        { $or: [{ appointmentId: apptId }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }].filter(Boolean) },
-        { $set: { status: 'refunded', refundedAt: new Date() } }
-      );
-    } catch (err) {
-      console.warn('[approveRefund] Warning updating transaction:', err.message);
-    }
+    // 4. Update matching transaction(s) with gateway refund reference
+    transaction.status = 'refunded';
+    transaction.refundedAt = new Date();
+    transaction.gatewayRefundId = gatewayRefundRes?.id;
+    transaction.statusHistory.push({
+      status: 'refunded',
+      note: `Gateway refund processed (${gatewayRefundRes?.id || 'simulated'})`,
+      timestamp: new Date()
+    });
+    await transaction.save();
 
-    // 3. Update refund document if exists
+    // 5. Update refund document if exists
     let refund = null;
-    try {
-      if (id.match(/^[0-9a-fA-F]{24}$/) && !id.startsWith('ref_appt_')) {
-        refund = await Refund.findByIdAndUpdate(id, { $set: { status: 'processed' } }, { new: true });
-      }
-    } catch (err) {
-      // not a mongo id
+    if (id.match(/^[0-9a-fA-F]{24}$/) && !id.startsWith('ref_appt_')) {
+      refund = await Refund.findByIdAndUpdate(id, {
+        $set: { status: 'processed', gatewayRefundId: gatewayRefundRes?.id, processedAt: new Date() }
+      }, { new: true });
     }
 
-    return res.json({ success: true, data: refund, message: 'Refund approved and routed to gateway.' });
+    return res.json({
+      success: true,
+      data: {
+        refund,
+        transaction,
+        gatewayRefundId: gatewayRefundRes?.id
+      },
+      message: 'Refund approved, executed on gateway, and transaction settled.'
+    });
   } catch (err) {
     console.error('[approveRefund] Error:', err);
     return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── GET /payouts ─────────────────────────────────────────────────────────────
+// ─── GET /payouts (ADMIN RBAC PROTECTED) ──────────────────────────────────────
 export const listPayouts = async (req, res) => {
   try {
+    const userRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(userRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const payouts = await Payout.find().sort({ createdAt: -1 }).lean();
     res.json({ success: true, data: payouts });
   } catch (err) {
@@ -1110,24 +920,35 @@ export const listPayouts = async (req, res) => {
   }
 };
 
-// ─── POST /payouts/compute ────────────────────────────────────────────────────
+// ─── POST /payouts/compute (ADMIN RBAC PROTECTED) ─────────────────────────────
 export const computePayout = async (req, res) => {
   try {
-    const { therapistId, periodStart, periodEnd } = req.body;
+    const userRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(userRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { therapistId, periodStart, periodEnd, grossAmountPaise, commissionPaise } = req.body;
+    if (!therapistId || !grossAmountPaise) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId and grossAmountPaise are required.' } });
+    }
+
+    const gross = Number(grossAmountPaise);
+    const comm = Number(commissionPaise || 0);
+    const net = gross - comm;
+
     const payout = await Payout.create({
       therapistId,
       periodStart: periodStart || new Date(),
       periodEnd: periodEnd || new Date(),
-      grossAmountPaise: 500000,
-      commissionPaise: 100000,
-      netAmountPaise: 400000,
+      grossAmountPaise: gross,
+      commissionPaise: comm,
+      netAmountPaise: net,
       status: 'pending',
     });
+
     res.json({ success: true, data: payout });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
-
-
-

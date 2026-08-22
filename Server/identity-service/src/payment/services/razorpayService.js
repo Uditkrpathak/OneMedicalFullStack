@@ -9,7 +9,6 @@ const hasLiveCredentials = Boolean(RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET && !RA
 // ─── Create Razorpay Order ────────────────────────────────────────────────────
 export const createRazorpayOrder = async (amountPaise, currency = 'INR', receipt) => {
   if (!hasLiveCredentials) {
-    // Deterministic dev/sandbox order
     return {
       id: `order_dev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       entity: 'order',
@@ -43,6 +42,45 @@ export const createRazorpayOrder = async (amountPaise, currency = 'INR', receipt
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Razorpay order creation failed (${res.status}): ${errText}`);
+  }
+
+  return res.json();
+};
+
+// ─── Create Razorpay Gateway Refund ──────────────────────────────────────────
+export const createRazorpayRefund = async (paymentId, amountPaise, notes = {}) => {
+  if (!hasLiveCredentials) {
+    return {
+      id: `rfnd_dev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      entity: 'refund',
+      amount: amountPaise,
+      currency: 'INR',
+      payment_id: paymentId,
+      status: 'processed',
+      created_at: Math.floor(Date.now() / 1000),
+      notes
+    };
+  }
+
+  if (!paymentId) {
+    throw new Error('paymentId is required to issue a gateway refund.');
+  }
+
+  const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64'),
+    },
+    body: JSON.stringify({
+      amount: amountPaise,
+      notes
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Razorpay refund failed (${res.status}): ${errText}`);
   }
 
   return res.json();

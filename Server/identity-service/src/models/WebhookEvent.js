@@ -14,7 +14,10 @@ const WebhookEventSchema = new mongoose.Schema({
   },
   eventName: {
     type: String,
-    required: true,
+    default: 'payment.captured',
+  },
+  eventType: {
+    type: String,
   },
   entityId: {
     type: String,
@@ -29,20 +32,30 @@ const WebhookEventSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['processed', 'failed', 'ignored'],
-    default: 'processed',
+    enum: ['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED', 'IGNORED', 'processed', 'failed', 'ignored'],
+    default: 'RECEIVED',
+    index: true,
+  },
+  attempts: {
+    type: Number,
+    default: 0,
+  },
+  lastError: {
+    type: String,
+    default: null,
   },
   processedAt: {
     type: Date,
-    default: Date.now,
   },
-  // Auto-expire webhook logs after 90 days
+  failedAt: {
+    type: Date,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
     expires: 90 * 24 * 60 * 60,
   }
-});
+}, { timestamps: true });
 
 const WebhookEvent = mongoose.model('WebhookEvent', WebhookEventSchema);
 export default WebhookEvent;
