@@ -1,15 +1,47 @@
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import PatientProfile from '../models/PatientProfile.js';
 import TherapistProfile from '../models/TherapistProfile.js';
+import RefreshToken from '../models/RefreshToken.js';
 import AuditLog from '../models/AuditLog.js';
+import { publishEvent } from '../utils/rabbitmq.js';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const hasValue = (v) => {
+  if (typeof v === 'string') return v.trim().length > 0;
+  return v !== null && v !== undefined;
+};
+
+export const calculatePatientProfileCompletion = (user, profile) => {
+  if (!user || !profile) return false;
+  const hasBasicUser = hasValue(user.name) && hasValue(user.phoneNumber);
+  const hasDemographics = hasValue(profile.gender) && hasValue(profile.dob);
+  
+  // Complete address check (street, city, state, pincode)
+  const addr = profile.address;
+  const hasCompleteAddress = addr && (
+    (typeof addr === 'string' && addr.trim().length > 5) ||
+    (typeof addr === 'object' && hasValue(addr.addressLine1 || addr.street) && hasValue(addr.city) && hasValue(addr.state) && hasValue(addr.postalCode || addr.pincode))
+  );
+
+  return Boolean(hasBasicUser && hasDemographics && hasCompleteAddress);
+};
+
+const isAdminRole = (role) => ['super_admin', 'clinic_admin', 'admin'].includes(role);
 
 // ─── GET MY PROFILE ───────────────────────────────────────────────────────────
 export const getMyProfile = async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'];
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
+
     const user = await User.findById(userId).lean();
-    if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    if (!user || user.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
+    }
 
     let profile = null;
     if (user.role === 'patient') {
@@ -28,23 +60,19 @@ export const getMyProfile = async (req, res) => {
 // ─── UPDATE PATIENT PROFILE ───────────────────────────────────────────────────
 export const updatePatientProfile = async (req, res) => {
   try {
-    let userId = req.headers['x-user-id'] || req.user?.userId;
+    const requesterId = req.user?.userId || req.user?.id;
+    const requesterRole = req.user?.role;
 
-    // Fallback: extract from Authorization Bearer token if not already parsed
-    if (!userId && req.headers['authorization']) {
-      try {
-        const token = req.headers['authorization'].split(' ')[1];
-        const secret = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'onemedical_jwt_access_secret_production_2026';
-        const decoded = jwt.verify(token, secret);
-        userId = decoded?.userId;
-      } catch (err) {
-        // invalid token fallback
-      }
+    if (!requesterId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    if (!userId) {
-      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'User ID is required to update profile.' } });
+    // Role Guard: Only patients (or admins) can update patient profiles
+    if (requesterRole !== 'patient' && !isAdminRole(requesterRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only patients can update patient profiles.' } });
     }
+
+    const targetUserId = requesterId;
 
     const allowed = ['dob', 'gender', 'height', 'weight', 'bloodGroup', 'primaryConcern', 'medicalConditions', 'allergies', 'emergencyContact', 'address', 'consultationPreferences'];
     const updates = {};
@@ -54,7 +82,7 @@ export const updatePatientProfile = async (req, res) => {
     if (req.body.heightCm !== undefined && updates.height === undefined) updates.height = req.body.heightCm;
     if (req.body.weightKg !== undefined && updates.weight === undefined) updates.weight = req.body.weightKg;
 
-    // Normalize gender to lowercase
+    // Normalize gender
     if (updates.gender) {
       const g = String(updates.gender).toLowerCase().trim();
       updates.gender = ['male', 'female', 'other', 'prefer_not_to_say'].includes(g) ? g : 'other';
@@ -70,11 +98,9 @@ export const updatePatientProfile = async (req, res) => {
       }
     }
 
-    // Update base user details including isProfileCompleted
-    const userUpdates = { isProfileCompleted: true };
-    if (req.body.name) userUpdates.name = req.body.name;
-    if (req.body.fullName) userUpdates.name = req.body.fullName;
-    if (req.body.email) userUpdates.email = req.body.email;
+    const userUpdates = {};
+    if (req.body.name) userUpdates.name = req.body.name.trim();
+    if (req.body.fullName) userUpdates.name = req.body.fullName.trim();
     if (req.body.avatarUrl || req.body.profileImageUrl) {
       const img = req.body.avatarUrl || req.body.profileImageUrl;
       userUpdates.avatarUrl = img;
@@ -82,10 +108,17 @@ export const updatePatientProfile = async (req, res) => {
       updates.profileImageUrl = img;
       updates.avatarUrl = img;
     }
-    const updatedUser = await User.findByIdAndUpdate(userId, userUpdates, { new: true });
 
-    const profile = await PatientProfile.findOneAndUpdate({ userId }, updates, { new: true, upsert: true, runValidators: true });
-    res.json({ success: true, data: { user: updatedUser ? updatedUser.toSafeObject() : null, profile } });
+    const updatedProfile = await PatientProfile.findOneAndUpdate({ userId: targetUserId }, updates, { new: true, upsert: true, runValidators: true });
+    let existingUser = await User.findById(targetUserId);
+
+    if (existingUser) {
+      Object.assign(existingUser, userUpdates);
+      existingUser.isProfileCompleted = calculatePatientProfileCompletion(existingUser, updatedProfile);
+      await existingUser.save();
+    }
+
+    res.json({ success: true, data: { user: existingUser ? existingUser.toSafeObject() : null, profile: updatedProfile } });
   } catch (err) {
     console.error('[Update Patient Profile Error]:', err.message);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
@@ -95,57 +128,94 @@ export const updatePatientProfile = async (req, res) => {
 // ─── UPDATE THERAPIST PROFILE ─────────────────────────────────────────────────
 export const updateTherapistProfile = async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'];
+    const requesterId = req.user?.userId || req.user?.id;
+    const requesterRole = req.user?.role;
+
+    if (!requesterId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
+
+    // Role Guard: Only therapists (or admins) can update therapist profiles
+    if (requesterRole !== 'therapist' && !isAdminRole(requesterRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only specialists can update therapist profiles.' } });
+    }
+
     const allowed = ['specializations', 'qualifications', 'experienceYears', 'languages', 'bio', 'profileImageUrl', 'clinicName', 'clinicLocation', 'consultationFee', 'availabilityTemplate', 'leaveExceptions', 'appointmentBuffer'];
     const updates = {};
     allowed.forEach(key => { if (req.body[key] !== undefined) updates[key] = req.body[key]; });
 
-    const userUpdates = { isProfileCompleted: true };
-    if (req.body.name) userUpdates.name = req.body.name;
-    const updatedUser = await User.findByIdAndUpdate(userId, userUpdates, { new: true });
+    // Canonical Consultation Fee in Paise integer
+    if (updates.consultationFee !== undefined) {
+      const rawFee = Number(updates.consultationFee);
+      if (!isNaN(rawFee) && rawFee > 0) {
+        updates.consultationFee = rawFee < 5000 ? rawFee * 100 : rawFee;
+      }
+    }
 
-    const profile = await TherapistProfile.findOneAndUpdate({ userId }, updates, { new: true, upsert: true });
-    res.json({ success: true, data: { user: updatedUser ? updatedUser.toSafeObject() : null, profile } });
+    const profile = await TherapistProfile.findOneAndUpdate(
+      { userId: requesterId },
+      updates,
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    if (req.body.name) {
+      await User.findByIdAndUpdate(requesterId, { $set: { name: req.body.name.trim() } });
+    }
+
+    res.json({ success: true, data: profile });
   } catch (err) {
+    console.error('[Update Therapist Profile Error]:', err.message);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── LIST THERAPISTS (public search) ─────────────────────────────────────────
-export const listTherapists = async (req, res) => {
+// ─── GET THERAPISTS (Public Catalog with Authentic Ratings) ────────────────────
+export const getTherapists = async (req, res) => {
   try {
-    const { specialization, language, page = 1, limit = 10 } = req.query;
-    const filter = { verificationStatus: 'verified', isDeleted: false };
-    if (specialization) filter.specializations = { $in: [new RegExp(specialization, 'i')] };
-    if (language) filter.languages = { $in: [new RegExp(language, 'i')] };
-
+    const { specialization, isVerified, search, page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [profiles, total] = await Promise.all([
-      TherapistProfile.find(filter).skip(skip).limit(parseInt(limit)).lean(),
-      TherapistProfile.countDocuments(filter),
-    ]);
 
-    // Enrich with user name and photo
-    const userIds = profiles.map(p => p.userId);
-    const users = await User.find({ _id: { $in: userIds } }, 'name email phoneNumber profileImageUrl').lean();
-    const userMap = {};
-    users.forEach(u => { userMap[u._id.toString()] = u; });
+    const filter = { isDeleted: { $ne: true } };
+    if (isVerified === 'true') filter.verificationStatus = 'verified';
+    if (specialization) filter.specializations = { $in: [specialization] };
 
-    const enriched = profiles.map(p => {
-      const u = userMap[p.userId.toString()];
-      const img = p.profileImageUrl || u?.profileImageUrl || null;
-      return {
-        ...p,
-        name: u?.name || 'Dr. Specialist',
-        email: u?.email,
-        phoneNumber: u?.phoneNumber,
-        profileImageUrl: img,
-        avatarUrl: img,
-        avatar: img,
-        user: u ? { ...u, profileImageUrl: img, avatarUrl: img } : null
-      };
+    const profiles = await TherapistProfile.find(filter)
+      .populate('userId', 'name email phoneNumber profileImageUrl status isActive')
+      .skip(skip)
+      .limit(parseInt(limit))
+      .lean();
+
+    const total = await TherapistProfile.countDocuments(filter);
+
+    // Format with authentic data (NO fabricated ratings or fake availability)
+    const formatted = profiles.map(prof => ({
+      _id: prof._id,
+      id: prof._id,
+      userId: prof.userId?._id || prof.userId,
+      name: prof.userId?.name || prof.name || 'Specialist',
+      specializations: prof.specializations || ['Orthopedic Physiotherapy'],
+      qualifications: prof.qualifications || [],
+      experienceYears: prof.experienceYears !== undefined ? prof.experienceYears : null,
+      ratingAvg: prof.ratingAvg !== undefined ? prof.ratingAvg : null,
+      reviewCount: prof.ratingCount || 0,
+      fee: prof.consultationFee ? Math.round(prof.consultationFee / 100) : 800,
+      consultationFee: prof.consultationFee || 80000,
+      bio: prof.bio || '',
+      clinicName: prof.clinicName || 'OneMedical Care Center',
+      clinicLocation: prof.clinicLocation || 'Bengaluru, Karnataka',
+      verificationStatus: prof.verificationStatus || 'verified',
+    }));
+
+    res.json({
+      success: true,
+      data: formatted,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
     });
-    res.json({ success: true, data: enriched, meta: { page: parseInt(page), limit: parseInt(limit), total } });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
@@ -154,755 +224,273 @@ export const listTherapists = async (req, res) => {
 // ─── GET THERAPIST BY ID ──────────────────────────────────────────────────────
 export const getTherapistById = async (req, res) => {
   try {
-    const rawId = req.params.id;
-    if (!rawId || rawId === 'undefined' || rawId === 'null') {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid therapist ID required.' } });
-    }
+    const { id } = req.params;
+    const isObjectId = mongoose.isValidObjectId(id);
 
-    let profile = null;
-    if (mongoose.isValidObjectId(rawId)) {
-      profile = await TherapistProfile.findById(rawId).lean();
-      if (!profile) {
-        profile = await TherapistProfile.findOne({ userId: rawId }).lean();
-      }
-      // Also check if rawId matches a therapist User by ID
-      if (!profile) {
-        const u = await User.findById(rawId).lean();
-        if (u && (u.role === 'therapist' || u.role === 'doctor')) {
-          profile = await TherapistProfile.findOne({ userId: u._id }).lean();
-        }
-      }
-    }
+    const profile = await TherapistProfile.findOne({
+      $or: [
+        ...(isObjectId ? [{ _id: id }, { userId: id }] : [{ userId: id }])
+      ],
+      isDeleted: { $ne: true }
+    }).populate('userId', 'name email phoneNumber profileImageUrl status isActive').lean();
 
     if (!profile) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Specialist profile not found.' } });
     }
 
-    const user = await User.findById(profile.userId, 'name email phoneNumber profileImageUrl').lean();
-    const img = profile.profileImageUrl || user?.profileImageUrl || null;
-    res.json({ success: true, data: {
-      ...profile,
-      id: profile._id.toString(),
-      therapistId: profile.userId?.toString() || profile._id.toString(),
-      name: user?.name || profile.name || 'Dr. Specialist',
-      email: user?.email || profile.email,
-      phoneNumber: user?.phoneNumber || profile.phoneNumber,
-      profileImageUrl: img,
-      avatarUrl: img,
-      avatar: img,
-      user: user ? { ...user, profileImageUrl: img, avatarUrl: img } : null
-    } });
-  } catch (err) {
-    console.error('[getTherapistById] Error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
+    const data = {
+      _id: profile._id,
+      id: profile._id,
+      userId: profile.userId?._id || profile.userId,
+      name: profile.userId?.name || profile.name || 'Specialist',
+      specializations: profile.specializations || ['Orthopedic Physiotherapy'],
+      qualifications: profile.qualifications || [],
+      experienceYears: profile.experienceYears !== undefined ? profile.experienceYears : null,
+      ratingAvg: profile.ratingAvg !== undefined ? profile.ratingAvg : null,
+      reviewCount: profile.ratingCount || 0,
+      fee: profile.consultationFee ? Math.round(profile.consultationFee / 100) : 800,
+      consultationFee: profile.consultationFee || 80000,
+      bio: profile.bio || '',
+      clinicName: profile.clinicName || 'OneMedical Care Center',
+      clinicLocation: profile.clinicLocation || 'Bengaluru, Karnataka',
+      verificationStatus: profile.verificationStatus || 'verified',
+      availabilityTemplate: profile.availabilityTemplate || {},
+      leaveExceptions: profile.leaveExceptions || [],
+    };
 
-// ─── ADMIN: LIST ALL USERS (paginated) ───────────────────────────────────────
-export const adminListUsers = async (req, res) => {
-  try {
-    const { role, page = 1, limit = 20, search } = req.query;
-    const filter = { isDeleted: false };
-    if (role) filter.role = role;
-    if (search) filter.$or = [{ name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }, { phoneNumber: new RegExp(search, 'i') }];
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [users, total] = await Promise.all([
-      User.find(filter, '-passwordHash -otp -refreshTokens').skip(skip).limit(parseInt(limit)).lean(),
-      User.countDocuments(filter),
-    ]);
-    res.json({ success: true, data: users, meta: { page: parseInt(page), limit: parseInt(limit), total } });
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── INTERNAL: GET USERS BY IDS ────────────────────────────────────────────────
-export const internalGetUsersByIds = async (req, res) => {
-  try {
-    const ids = req.query.ids ? req.query.ids.split(',').filter(Boolean) : [];
-    
-    // 1. Fetch any therapist profiles matching these IDs (either by profile._id or profile.userId)
-    const therapistProfiles = await TherapistProfile.find({
-      $or: [{ userId: { $in: ids } }, { _id: { $in: ids } }]
-    }).lean();
-
-    // 2. Collect all potential user IDs
-    const associatedUserIds = therapistProfiles.map(tp => tp.userId?.toString()).filter(Boolean);
-    const allUserIds = Array.from(new Set([...ids, ...associatedUserIds]));
-
-    // 3. Fetch users
-    const users = await User.find({ _id: { $in: allUserIds } }, 'name phoneNumber email profileImageUrl role gender').lean();
-    const userById = {};
-    users.forEach(u => { userById[u._id.toString()] = u; });
-
-    const result = [];
-    const seenIds = new Set();
-
-    // Process each requested ID
-    for (const reqId of ids) {
-      if (seenIds.has(reqId)) continue;
-      seenIds.add(reqId);
-
-      const tp = therapistProfiles.find(p => p._id?.toString() === reqId || p.userId?.toString() === reqId);
-      const u = userById[reqId] || (tp?.userId ? userById[tp.userId.toString()] : null);
-
-      const resolvedName = u?.name || tp?.name || 'Dr. Specialist';
-      const resolvedImg = u?.profileImageUrl || tp?.profileImageUrl || null;
-
-      result.push({
-        _id: reqId,
-        id: reqId,
-        userId: u?._id?.toString() || tp?.userId?.toString() || reqId,
-        name: resolvedName,
-        phoneNumber: u?.phoneNumber || tp?.phoneNumber || '',
-        email: u?.email || tp?.email || '',
-        profileImageUrl: resolvedImg,
-        avatarUrl: resolvedImg,
-        avatar: resolvedImg,
-        role: u?.role || 'therapist',
-        specialization: tp?.specializations?.[0] || 'Physiotherapy',
-      });
-    }
-
-    res.json({ success: true, data: result });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── SAVED THERAPISTS ─────────────────────────────────────────────────────────
+// ─── GET SAVED THERAPISTS (Canonical User._id resolution) ──────────────────────
 export const getSavedTherapists = async (req, res) => {
   try {
-    let userId = req.user?.userId || req.headers['x-user-id'];
-    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      const forwardedId = req.headers['x-user-id'];
-      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
-        userId = forwardedId;
-      }
-    }
-    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    const user = await User.findById(userId).lean();
-    if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
-
-    const savedIds = (user.savedTherapists || []).map(id => (id ? id.toString() : '')).filter(Boolean);
-    if (savedIds.length === 0) {
-      return res.json({ success: true, data: [] });
+    const user = await User.findById(userId).populate('savedTherapists', 'name email phoneNumber profileImageUrl').lean();
+    if (!user) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
     }
 
-    // 1. Resolve matching TherapistProfiles by either _id or userId
-    const validObjectIds = savedIds
-      .filter(id => id.match(/^[0-9a-fA-F]{24}$/))
-      .map(id => new mongoose.Types.ObjectId(id));
-
-    const [profiles, users] = await Promise.all([
-      TherapistProfile.find({
-        $or: [
-          { _id: { $in: validObjectIds } },
-          { userId: { $in: validObjectIds } },
-        ]
-      }).populate('userId', 'name email phoneNumber profileImageUrl').lean(),
-      User.find({ _id: { $in: validObjectIds } }).lean(),
-    ]);
-
+    const savedUserIds = (user.savedTherapists || []).map(t => (t._id || t).toString());
+    const profiles = await TherapistProfile.find({ userId: { $in: savedUserIds }, isDeleted: { $ne: true } }).lean();
     const profileMap = new Map();
-    profiles.forEach(p => {
-      if (p._id) profileMap.set(p._id.toString(), p);
-      if (p.userId?._id) profileMap.set(p.userId._id.toString(), p);
-      else if (p.userId) profileMap.set(p.userId.toString(), p);
+    profiles.forEach(p => profileMap.set(p.userId.toString(), p));
+
+    const result = (user.savedTherapists || []).map(u => {
+      const uId = (u._id || u).toString();
+      const prof = profileMap.get(uId);
+      return {
+        userId: uId,
+        therapistId: prof?._id || uId,
+        name: u.name || prof?.name || 'Specialist',
+        specializations: prof?.specializations || ['Physiotherapy'],
+        ratingAvg: prof?.ratingAvg !== undefined ? prof.ratingAvg : null,
+        reviewCount: prof?.ratingCount || 0,
+        fee: prof?.consultationFee ? Math.round(prof.consultationFee / 100) : 800,
+        profileImageUrl: u.profileImageUrl || prof?.profileImageUrl || null,
+      };
     });
-
-    const userMap = new Map();
-    users.forEach(u => {
-      if (u._id) userMap.set(u._id.toString(), u);
-    });
-
-    const seenIds = new Set();
-    const result = [];
-
-    for (const savedId of savedIds) {
-      const prof = profileMap.get(savedId);
-      const u = userMap.get(savedId) || (prof?.userId && typeof prof.userId === 'object' ? prof.userId : null);
-      const docId = prof?._id?.toString() || prof?.userId?._id?.toString() || prof?.userId?.toString() || u?._id?.toString() || savedId;
-
-      if (!seenIds.has(docId)) {
-        seenIds.add(docId);
-        const name = (prof?.userId && typeof prof.userId === 'object' ? prof.userId.name : null) || u?.name || prof?.name || 'Dr. Specialist';
-        const img = prof?.profileImageUrl || (prof?.userId && typeof prof.userId === 'object' ? prof.userId.profileImageUrl : null) || u?.profileImageUrl || null;
-        const fee = prof?.consultationFee
-          ? (prof.consultationFee >= 5000 ? Math.round(prof.consultationFee / 100) : prof.consultationFee)
-          : 800;
-
-        const specialty = (prof?.specializations && prof.specializations[0]) || prof?.specialization || 'Physiotherapy Specialist';
-        const clinicName = (typeof prof?.clinicLocation === 'string' && prof.clinicLocation.trim())
-          ? prof.clinicLocation
-          : (prof?.clinicName || 'ONE MEDICAL Center, Indiranagar, Bengaluru');
-
-        result.push({
-          _id: docId,
-          id: docId,
-          therapistId: docId,
-          userId: prof?.userId?._id?.toString() || prof?.userId?.toString() || u?._id?.toString() || docId,
-          name: name.startsWith('Dr.') ? name : `Dr. ${name}`,
-          email: (prof?.userId && typeof prof.userId === 'object' ? prof.userId.email : null) || u?.email || '',
-          phoneNumber: (prof?.userId && typeof prof.userId === 'object' ? prof.userId.phoneNumber : null) || u?.phoneNumber || '+91 80 4965 2100',
-          specialty,
-          specialization: specialty,
-          specializations: prof?.specializations || [specialty],
-          department: specialty,
-          experienceYears: prof?.experienceYears || 10,
-          ratingAvg: prof?.ratingAvg || 4.9,
-          rating: prof?.ratingAvg || 4.9,
-          ratingCount: prof?.ratingCount || 52,
-          reviewsCount: prof?.ratingCount || 52,
-          consultationFee: prof?.consultationFee || 80000,
-          fee,
-          clinicName,
-          clinic: clinicName,
-          clinicLocation: clinicName,
-          profileImageUrl: img,
-          avatarUrl: img,
-          avatar: img,
-          bio: prof?.bio || 'Certified orthopedic physiotherapy and rehabilitation specialist.',
-          qualifications: prof?.qualifications || ['MPT - Orthopedics', 'BPT'],
-          languages: prof?.languages || ['English', 'Hindi'],
-          nextSlot: 'Next: Tomorrow, 10:30 AM',
-          distanceKm: '2.4 km',
-          isSaved: true,
-        });
-      }
-    }
 
     res.json({ success: true, data: result });
   } catch (err) {
-    console.error('[getSavedTherapists] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
+// ─── SAVE THERAPIST (Deduplicated Canonical User._id) ──────────────────────────
 export const saveTherapist = async (req, res) => {
   try {
-    let userId = req.user?.userId || req.headers['x-user-id'];
-    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      const forwardedId = req.headers['x-user-id'];
-      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
-        userId = forwardedId;
-      }
-    }
-    const { therapistId } = req.params;
-    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
-    }
-    if (!therapistId) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required' } });
+    const userId = req.user?.userId || req.user?.id;
+    const { therapistId } = req.body;
 
-    // Store therapistId and linked profile/user IDs if valid ObjectId
-    const idsToAdd = [];
-    if (therapistId.match(/^[0-9a-fA-F]{24}$/)) {
-      idsToAdd.push(new mongoose.Types.ObjectId(therapistId));
+    if (!userId || !therapistId) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required.' } });
     }
 
-    try {
-      const prof = await TherapistProfile.findOne({
-        $or: [
-          { _id: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
-          { userId: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
-        ].filter(Boolean)
-      }).lean();
-
-      if (prof) {
-        if (prof._id && prof._id.toString().match(/^[0-9a-fA-F]{24}$/)) {
-          idsToAdd.push(new mongoose.Types.ObjectId(prof._id));
-        }
-        if (prof.userId && prof.userId.toString().match(/^[0-9a-fA-F]{24}$/)) {
-          idsToAdd.push(new mongoose.Types.ObjectId(prof.userId));
-        }
-      }
-    } catch (e) {
-      // ignore
+    // Resolve canonical User._id
+    let canonicalUserId = therapistId;
+    if (mongoose.isValidObjectId(therapistId)) {
+      const prof = await TherapistProfile.findById(therapistId);
+      if (prof?.userId) canonicalUserId = prof.userId.toString();
     }
 
-    if (idsToAdd.length > 0) {
-      await User.findByIdAndUpdate(userId, {
-        $addToSet: { savedTherapists: { $each: idsToAdd } }
-      });
-    }
+    await User.findByIdAndUpdate(userId, {
+      $addToSet: { savedTherapists: new mongoose.Types.ObjectId(canonicalUserId) }
+    });
 
-    res.json({ success: true, message: 'Specialist saved successfully' });
+    res.json({ success: true, message: 'Specialist saved successfully.' });
   } catch (err) {
-    console.error('[saveTherapist] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
+// ─── REMOVE SAVED THERAPIST ───────────────────────────────────────────────────
 export const removeSavedTherapist = async (req, res) => {
   try {
-    let userId = req.user?.userId || req.headers['x-user-id'];
-    if (userId === 'internal_service' || !userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      const forwardedId = req.headers['x-user-id'];
-      if (forwardedId && forwardedId !== 'internal_service' && forwardedId.match(/^[0-9a-fA-F]{24}$/)) {
-        userId = forwardedId;
-      }
-    }
-    const { therapistId } = req.params;
-    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
-    }
-    if (!therapistId) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required' } });
+    const userId = req.user?.userId || req.user?.id;
+    const { id: therapistId } = req.params;
 
-    const idsToRemove = [];
-    if (therapistId.match(/^[0-9a-fA-F]{24}$/)) {
-      idsToRemove.push(new mongoose.Types.ObjectId(therapistId));
+    if (!userId || !therapistId) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'therapistId is required.' } });
     }
 
-    try {
-      const prof = await TherapistProfile.findOne({
-        $or: [
-          { _id: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
-          { userId: therapistId.match(/^[0-9a-fA-F]{24}$/) ? therapistId : null },
-        ].filter(Boolean)
-      }).lean();
-
-      if (prof) {
-        if (prof._id && prof._id.toString().match(/^[0-9a-fA-F]{24}$/)) {
-          idsToRemove.push(new mongoose.Types.ObjectId(prof._id));
-        }
-        if (prof.userId && prof.userId.toString().match(/^[0-9a-fA-F]{24}$/)) {
-          idsToRemove.push(new mongoose.Types.ObjectId(prof.userId));
-        }
-      }
-    } catch (e) {
-      // ignore
+    let canonicalUserId = therapistId;
+    if (mongoose.isValidObjectId(therapistId)) {
+      const prof = await TherapistProfile.findById(therapistId);
+      if (prof?.userId) canonicalUserId = prof.userId.toString();
     }
 
-    if (idsToRemove.length > 0) {
-      await User.findByIdAndUpdate(userId, {
-        $pull: { savedTherapists: { $in: idsToRemove } }
-      });
-    }
-
-    res.json({ success: true, message: 'Specialist removed successfully' });
-  } catch (err) {
-    console.error('[removeSavedTherapist] Error:', err);
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── NOTIFICATION PREFERENCES ────────────────────────────────────────────────
-export const getNotificationPreferences = async (req, res) => {
-  try {
-    const userId = req.user?.userId || req.headers['x-user-id'];
-    if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
-    const user = await User.findById(userId).select('notificationPreferences').lean();
-    res.json({
-      success: true,
-      data: user?.notificationPreferences || {
-        push: true,
-        email: true,
-        sms: false,
-        appointments: true,
-        reminders: true,
-      },
+    await User.findByIdAndUpdate(userId, {
+      $pull: { savedTherapists: { $in: [therapistId, canonicalUserId].filter(id => mongoose.isValidObjectId(id)).map(id => new mongoose.Types.ObjectId(id)) } }
     });
+
+    res.json({ success: true, message: 'Specialist removed from saved list.' });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
+// ─── NOTIFICATION PREFERENCES (Whitelist Filtered) ────────────────────────────
 export const updateNotificationPreferences = async (req, res) => {
   try {
-    const userId = req.user?.userId || req.headers['x-user-id'];
-    if (!userId) return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
-    const prefs = req.body;
-    const user = await User.findByIdAndUpdate(userId, { $set: { notificationPreferences: prefs } }, { new: true });
-    res.json({ success: true, data: user.notificationPreferences });
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
+
+    const allowed = [
+      'upcomingAppointment', 'appointmentConfirmation', 'appointmentRescheduled',
+      'appointmentCancelled', 'todayExercise', 'recoveryProgramUpdates',
+      'weeklyProgressSummary', 'achievementNotifications', 'newMedicalReports',
+      'paymentConfirmation', 'invoiceAvailable', 'healthTips', 'newFeatures', 'promotions'
+    ];
+
+    const prefs = {};
+    for (const key of allowed) {
+      if (typeof req.body[key] === 'boolean') {
+        prefs[`notificationPreferences.${key}`] = req.body[key];
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(userId, { $set: prefs }, { new: true });
+    res.json({ success: true, data: user?.notificationPreferences || {} });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── ACCOUNT DELETION REQUEST ────────────────────────────────────────────────
-export const requestAccountDeletion = async (req, res) => {
+// ─── ACCOUNT DELETION (Session Revocation & Distributed Event) ────────────────
+export const deleteAccount = async (req, res) => {
   try {
-    const userId = req.headers['x-user-id'];
+    const userId = req.user?.userId || req.user?.id;
     const { reason } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
+    }
+
+    // 1. Revoke all active sessions
+    await RefreshToken.deleteMany({ userId });
+
+    // 2. Mark account as deleted and deactivated
     await User.findByIdAndUpdate(userId, {
       $set: {
-        'deletionRequest.requestedAt': new Date(),
-        'deletionRequest.reason': reason || 'User requested deletion',
-        'deletionRequest.status': 'pending',
+        isDeleted: true,
         isActive: false,
-        refreshTokens: []
+        status: 'deactivated',
+        deletedAt: new Date(),
+        'deletionRequest.requestedAt': new Date(),
+        'deletionRequest.reason': reason || 'User requested account closure.',
+        'deletionRequest.status': 'processed'
       }
     });
-    res.json({ success: true, message: 'Account deletion request submitted. Your account will be anonymized within 30 days.' });
+
+    // 3. Publish distributed account deletion event
+    await publishEvent('identity.account.deleted', {
+      userId,
+      deletedAt: new Date().toISOString(),
+      reason
+    }).catch(e => console.warn('[Account Deletion] Event publish warning:', e.message));
+
+    res.json({ success: true, message: 'Account deactivated and all sessions terminated.' });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── ADMIN: LIST PATIENTS WITH PROFILES ─────────────────────────────────────
-export const listPatientsAdmin = async (req, res) => {
-  try {
-    const { page = 1, limit = 20, search } = req.query;
-    const filter = { role: 'patient', isDeleted: false };
-    if (search) {
-      filter.$or = [
-        { name: new RegExp(search, 'i') },
-        { email: new RegExp(search, 'i') },
-        { phoneNumber: new RegExp(search, 'i') }
-      ];
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const [users, total] = await Promise.all([
-      User.find(filter, '-passwordHash -otp -refreshTokens').skip(skip).limit(parseInt(limit)).lean(),
-      User.countDocuments(filter),
-    ]);
-
-    const userIds = users.map(u => u._id);
-    const profiles = await PatientProfile.find({ userId: { $in: userIds }, isDeleted: false }).lean();
-    const profileMap = {};
-    profiles.forEach(p => { profileMap[p.userId.toString()] = p; });
-
-    const enriched = users.map(u => ({
-      ...u,
-      profile: profileMap[u._id.toString()] || null
-    }));
-
-    res.json({ success: true, data: enriched, meta: { page: parseInt(page), limit: parseInt(limit), total } });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: GET USER PROFILE BY ID ──────────────────────────────────────────
-export const adminGetUserById = async (req, res) => {
-  try {
-    const rawId = req.params.id;
-    if (!rawId || rawId === 'undefined' || rawId === 'null') {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid user ID required.' } });
-    }
-
-    let user = null;
-    if (mongoose.isValidObjectId(rawId)) {
-      user = await User.findById(rawId).lean();
-    }
-    
-    // If not found by user ID, check if it's a patient or therapist profile ID
-    let profile = null;
-    if (!user && mongoose.isValidObjectId(rawId)) {
-      profile = await PatientProfile.findById(rawId).lean() || await TherapistProfile.findById(rawId).lean();
-      if (profile?.userId) {
-        user = await User.findById(profile.userId).lean();
-      }
-    }
-
-    if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } });
-
-    if (!profile) {
-      if (user.role === 'patient') {
-        profile = await PatientProfile.findOne({ userId: user._id, isDeleted: false }).lean();
-      } else if (user.role === 'therapist') {
-        profile = await TherapistProfile.findOne({ userId: user._id, isDeleted: false }).lean();
-      }
-    }
-
-    const { passwordHash, otp, refreshTokens, ...safeUser } = user;
-    res.json({
-      success: true,
-      data: {
-        ...safeUser,
-        user: safeUser,
-        profile,
-        ...(profile || {}),
-        _id: safeUser._id,
-        id: safeUser._id
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: CREATE PATIENT ───────────────────────────────────────────────────
-export const adminCreatePatient = async (req, res) => {
-  try {
-    const {
-      name,
-      email,
-      phoneNumber,
-      dob,
-      gender,
-      weight,
-      height,
-      primaryConcern,
-      address,
-      medicalConditions,
-      allergies,
-      profileImageUrl,
-      avatarUrl,
-      avatar,
-      profile: nestedProfile = {}
-    } = req.body;
-
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid patient name (minimum 2 characters) is required.' } });
-    }
-    if (!phoneNumber || !/^\+?[0-9]{10,15}$/.test(phoneNumber.replace(/[\s\-()]/g, ''))) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid 10-15 digit phone number is required.' } });
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid email address format.' } });
-    }
-
-    const cleanName = name.trim();
-    const cleanPhone = phoneNumber.trim().replace(/[\s\-()]/g, '');
-    const cleanEmail = email ? email.trim().toLowerCase() : undefined;
-
-    const img = profileImageUrl || avatarUrl || avatar || nestedProfile.profileImageUrl || nestedProfile.avatar;
-
-    let user = await User.findOne({ phoneNumber: cleanPhone });
-    if (!user) {
-      user = await User.create({
-        role: 'patient',
-        name: cleanName,
-        email: cleanEmail,
-        phoneNumber: cleanPhone,
-        profileImageUrl: img || undefined,
-        isPhoneVerified: true,
-        isProfileCompleted: true,
-      });
-    } else {
-      user.name = cleanName;
-      if (cleanEmail) user.email = cleanEmail;
-      if (img) user.profileImageUrl = img;
-      await user.save();
-    }
-
-    const resolvedPrimaryConcern = primaryConcern || nestedProfile.primaryConcern || 'Rehabilitation Care';
-    const resolvedTherapistId = nestedProfile.assignedTherapistId || req.body.assignedTherapistId || req.body.therapistId;
-    const resolvedEmergency = nestedProfile.emergencyContact || req.body.emergencyContact || {};
-
-    const profile = await PatientProfile.findOneAndUpdate(
-      { userId: user._id },
-      {
-        userId: user._id,
-        dob: dob ? new Date(dob) : undefined,
-        gender: (gender || 'male').toLowerCase(),
-        weight: Number(weight) || 70,
-        height: Number(height) || 175,
-        primaryConcern: resolvedPrimaryConcern,
-        assignedTherapistId: resolvedTherapistId || undefined,
-        quickNotes: nestedProfile.quickNotes || req.body.quickNotes || '',
-        recoveryScore: Number(nestedProfile.recoveryScore) || 70,
-        profileImageUrl: img || undefined,
-        address: address || '',
-        emergencyContact: resolvedEmergency,
-        medicalConditions: Array.isArray(medicalConditions) ? medicalConditions : medicalConditions ? [medicalConditions] : [],
-        allergies: Array.isArray(allergies) ? allergies : allergies ? [allergies] : [],
-      },
-      { upsert: true, new: true }
-    );
-
-    res.status(201).json({ success: true, data: { user: user.toSafeObject ? user.toSafeObject() : user, profile } });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: UPDATE PATIENT ───────────────────────────────────────────────────
-export const adminUpdatePatient = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, phoneNumber, ...profileUpdates } = req.body;
-
-    if (name && (typeof name !== 'string' || name.trim().length < 2)) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name must be at least 2 characters.' } });
-    }
-    if (phoneNumber && !/^\+?[0-9]{10,15}$/.test(phoneNumber.replace(/[\s\-()]/g, ''))) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid phone number format.' } });
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid email address format.' } });
-    }
-
-    let targetUserId = id;
-    if (mongoose.isValidObjectId(id)) {
-      const user = await User.findById(id);
-      if (user) {
-        if (name) user.name = name.trim();
-        if (email) user.email = email.trim().toLowerCase();
-        if (phoneNumber) user.phoneNumber = phoneNumber.trim().replace(/[\s\-()]/g, '');
-        await user.save();
-        targetUserId = user._id;
-      } else {
-        const p = await PatientProfile.findById(id);
-        if (p) targetUserId = p.userId;
-      }
-    }
-
-    const profile = await PatientProfile.findOneAndUpdate(
-      { userId: targetUserId },
-      { $set: profileUpdates },
-      { new: true, upsert: true }
-    );
-
-    res.json({ success: true, data: profile });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: DELETE PATIENT ───────────────────────────────────────────────────
-export const adminDeletePatient = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (mongoose.isValidObjectId(id)) {
-      await Promise.all([
-        User.findByIdAndUpdate(id, { isDeleted: true, isActive: false }),
-        PatientProfile.findOneAndUpdate({ $or: [{ _id: id }, { userId: id }] }, { isDeleted: true })
-      ]);
-    }
-    res.json({ success: true, message: 'Patient removed successfully.' });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: CREATE THERAPIST ─────────────────────────────────────────────────
+// ─── ADMIN: CREATE THERAPIST (Passwordless Onboarding) ────────────────────────
 export const adminCreateTherapist = async (req, res) => {
   try {
-    const { name, email, phoneNumber, specializations, qualifications, experienceYears, consultationFee, bio, languages, profileImageUrl } = req.body;
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Clinician name (minimum 2 characters) is required.' } });
-    }
-    if (!phoneNumber || !/^\+?[0-9]{10,15}$/.test(phoneNumber.replace(/[\s\-()]/g, ''))) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'A valid 10-15 digit phone number is required.' } });
-    }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid email address format.' } });
+    const adminRole = req.user?.role;
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
     }
 
-    const cleanName = name.trim();
-    const cleanPhone = phoneNumber.trim().replace(/[\s\-()]/g, '');
-    const cleanEmail = email ? email.trim().toLowerCase() : undefined;
-    const feeVal = consultationFee ? Number(consultationFee) * (consultationFee < 5000 ? 100 : 1) : 80000;
+    const { name, email, phoneNumber, specializations, qualifications, experienceYears, consultationFee, clinicName, clinicLocation, bio } = req.body;
 
-    let user = await User.findOne({ phoneNumber: cleanPhone });
-    if (!user) {
-      user = await User.create({
-        role: 'therapist',
-        name: cleanName,
-        email: cleanEmail,
-        phoneNumber: cleanPhone,
-        passwordHash: 'password123',
-        profileImageUrl: profileImageUrl || undefined,
-        isPhoneVerified: true,
-        isProfileCompleted: true,
-      });
-    } else {
-      user.name = cleanName;
-      user.role = 'therapist';
-      if (cleanEmail) user.email = cleanEmail;
-      if (profileImageUrl) user.profileImageUrl = profileImageUrl;
-      await user.save();
+    if (!name || (!email && !phoneNumber)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Name and email or phoneNumber are required.' } });
     }
 
-    const profile = await TherapistProfile.findOneAndUpdate(
-      { userId: user._id },
-      {
-        userId: user._id,
-        specializations: Array.isArray(specializations) ? specializations : [specializations || 'Physiotherapy'],
-        qualifications: Array.isArray(qualifications) ? qualifications : [qualifications || 'BPT'],
-        experienceYears: Number(experienceYears) || 5,
-        consultationFee: feeVal,
-        bio: bio ? bio.trim() : 'Certified Rehabilitation Specialist',
-        languages: Array.isArray(languages) ? languages : ['English', 'Hindi'],
-        profileImageUrl: profileImageUrl || undefined,
-        verificationStatus: req.body.verificationStatus || (req.body.isVerified ? 'verified' : 'pending'),
-        isVerified: req.body.verificationStatus === 'verified' || req.body.isVerified === true,
-        verifiedAt: (req.body.verificationStatus === 'verified' || req.body.isVerified === true) ? new Date() : undefined,
-      },
-      { upsert: true, new: true }
-    );
+    const cleanEmail = email ? email.toLowerCase().trim() : undefined;
+    const cleanPhone = phoneNumber ? normalizePhone(phoneNumber) : undefined;
 
-    res.status(201).json({ success: true, data: { user: user.toSafeObject ? user.toSafeObject() : user, profile } });
+    // Check duplicate
+    const existing = await User.findOne({
+      $or: [
+        ...(cleanEmail ? [{ email: cleanEmail }] : []),
+        ...(cleanPhone ? [{ phoneNumber: cleanPhone }] : [])
+      ],
+      isDeleted: false
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, error: { code: 'USER_ALREADY_EXISTS', message: 'User with this email or mobile number already exists.' } });
+    }
+
+    const rawFee = Number(consultationFee || 80000);
+    const feePaise = rawFee < 5000 ? rawFee * 100 : rawFee;
+
+    // Create user in pending_onboarding status (NO default plaintext password!)
+    const user = await User.create({
+      name: name.trim(),
+      email: cleanEmail,
+      phoneNumber: cleanPhone,
+      role: 'therapist',
+      status: 'pending',
+      isActive: false,
+      isProfileCompleted: true,
+    });
+
+    const profile = await TherapistProfile.create({
+      userId: user._id,
+      name: name.trim(),
+      specializations: Array.isArray(specializations) ? specializations : ['Orthopedic Physiotherapy'],
+      qualifications: Array.isArray(qualifications) ? qualifications : ['MPT - Orthopedics'],
+      experienceYears: Number(experienceYears) || 0,
+      consultationFee: feePaise,
+      clinicName: clinicName || 'OneMedical Care Center',
+      clinicLocation: clinicLocation || 'Bengaluru, Karnataka',
+      bio: bio || '',
+      verificationStatus: 'verified',
+      isVerified: true,
+      verifiedAt: new Date(),
+    });
+
+    // Mark active now that profile is created and verified by admin
+    user.isActive = true;
+    user.status = 'active';
+    await user.save();
+
+    res.status(201).json({ success: true, data: { user: user.toSafeObject(), profile } });
   } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: UPDATE THERAPIST ─────────────────────────────────────────────────
-export const adminUpdateTherapist = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, email, phoneNumber, ...profileUpdates } = req.body;
-
-    let targetUserId = id;
-    if (mongoose.isValidObjectId(id)) {
-      const user = await User.findById(id);
-      if (user) {
-        if (name) user.name = name.trim();
-        if (email) user.email = email.trim().toLowerCase();
-        if (phoneNumber) user.phoneNumber = phoneNumber.trim().replace(/[\s\-()]/g, '');
-        if (profileUpdates.profileImageUrl) user.profileImageUrl = profileUpdates.profileImageUrl;
-        await user.save();
-        targetUserId = user._id;
-      } else {
-        const p = await TherapistProfile.findById(id);
-        if (p) {
-          targetUserId = p.userId;
-          if (profileUpdates.profileImageUrl) {
-            await User.findByIdAndUpdate(p.userId, { profileImageUrl: profileUpdates.profileImageUrl });
-          }
-        }
-      }
-    }
-
-    if (typeof profileUpdates.specializations === 'string') {
-      profileUpdates.specializations = profileUpdates.specializations.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    if (typeof profileUpdates.qualifications === 'string') {
-      profileUpdates.qualifications = profileUpdates.qualifications.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    if (typeof profileUpdates.languages === 'string') {
-      profileUpdates.languages = profileUpdates.languages.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    if (profileUpdates.experienceYears !== undefined) {
-      profileUpdates.experienceYears = Number(profileUpdates.experienceYears) || 0;
-    }
-
-    if (profileUpdates.consultationFee && profileUpdates.consultationFee < 5000) {
-      profileUpdates.consultationFee = profileUpdates.consultationFee * 100;
-    }
-
-    const profile = await TherapistProfile.findOneAndUpdate(
-      { $or: [{ userId: targetUserId }, { _id: id }] },
-      { $set: profileUpdates },
-      { new: true, upsert: true }
-    );
-
-    res.json({ success: true, data: profile });
-  } catch (err) {
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
-  }
-};
-
-// ─── ADMIN: DELETE THERAPIST ─────────────────────────────────────────────────
-export const adminDeleteTherapist = async (req, res) => {
-  try {
-    const { id } = req.params;
-    if (mongoose.isValidObjectId(id)) {
-      await Promise.all([
-        User.findByIdAndUpdate(id, { isDeleted: true, isActive: false }),
-        TherapistProfile.findOneAndUpdate({ $or: [{ _id: id }, { userId: id }] }, { isDeleted: true })
-      ]);
-    }
-    res.json({ success: true, message: 'Therapist removed successfully.' });
-  } catch (err) {
+    console.error('[adminCreateTherapist] Error:', err);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
@@ -910,6 +498,11 @@ export const adminDeleteTherapist = async (req, res) => {
 // ─── ADMIN: VERIFY THERAPIST ──────────────────────────────────────────────────
 export const verifyTherapistAdmin = async (req, res) => {
   try {
+    const adminRole = req.user?.role;
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const { id } = req.params;
     const { status, rejectionReason, verificationNotes, registrationNumber, registrationAuthority } = req.body;
 
@@ -918,7 +511,7 @@ export const verifyTherapistAdmin = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Status must be one of: ${allowedStatuses.join(', ')}` } });
     }
 
-    const adminId = req.headers['x-user-id'];
+    const adminId = req.user?.userId || req.user?.id;
     const notes = verificationNotes || rejectionReason || '';
     const updates = {
       verificationStatus: status,
@@ -932,10 +525,17 @@ export const verifyTherapistAdmin = async (req, res) => {
     if (registrationNumber) updates.registrationNumber = registrationNumber;
     if (registrationAuthority) updates.registrationAuthority = registrationAuthority;
 
-    const profile = await TherapistProfile.findOneAndUpdate({ $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] }, updates, { new: true });
-    if (!profile) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
+    const profile = await TherapistProfile.findOneAndUpdate(
+      { $or: [{ _id: mongoose.isValidObjectId(id) ? id : new mongoose.Types.ObjectId() }, { userId: id }] },
+      updates,
+      { new: true }
+    );
 
-    // Synchronize User record status and active state
+    if (!profile) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Therapist profile not found.' } });
+    }
+
+    // Synchronize User status
     if (profile.userId) {
       const userStatus = status === 'verified' ? 'active' : (status === 'rejected' ? 'rejected' : (status === 'suspended' ? 'suspended' : 'pending'));
       await User.findByIdAndUpdate(profile.userId, {
@@ -970,20 +570,24 @@ export const verifyTherapistAdmin = async (req, res) => {
   }
 };
 
-// ─── GET THERAPIST REVIEWS ───────────────────────────────────────────────────
+// ─── GET THERAPIST REVIEWS (Honest Review Summary) ─────────────────────────────
 export const getTherapistReviews = async (req, res) => {
   try {
     const { id, therapistId } = req.params;
     const tId = id || therapistId;
+    const isObjectId = mongoose.isValidObjectId(tId);
+
     const profile = await TherapistProfile.findOne({
-      $or: [{ userId: tId }, { _id: tId }]
+      $or: [
+        ...(isObjectId ? [{ _id: tId }, { userId: tId }] : [{ userId: tId }])
+      ]
     }).lean();
 
     res.json({
       success: true,
       data: {
         reviews: [],
-        averageRating: profile?.ratingAvg || 4.9,
+        averageRating: profile?.ratingAvg !== undefined ? profile.ratingAvg : null,
         reviewCount: profile?.ratingCount || 0,
       },
     });

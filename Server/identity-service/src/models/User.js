@@ -2,11 +2,15 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 
 const OtpSchema = new mongoose.Schema({
-  codeHash:  { type: String },
-  expiresAt: { type: Date },
-  attempts:  { type: Number, default: 0 },
-  lockedUntil: { type: Date },
-  requestedAt: { type: Date },
+  codeHash:     { type: String },
+  expiresAt:    { type: Date },
+  attempts:     { type: Number, default: 0 },
+  maxAttempts:  { type: Number, default: 5 },
+  lockedUntil:  { type: Date },
+  requestedAt:  { type: Date },
+  purpose:      { type: String, enum: ['LOGIN', 'SIGNUP', 'CHANGE_EMAIL', 'CHANGE_PHONE', 'PASSWORD_RESET'], default: 'LOGIN' },
+  identifier:   { type: String },
+  status:       { type: String, enum: ['PENDING', 'VERIFIED', 'LOCKED', 'EXPIRED'], default: 'PENDING' },
 }, { _id: false });
 
 const UserSchema = new mongoose.Schema({
@@ -25,7 +29,7 @@ const UserSchema = new mongoose.Schema({
   isPhoneVerified: { type: Boolean, default: false },
   isEmailVerified: { type: Boolean, default: false },
   isActive:      { type: Boolean, default: true },
-  status:        { type: String, enum: ['active', 'pending', 'rejected', 'suspended'], default: 'active' },
+  status:        { type: String, enum: ['active', 'pending', 'rejected', 'suspended', 'pending_onboarding', 'deactivated'], default: 'active' },
   isProfileCompleted: { type: Boolean, default: false },
   savedTherapists: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   notificationPreferences: {
