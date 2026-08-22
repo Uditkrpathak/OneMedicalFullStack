@@ -447,7 +447,7 @@ export const getTodaysExercises = async (req, res) => {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0=Sun
 
-    const assignment = await PatientProgram.findOne({ patientId: patientId.toString(), status: 'active', isDeleted: false })
+    const assignment = await PatientProgram.findOne({ patientId: String(patientId), status: 'active', isDeleted: false })
       .populate({ path: 'programId', populate: [{ path: 'exercises.exerciseId' }, { path: 'phases.exercises.exerciseId' }] })
       .populate('exerciseOverrides.exerciseId')
       .lean();
@@ -457,14 +457,14 @@ export const getTodaysExercises = async (req, res) => {
     }
 
     const program = assignment.programId;
-    const daysElapsed = Math.max(0, Math.floor((today - new Date(assignment.startDate)) / (1000 * 60 * 60 * 24)));
+    const daysElapsed = Math.max(0, Math.floor((today - new Date(assignment.startDate || Date.now())) / (1000 * 60 * 60 * 24)));
     const currentWeek = Math.min(assignment.targetWeeks || 4, Math.floor(daysElapsed / 7) + 1);
 
     // 1. Check if program has phased weekly exercises
     let rawExercises = [];
     if (program.phases && program.phases.length > 0) {
       const currentPhase = program.phases.find(p => p.week === currentWeek) || program.phases[0];
-      rawExercises = currentPhase.exercises || [];
+      rawExercises = currentPhase?.exercises || [];
     }
 
     // 2. Fallback to general program exercises if phases empty
@@ -481,17 +481,20 @@ export const getTodaysExercises = async (req, res) => {
     // 4. Map overrides
     const overrideMap = {};
     (assignment.exerciseOverrides || []).forEach(o => {
-      if (o.exerciseId) overrideMap[o.exerciseId._id?.toString() || o.exerciseId.toString()] = o;
+      if (o && o.exerciseId) {
+        const key = (o.exerciseId._id ? o.exerciseId._id.toString() : (typeof o.exerciseId === 'string' ? o.exerciseId : (o.exerciseId.id ? o.exerciseId.id.toString() : String(o.exerciseId))));
+        if (key) overrideMap[key] = o;
+      }
     });
 
-    const enriched = rawExercises.map(ex => {
-      const exerciseDoc = ex.exerciseId || {};
-      const exIdStr = exerciseDoc._id ? exerciseDoc._id.toString() : ex.exerciseId?.toString();
+    const enriched = (rawExercises || []).map(ex => {
+      const exerciseDoc = (ex && ex.exerciseId && typeof ex.exerciseId === 'object') ? ex.exerciseId : {};
+      const exIdStr = exerciseDoc._id ? exerciseDoc._id.toString() : (ex?.exerciseId ? String(ex.exerciseId) : (ex?._id ? String(ex._id) : ''));
       const override = overrideMap[exIdStr] || {};
 
       return {
-        _id: exerciseDoc._id || ex._id,
-        exerciseId: exerciseDoc._id || ex._id,
+        _id: exerciseDoc._id || ex?._id || exIdStr,
+        exerciseId: exerciseDoc._id || ex?._id || exIdStr,
         name: exerciseDoc.name || exerciseDoc.title || 'Therapeutic Exercise',
         title: exerciseDoc.name || exerciseDoc.title || 'Therapeutic Exercise',
         description: exerciseDoc.description || 'Targeted mobility and strength repetition.',
