@@ -6,7 +6,7 @@ import {
   Edit, Download, CheckCircle, Clock, AlertCircle, Plus,
   CreditCard, Target, Star, ChevronRight, ChevronDown, Users, Check,
   DollarSign, Search, ShieldCheck, Globe, UserPlus, X, RefreshCw,
-  Building, MapPin
+  Building, MapPin, Trash2
 } from 'lucide-react';
 import { api } from '../../api/api.js';
 import { Spinner } from '../../components/ui.jsx';
@@ -95,8 +95,8 @@ export default function TherapistDetailPage() {
         experienceYears: exp,
         specialization: t.specializations?.[0] || 'Physical Therapy & Rehab',
         specializations: t.specializations || ['Physiotherapy'],
-        rating: t.ratingAvg || 4.9,
-        ratingCount: t.ratingCount || 50,
+        rating: t.ratingAvg !== undefined && t.ratingAvg !== null ? t.ratingAvg : null,
+        ratingCount: t.ratingCount || 0,
         languages: t.languages?.join(', ') || 'English, Hindi',
         status: (t.verificationStatus === 'verified' || t.isVerified) ? 'Active' : 'Pending Verification',
         verificationStatus: t.verificationStatus || (t.isVerified ? 'verified' : 'pending'),
@@ -298,6 +298,25 @@ export default function TherapistDetailPage() {
     }
   };
 
+  const handleDeleteTherapist = async () => {
+    if (!window.confirm(`Are you sure you want to delete / deactivate ${therapist?.name}? This practitioner will be removed from bookings.`)) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const targetId = therapist?.userId || therapist?._id || id;
+      await api.deleteTherapist(token, targetId);
+      showToastMsg('Specialist deactivated and removed successfully.');
+      setTimeout(() => {
+        navigate('/therapists');
+      }, 700);
+    } catch (err) {
+      console.error('Delete therapist error:', err);
+      alert(err.message || 'Failed to delete therapist profile.');
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <Spinner />;
 
   if (error) {
@@ -387,9 +406,11 @@ export default function TherapistDetailPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900">{therapist?.name}</h1>
-              <span className="badge bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1 px-2 py-0.5">
-                ★ {therapist?.rating} ({therapist?.ratingCount} reviews)
-              </span>
+              {therapist?.rating !== null && therapist?.rating !== undefined && (
+                <span className="badge bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1 px-2 py-0.5">
+                  ★ {therapist.rating} ({therapist.ratingCount || 0} reviews)
+                </span>
+              )}
             </div>
 
             <p className="text-xs text-slate-600 font-semibold">{therapist?.title}</p>
@@ -414,9 +435,16 @@ export default function TherapistDetailPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsEditProfileOpen(true)}
-            className="btn btn-secondary text-xs font-bold py-2.5 px-4 bg-white border border-slate-200 shadow-sm text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+            className="btn btn-secondary text-xs font-bold py-2.5 px-4 bg-white border border-slate-200 shadow-sm text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 rounded-xl"
           >
             <Edit size={14} /> Edit Profile
+          </button>
+          <button
+            onClick={() => handleDeleteTherapist()}
+            disabled={submitting}
+            className="btn btn-secondary text-xs font-bold py-2.5 px-4 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 flex items-center gap-1.5 rounded-xl"
+          >
+            <Trash2 size={14} /> Delete Specialist
           </button>
         </div>
       </div>

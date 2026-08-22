@@ -82,10 +82,10 @@ const generateStandardSlots = (dateStr) => {
 export default function SelectDateTimeScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
   const doctor = route.params?.doctor || {
-    name: 'Dr. Ananya Sharma',
-    specialty: 'Senior Physiotherapist • One Medical Hub',
-    fee: 499,
-    rating: 4.9,
+    name: 'Specialist',
+    specialty: 'Physiotherapist • One Medical Hub',
+    fee: 800,
+    rating: null,
     avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=300',
   };
   const therapistId = route.params?.therapistId || doctor?.id || doctor?._id;
@@ -322,7 +322,7 @@ export default function SelectDateTimeScreen({ route, navigation }) {
             style={styles.doctorSummaryAvatar}
           />
           <View style={styles.doctorSummaryTextContent}>
-            <Text style={styles.docSummaryName}>{doctor.name || doctor.user?.name || 'Dr. Ananya Sharma'}</Text>
+            <Text style={styles.docSummaryName}>{doctor.name || doctor.user?.name || 'Specialist'}</Text>
             <Text style={styles.docSummarySub}>{doctor.specialty || doctor.specialization || 'Senior Physiotherapist'}</Text>
             <View style={styles.docSummaryMetaRow}>
               <Text style={styles.docSummaryRating}>★ {doctor.ratingAvg || doctor.rating || 4.9}</Text>

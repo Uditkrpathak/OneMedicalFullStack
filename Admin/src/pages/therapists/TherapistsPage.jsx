@@ -62,7 +62,7 @@ export default function TherapistsPage() {
           patientsCount: pCount,
           availability: t.isAvailable ? 'Available Today' : 'On Schedule',
           availabilityColor: t.isAvailable ? 'bg-emerald-500' : 'bg-blue-500',
-          rating: t.ratingAvg || 4.9,
+          rating: t.ratingAvg !== undefined && t.ratingAvg !== null ? t.ratingAvg : null,
           status: (t.verificationStatus === 'verified' || t.isVerified) ? 'VERIFIED' : (t.verificationStatus?.toUpperCase() || 'PENDING'),
           statusBadge: (t.verificationStatus === 'verified' || t.isVerified) 
             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
