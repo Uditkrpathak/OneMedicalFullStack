@@ -5,6 +5,7 @@ import Exercise from '../models/Exercise.js';
 import { recalculateRecoveryScore, checkPainAlert } from '../utils/recoveryEngine.js';
 import { publishEvent } from '../utils/rabbitmq.js';
 import { hasActiveCareRelationship } from '../utils/careRelationship.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 // ─── LOG WORKOUT SESSION (IDEMPOTENT & RACE-SAFE) ─────────────────────────────
 export const logSession = async (req, res) => {
@@ -276,6 +277,24 @@ export const logSession = async (req, res) => {
           // ignore event publish failures in standalone
         }
       }
+
+      await logAudit({
+        actorId: targetPatientId.toString(),
+        actorRole: requesterRole || 'patient',
+        action: 'WORKOUT_COMPLETED',
+        resourceType: 'SessionLog',
+        resourceId: session._id.toString(),
+        afterState: {
+          patientProgramId: activeProgram._id,
+          painLevel: pain,
+          rpe,
+          durationSeconds: durSec,
+          adherencePercent: scores.adherencePercent,
+          recoveryScore: scores.recoveryScore,
+        },
+        reason: 'Daily rehabilitation workout completed by patient with VAS pain log',
+        req,
+      });
     }
 
     res.status(201).json({

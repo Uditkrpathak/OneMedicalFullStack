@@ -21,7 +21,9 @@ const PatientProgramSchema = new mongoose.Schema({
   patientId:              { type: String, required: true, index: true },
   therapistId:            { type: String, default: 'system', index: true }, // current treating therapist
   assignedBy:             { type: String, default: 'system' },              // prescribing therapist
-  programId:              { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: true },
+  sourceEncounterId:      { type: mongoose.Schema.Types.ObjectId, ref: 'ClinicalConsultation', index: true },
+  version:                { type: Number, default: 1 },
+  programId:              { type: mongoose.Schema.Types.ObjectId, ref: 'Program', required: false },
   programTemplateId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Program' }, // alias for programId
   title:                  { type: String },
   appointmentId:          { type: String },                              // linked appointment
@@ -42,14 +44,28 @@ const PatientProgramSchema = new mongoose.Schema({
   milestoneScore:         { type: Number, default: 0 },
   milestones:             [MilestoneSchema],
   exerciseOverrides:      [PatientExerciseOverrideSchema],
-  activityRestrictions:   { type: String },
-  patientGoals:           { type: String },
+  prescribedExercises:    [
+    {
+      exerciseId:   { type: mongoose.Schema.Types.ObjectId, ref: 'Exercise' },
+      name:         { type: String, required: true },
+      sets:         { type: Number, default: 3 },
+      reps:         { type: Number, default: 10 },
+      holdSec:      { type: Number, default: 10 },
+      frequency:    { type: String, default: '2x Daily' },
+      videoUrl:     { type: String, default: '' },
+      thumbnailUrl: { type: String, default: '' },
+      instructions: { type: String, default: '' },
+    }
+  ],
+  activityRestrictions:   { type: mongoose.Schema.Types.Mixed },
+  patientGoals:           { type: mongoose.Schema.Types.Mixed },
   assignedAt:             { type: Date, default: Date.now },
   isDeleted:              { type: Boolean, default: false },
 }, { timestamps: true });
 
 PatientProgramSchema.index({ patientId: 1, status: 1 });
 PatientProgramSchema.index({ therapistId: 1, status: 1 });
+PatientProgramSchema.index({ patientId: 1, sourceEncounterId: 1 }, { sparse: true });
 
 const PatientProgram = mongoose.model('PatientProgram', PatientProgramSchema);
 export default PatientProgram;

@@ -243,19 +243,45 @@ export default function AdminTelehealthRoom() {
 
   const saveSoapAssessment = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/v1/telehealth/sessions/${callId}/soap-notes`, {
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('token')}`,
+      };
+
+      // 1. Persist to Telehealth Session SOAP telemetry
+      await fetch(`${API_BASE}/api/v1/telehealth/sessions/${callId}/soap-notes`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        headers,
         body: JSON.stringify(soapNotes),
       });
-      const data = await res.json();
-      if (data.success) {
-        setSoapSaved(true);
-        setTimeout(() => setSoapSaved(false), 3000);
+
+      // 2. If appointmentId is present, also synchronize with Clinical Consultation encounter
+      if (appointmentId) {
+        await fetch(`${API_BASE}/api/v1/consultations/${appointmentId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            step2_assessment: {
+              structuredRom: [
+                {
+                  joint: 'Joint / Knee',
+                  movement: 'Flexion',
+                  measuredDegrees: soapNotes.rangeOfMotionScore || 110,
+                  restriction: (soapNotes.rangeOfMotionScore || 110) >= 100 ? 'MILD' : 'MODERATE',
+                }
+              ],
+              clinicalImpression: soapNotes.assessment || 'Patient evaluated via live video consultation.',
+            },
+            step5_synthesis: {
+              clinicalImpression: soapNotes.assessment || 'Progressing in rehabilitation.',
+              additionalNotes: soapNotes.plan || '',
+            }
+          }),
+        }).catch((e) => console.warn('[AdminTelehealth] Consultation sync warning:', e.message));
       }
+
+      setSoapSaved(true);
+      setTimeout(() => setSoapSaved(false), 3000);
     } catch (err) {
       console.error('[SOAP Notes] Save error:', err);
     }

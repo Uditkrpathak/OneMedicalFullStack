@@ -450,30 +450,42 @@ export const getTodaysExercises = async (req, res) => {
     const assignment = await PatientProgram.findOne({ patientId: String(patientId), status: 'active', isDeleted: false })
       .populate({ path: 'programId', populate: [{ path: 'exercises.exerciseId' }, { path: 'phases.exercises.exerciseId' }] })
       .populate('exerciseOverrides.exerciseId')
+      .populate('prescribedExercises.exerciseId')
       .lean();
 
-    if (!assignment || !assignment.programId) {
+    if (!assignment) {
       return res.json({ success: true, data: { exercises: [], message: 'No active recovery program.' } });
     }
 
-    const program = assignment.programId;
+    const program = assignment.programId || { title: assignment.title || 'Recovery Protocol', phases: [], exercises: [] };
     const daysElapsed = Math.max(0, Math.floor((today - new Date(assignment.startDate || Date.now())) / (1000 * 60 * 60 * 24)));
     const currentWeek = Math.min(assignment.targetWeeks || 4, Math.floor(daysElapsed / 7) + 1);
 
-    // 1. Check if program has phased weekly exercises
+    // 1. Check if direct consultation prescribedExercises are available
     let rawExercises = [];
-    if (program.phases && program.phases.length > 0) {
+    if (assignment.prescribedExercises && assignment.prescribedExercises.length > 0) {
+      rawExercises = assignment.prescribedExercises.map((pe) => ({
+        exerciseId: pe.exerciseId || pe,
+        name: pe.name,
+        title: pe.name,
+        sets: pe.sets || 3,
+        reps: pe.reps || 10,
+        holdSeconds: pe.holdSec || 10,
+        restSeconds: 30,
+        frequency: pe.frequency || '2x Daily',
+        videoUrl: pe.videoUrl || '',
+        thumbnailUrl: pe.thumbnailUrl || 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=600',
+        instructions: pe.instructions ? [pe.instructions] : ['Execute with steady controlled form.'],
+      }));
+    } else if (program.phases && program.phases.length > 0) {
+      // 2. Check if program has phased weekly exercises
       const currentPhase = program.phases.find(p => p.week === currentWeek) || program.phases[0];
       rawExercises = currentPhase?.exercises || [];
-    }
-
-    // 2. Fallback to general program exercises if phases empty
-    if (rawExercises.length === 0 && program.exercises && program.exercises.length > 0) {
+    } else if (program.exercises && program.exercises.length > 0) {
+      // 3. Fallback to general program exercises if phases empty
       rawExercises = program.exercises;
-    }
-
-    // 3. Fallback to all active exercises if template exercises not explicitly linked
-    if (rawExercises.length === 0) {
+    } else {
+      // 4. Fallback to all active exercises if template exercises not explicitly linked
       const defaultExList = await Exercise.find({ isDeleted: { $ne: true } }).limit(4).lean();
       rawExercises = defaultExList.map(e => ({ exerciseId: e, sets: 3, reps: 10, holdSeconds: 5, restSeconds: 30 }));
     }

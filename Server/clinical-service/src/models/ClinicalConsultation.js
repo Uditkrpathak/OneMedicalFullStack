@@ -30,7 +30,7 @@ const ClinicalConsultationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['DRAFT', 'IN_PROGRESS', 'SUBMITTED', 'SEALED', 'AMENDED'],
+      enum: ['DRAFT', 'IN_PROGRESS', 'READY_FOR_REVIEW', 'SIGNED', 'SUBMITTED', 'FINALIZED', 'SEALED', 'AMENDED'],
       default: 'DRAFT',
       index: true,
     },

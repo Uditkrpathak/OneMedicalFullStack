@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import crypto from 'crypto';
 import clinicalProcessor from '../notifications/clinicalProcessor.js';
 import { resolveTherapistIds, fetchUsersByIds } from '../utils/therapistHelper.js';
+import { logAudit } from '../utils/auditLogger.js';
 
 /**
  * GET /api/v1/therapists/me/dashboard
@@ -478,6 +479,7 @@ export const autosaveConsultation = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+    const therapistId = req.headers['x-user-id'] || req.user?.userId;
     const actorRole = req.headers['x-user-role'] || req.user?.role;
 
     if (actorRole === 'patient') {
@@ -500,6 +502,8 @@ export const autosaveConsultation = async (req, res) => {
       });
     }
 
+    const previousStep = consultation.currentStep;
+
     // Merge and update draft
     Object.keys(updateData).forEach((key) => {
       if (updateData[key] !== undefined) {
@@ -512,6 +516,26 @@ export const autosaveConsultation = async (req, res) => {
 
     consultation.draftSavedAt = new Date();
     await consultation.save();
+
+    // Determine granular audit action
+    let auditAction = 'CONSULTATION_DRAFT_UPDATED';
+    if (updateData.step2_assessment) {
+      auditAction = 'ASSESSMENT_COMPLETED';
+    } else if (updateData.step4_recovery) {
+      auditAction = 'EXERCISE_PRESCRIBED';
+    }
+
+    await logAudit({
+      actorId: therapistId || String(consultation.therapistId),
+      actorRole: actorRole || 'therapist',
+      action: auditAction,
+      resourceType: 'ClinicalConsultation',
+      resourceId: consultation._id.toString(),
+      beforeState: { currentStep: previousStep },
+      afterState: { currentStep: consultation.currentStep, status: consultation.status },
+      reason: `Clinical step progression: ${auditAction}`,
+      req,
+    });
 
     res.json({ success: true, data: consultation, savedAt: consultation.draftSavedAt });
   } catch (err) {
@@ -555,13 +579,16 @@ export const signConsultation = async (req, res) => {
     consultation.status = 'SIGNED';
     await consultation.save();
 
-    await AuditLog.create({
+    await logAudit({
       actorId: therapistId,
-      action: 'CONSULTATION_DIGITALLY_SIGNED',
+      actorRole: actorRole || 'therapist',
+      action: 'CONSULTATION_SIGNED',
       resourceType: 'ClinicalConsultation',
       resourceId: consultation._id.toString(),
-      metadata: { digitalSignHash, registrationNumber },
-    }).catch(() => {});
+      afterState: { status: 'SIGNED', digitalSignHash, registrationNumber },
+      reason: 'Therapist digitally signed encounter with verification seal',
+      req,
+    });
 
     res.json({ success: true, data: consultation, signature: consultation.step5_synthesis.digitalSignature });
   } catch (err) {
@@ -572,7 +599,7 @@ export const signConsultation = async (req, res) => {
 
 /**
  * POST /api/v1/consultations/:id/submit
- * Final clinical submission, updates Appointment state, and syncs patient exercises
+ * Final clinical submission and seal, updates Appointment state, and creates/syncs PatientProgram
  */
 export const submitConsultation = async (req, res) => {
   try {
@@ -589,50 +616,141 @@ export const submitConsultation = async (req, res) => {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Consultation not found' } });
     }
 
-    consultation.status = 'SUBMITTED';
+    // 1. Strict Idempotency Check: if already SEALED, return existing sealed record immediately
+    if (consultation.isSealed || consultation.status === 'SEALED') {
+      return res.json({
+        success: true,
+        message: 'Consultation is already finalized and sealed.',
+        data: consultation,
+        alreadySealed: true,
+      });
+    }
+
+    // 2. Transition Encounter to SEALED
+    consultation.status = 'SEALED';
+    consultation.isSealed = true;
+    consultation.sealedAt = new Date();
+    consultation.sealedBy = therapistId || String(consultation.therapistId);
     consultation.submittedAt = new Date();
     await consultation.save();
 
-    // Update appointment status to DOCUMENTED
+    // 3. Update appointment status to DOCUMENTED
     await Appointment.findByIdAndUpdate(consultation.appointmentId, {
       $set: { status: 'DOCUMENTED' },
     });
 
-    // Sync prescribed home exercises to Patient's active PatientProgram in MongoDB
-    if (consultation.step4_recovery?.homeExercises?.length > 0) {
-      await PatientProgram.findOneAndUpdate(
-        { patientId: consultation.patientId, status: 'active' },
-        {
-          $set: {
-            prescribedExercises: consultation.step4_recovery.homeExercises,
-            updatedAt: new Date(),
-          },
-        },
-        { upsert: false }
-      ).catch((e) => console.warn('[ConsultationController] PatientProgram sync warning:', e.message));
+    // 4. Closed-Loop Patient Program Activation (Make Patient Well)
+    // Transform prescribed home exercises into an active PatientProgram
+    const homeExercises = consultation.step4_recovery?.homeExercises || [];
+    let patientProgram = null;
+
+    if (homeExercises.length > 0) {
+      const formattedExercises = homeExercises.map((ex) => ({
+        exerciseId: ex.exerciseId || null,
+        name: ex.name,
+        sets: Number(ex.sets || 3),
+        reps: Number(ex.reps || 10),
+        holdSec: Number(ex.holdSec || 10),
+        frequency: ex.frequency || '2x Daily',
+        videoUrl: ex.videoUrl || '',
+        thumbnailUrl: ex.thumbnailUrl || '',
+        instructions: ex.instructions || '',
+      }));
+
+      // Check if existing active program exists for this patient
+      const existingProgram = await PatientProgram.findOne({
+        patientId: consultation.patientId,
+        status: 'active',
+        isDeleted: false,
+      });
+
+      if (existingProgram) {
+        // Upgrade program with new prescribed exercises and increment version
+        existingProgram.version = (existingProgram.version || 1) + 1;
+        existingProgram.sourceEncounterId = consultation._id;
+        existingProgram.prescribedExercises = formattedExercises;
+        existingProgram.activityRestrictions = consultation.step4_recovery.activityRestrictions;
+        existingProgram.patientGoals = consultation.step4_recovery.patientGoals;
+        existingProgram.appointmentId = String(consultation.appointmentId);
+        existingProgram.therapistId = String(consultation.therapistId);
+        existingProgram.title = consultation.step4_recovery.programName || existingProgram.title || 'Recovery Program';
+        patientProgram = await existingProgram.save();
+      } else {
+        // Create new active PatientProgram (Version 1)
+        patientProgram = await PatientProgram.create({
+          patientId: String(consultation.patientId),
+          therapistId: String(consultation.therapistId),
+          assignedBy: String(therapistId || consultation.therapistId),
+          sourceEncounterId: consultation._id,
+          version: 1,
+          title: consultation.step4_recovery.programName || 'Prescribed Rehabilitation Protocol',
+          appointmentId: String(consultation.appointmentId),
+          startDate: new Date(),
+          targetWeeks: 4,
+          targetSessionsPerWeek: 3,
+          currentWeek: 1,
+          completedSessionsCount: 0,
+          status: 'active',
+          prescribedExercises: formattedExercises,
+          activityRestrictions: consultation.step4_recovery.activityRestrictions,
+          patientGoals: consultation.step4_recovery.patientGoals,
+          assignedAt: new Date(),
+        }).catch((err) => {
+          console.warn('[ConsultationController] PatientProgram create error:', err.message);
+          return null;
+        });
+      }
     }
 
-    // Audit Log Entry
-    await AuditLog.create({
-      actorId: therapistId,
-      action: 'CLINICAL_CONSULTATION_SUBMITTED',
+    // 5. Clinical Audit Log Entry
+    await logAudit({
+      actorId: therapistId || String(consultation.therapistId),
+      actorRole: 'therapist',
+      action: 'CONSULTATION_SEALED',
       resourceType: 'ClinicalConsultation',
       resourceId: consultation._id.toString(),
-      metadata: { appointmentId: consultation.appointmentId, patientId: consultation.patientId },
-    }).catch(() => {});
+      afterState: {
+        status: 'SEALED',
+        isSealed: true,
+        appointmentId: consultation.appointmentId,
+        patientProgramId: patientProgram?._id,
+      },
+      reason: 'Clinical consultation encounter finalized, digitally sealed, and recovery program activated',
+      req,
+    });
 
-    // Asynchronous background sealing, PDF report synthesis, and Vault ingestion
+    if (patientProgram) {
+      await logAudit({
+        actorId: therapistId || String(consultation.therapistId),
+        actorRole: 'therapist',
+        action: 'PROGRAM_ACTIVATED',
+        resourceType: 'PatientProgram',
+        resourceId: patientProgram._id.toString(),
+        afterState: {
+          version: patientProgram.version,
+          status: 'active',
+          exercisesCount: homeExercises.length,
+          patientId: consultation.patientId,
+        },
+        reason: 'Rehabilitation exercise program activated for patient from sealed consultation',
+        req,
+      });
+    }
+
+    // 6. Asynchronous background sealing, PDF report synthesis, and Vault ingestion
     clinicalProcessor.processConsultationSubmitted({
       consultationId: consultation._id,
       appointmentId: consultation.appointmentId,
       patientId: consultation.patientId,
       therapistId: consultation.therapistId,
+      programId: patientProgram?._id,
     });
 
     res.json({
       success: true,
-      message: 'Consultation finalized and sealed in permanent medical records.',
+      message: 'Consultation finalized, digitally sealed, and recovery program activated.',
       data: consultation,
+      patientProgram,
     });
   } catch (err) {
     console.error('[ConsultationController] submitConsultation error:', err);
@@ -689,6 +807,18 @@ export const amendConsultation = async (req, res) => {
     if (changes.step5_synthesis) consultation.step5_synthesis = { ...docObj.step5_synthesis, ...changes.step5_synthesis };
 
     await consultation.save();
+
+    await logAudit({
+      actorId: therapistId || String(consultation.therapistId),
+      actorRole: 'therapist',
+      action: 'AMENDMENT_CREATED',
+      resourceType: 'ClinicalConsultation',
+      resourceId: consultation._id.toString(),
+      beforeState: { version: nextVersion - 1 },
+      afterState: { version: nextVersion, status: 'AMENDED', reason },
+      reason: `Clinical consultation amendment created: ${reason}`,
+      req,
+    });
 
     // Re-generate updated report asynchronously
     clinicalProcessor.processConsultationSubmitted({
