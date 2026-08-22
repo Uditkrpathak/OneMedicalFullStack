@@ -382,46 +382,25 @@ export const getOrCreateConsultation = async (req, res) => {
     let consultation = await ClinicalConsultation.findOne({ appointmentId });
 
     if (!consultation) {
+      if (therapistRole === 'patient') {
+        return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Only authorized clinical practitioners can initiate clinical consultation drafts.' } });
+      }
+
       let appointment = await Appointment.findById(appointmentId);
       if (!appointment) {
-        const start = req.body.startTime ? new Date(req.body.startTime) : new Date();
-        const durationMin = req.body.durationMinutes || req.body.durationMin || 45;
-        const end = new Date(start.getTime() + durationMin * 60 * 1000);
-
-        appointment = await Appointment.create({
-          _id: appointmentId,
-          patientId: req.body.patientId || 'test_patient_suite_1',
-          therapistId: therapistId || req.body.therapistId || 'test_therapist_suite_1',
-          therapistName: req.user?.name || 'Dr. Sagar Patil',
-          patientName: req.body.patientName || 'Rahul Sharma',
-          patientAge: req.body.patientAge || 32,
-          patientGender: req.body.patientGender || 'Male',
-          serviceName: req.body.serviceName || 'ACL Post-Op Recovery • Week 4',
-          serviceType: 'PHYSIOTHERAPY_SESSION',
-          status: req.body.status || 'IN_PROGRESS',
-          startTime: start,
-          endTime: end,
-          durationMin,
-          appointmentType: req.body.appointmentType || 'clinic_visit',
-          appointmentPlace: req.body.appointmentType === 'telehealth' ? 'VIDEO' : 'CLINIC',
-          roomNumber: req.body.roomNumber || 'ROOM 204B',
-          chiefComplaint: req.body.chiefComplaint || 'Patellar instability during knee flexion.',
-        }).catch((err) => {
-          console.error('[Appointment.create] error:', err.message);
-          return null;
-        });
+        return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found.' } });
       }
 
       consultation = await ClinicalConsultation.create({
         appointmentId,
-        patientId: appointment?.patientId?.toString() || 'patient_default',
-        therapistId: therapistId || appointment?.therapistId?.toString() || 'therapist_default',
+        patientId: appointment.patientId?.toString() || 'patient_default',
+        therapistId: therapistId || appointment.therapistId?.toString() || 'therapist_default',
         telehealthSessionId: telehealthSessionId || null,
         currentStep: 1,
         status: 'DRAFT',
         draftSavedAt: new Date(),
         step1_preparation: {
-          chiefComplaint: appointment?.chiefComplaint || 'Patellar instability and lower back stiffness during knee flexion.',
+          chiefComplaint: appointment.chiefComplaint || 'Patellar instability and lower back stiffness during knee flexion.',
           painScore: 4,
           painType: ['Radiating'],
           painDuration: 'Today',
@@ -431,11 +410,22 @@ export const getOrCreateConsultation = async (req, res) => {
         },
       });
 
-      // Update appointment status to IN_PROGRESS if confirmed and not explicitly seeded
-      if (appointment && !req.body.status && ['CONFIRMED', 'SCHEDULED'].includes(appointment.status)) {
+      // Transition appointment to IN_PROGRESS if currently CONFIRMED or CHECKED_IN
+      if (['CONFIRMED', 'CHECKED_IN', 'SCHEDULED', 'DOCUMENTATION_PENDING'].includes(appointment.status)) {
         appointment.status = 'IN_PROGRESS';
         await appointment.save();
       }
+
+      await logAudit({
+        actorId: therapistId || appointment.therapistId || 'system',
+        actorRole: therapistRole || 'therapist',
+        action: 'CONSULTATION_CREATED',
+        resourceType: 'ClinicalConsultation',
+        resourceId: consultation._id.toString(),
+        afterState: { appointmentId, patientId: consultation.patientId, currentStep: 1, status: 'DRAFT' },
+        reason: 'Clinical consultation draft initialized by authorized therapist',
+        req,
+      });
     }
 
     res.json({ success: true, data: consultation });

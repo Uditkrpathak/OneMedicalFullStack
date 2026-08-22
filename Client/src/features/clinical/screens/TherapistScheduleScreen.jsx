@@ -120,16 +120,24 @@ export default function TherapistScheduleScreen({ navigation }) {
         const queue = json.data?.appointments || json.appointments || [];
         const list = queue.map((a) => {
           const status = a.status || 'CONFIRMED';
-          const type = a.consultationType === 'VIDEO' ? 'telehealth' : 'clinic_visit';
+          const place = (a.appointmentPlace || a.consultationType || a.mode || a.type || a.appointmentType || '').toUpperCase();
+          let visitMode = 'clinic';
+          if (place.includes('VIDEO') || place.includes('TELEHEALTH') || place.includes('ONLINE')) {
+            visitMode = 'video';
+          } else if (place.includes('HOME')) {
+            visitMode = 'home';
+          }
+
           const timeFormatted = a.time || (a.startTime ? new Date(a.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '10:00 AM');
           return {
             id: a.id || a.appointmentId || a._id,
             time: timeFormatted,
             patientName: a.patient?.name || a.patientName || 'Patient',
-            condition: a.condition || 'Physical Rehabilitation',
+            condition: a.condition || a.serviceName || a.chiefComplaint || 'Physical Rehabilitation',
             sessionInfo: `${timeFormatted} — 45m session`,
             status,
-            type,
+            visitMode,
+            type: visitMode === 'video' ? 'telehealth' : (visitMode === 'home' ? 'home_visit' : 'clinic_visit'),
           };
         });
         setAppointments(list);
@@ -142,7 +150,14 @@ export default function TherapistScheduleScreen({ navigation }) {
         if (dashJson.success && dashJson.data?.dailyTimeline) {
           const list = dashJson.data.dailyTimeline.map((a) => {
             const status = a.status || 'CONFIRMED';
-            const type = a.appointmentType || 'clinic_visit';
+            const place = (a.appointmentType || a.appointmentPlace || a.mode || '').toUpperCase();
+            let visitMode = 'clinic';
+            if (place.includes('VIDEO') || place.includes('TELEHEALTH') || place.includes('ONLINE')) {
+              visitMode = 'video';
+            } else if (place.includes('HOME')) {
+              visitMode = 'home';
+            }
+
             const timeFormatted = a.time || '10:00 AM';
             return {
               id: a.id || a._id,
@@ -151,7 +166,8 @@ export default function TherapistScheduleScreen({ navigation }) {
               condition: a.condition || 'Physical Rehabilitation',
               sessionInfo: `${timeFormatted} — 45m session`,
               status,
-              type,
+              visitMode,
+              type: visitMode === 'video' ? 'telehealth' : (visitMode === 'home' ? 'home_visit' : 'clinic_visit'),
             };
           });
           setAppointments(list);
@@ -460,15 +476,29 @@ export default function TherapistScheduleScreen({ navigation }) {
                           ? { backgroundColor: '#2563eb' }
                           : isDocPending
                           ? { backgroundColor: '#7c3aed' }
+                          : appt.visitMode === 'video'
+                          ? { backgroundColor: '#0284c7' }
                           : { backgroundColor: '#003D9B' }
                       ]}
                       activeOpacity={0.85}
-                      onPress={() =>
-                        navigation.navigate('ClinicalConsultation', {
-                          appointmentId: appt.id,
-                          patientName: appt.patientName,
-                        })
-                      }
+                      onPress={() => {
+                        if (isCompleted || isDocPending || appt.visitMode !== 'video') {
+                          // Direct in-person/home clinical encounter documentation
+                          navigation.navigate('ClinicalConsultation', {
+                            appointmentId: appt.id,
+                            patientName: appt.patientName,
+                            visitMode: appt.visitMode,
+                          });
+                        } else {
+                          // Online Video Telehealth Call
+                          navigation.navigate('VideoCall', {
+                            appointmentId: appt.id,
+                            recipientName: appt.patientName,
+                            callId: `call_${appt.id}`,
+                            isCaller: true,
+                          });
+                        }
+                      }}
                     >
                       <Ionicons
                         name={
@@ -476,10 +506,12 @@ export default function TherapistScheduleScreen({ navigation }) {
                             ? "document-text"
                             : (isNoAttendance || isProviderNoShow || isPatientNoShow)
                             ? "clipboard-outline"
-                            : isInProgress
-                            ? "videocam"
                             : isDocPending
                             ? "create-outline"
+                            : appt.visitMode === 'video'
+                            ? "videocam"
+                            : appt.visitMode === 'home'
+                            ? "home-outline"
                             : "play"
                         }
                         size={14}
@@ -491,11 +523,13 @@ export default function TherapistScheduleScreen({ navigation }) {
                           ? 'View Summary'
                           : (isNoAttendance || isProviderNoShow || isPatientNoShow)
                           ? 'Review Session'
-                          : isInProgress
-                          ? 'Join Consultation'
                           : isDocPending
                           ? 'Complete Notes'
-                          : 'Start Session'}
+                          : appt.visitMode === 'video'
+                          ? (isInProgress ? 'Join Video Call' : 'Start Video Call')
+                          : appt.visitMode === 'home'
+                          ? 'Start Home Visit'
+                          : 'Start Clinic Session'}
                       </Text>
                     </TouchableOpacity>
 

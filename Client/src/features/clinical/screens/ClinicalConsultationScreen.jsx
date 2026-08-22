@@ -1303,23 +1303,61 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
               {/* Quick Date Chips */}
               <Text style={[styles.fieldLabel, { marginTop: 4 }]}>RECOMMENDED TIMELINE</Text>
               <View style={{ flexDirection: 'row', gap: 6 }}>
-                {['In 3 Days', 'In 1 Week', 'In 2 Weeks', 'In 1 Month'].map((dt) => {
-                  const isSel = consultationData.step6_reports.nextVisit.date === dt;
+                {[
+                  { label: 'In 3 Days', days: 3 },
+                  { label: 'In 1 Week', days: 7 },
+                  { label: 'In 2 Weeks', days: 14 },
+                  { label: 'In 1 Month', days: 30 }
+                ].map(({ label, days }) => {
+                  const isSel = consultationData.step6_reports.nextVisit.date.includes(label) || consultationData.step6_reports.nextVisit.date === label;
+                  
+                  const computeTargetDate = (d) => {
+                    const target = new Date();
+                    target.setDate(target.getDate() + d);
+                    return `${label} (${target.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })})`;
+                  };
+
                   return (
                     <TouchableOpacity
-                      key={dt}
+                      key={label}
                       style={[styles.smallPill, isSel && styles.smallPillActive]}
+                      onPress={() => {
+                        const formatted = computeTargetDate(days);
+                        setConsultationData((prev) => ({
+                          ...prev,
+                          step6_reports: {
+                            ...prev.step6_reports,
+                            nextVisit: { ...prev.step6_reports.nextVisit, date: formatted },
+                          },
+                        }));
+                      }}
+                    >
+                      <Text style={[styles.smallPillText, isSel && styles.smallPillTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Quick Time Slots */}
+              <Text style={[styles.fieldLabel, { marginTop: 8 }]}>PREFERRED REVIEW TIME</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {['09:30 AM', '10:30 AM', '02:00 PM', '05:30 PM'].map((tm) => {
+                  const isTmSel = consultationData.step6_reports.nextVisit.time === tm;
+                  return (
+                    <TouchableOpacity
+                      key={tm}
+                      style={[styles.smallPill, isTmSel && styles.smallPillActive]}
                       onPress={() =>
                         setConsultationData((prev) => ({
                           ...prev,
                           step6_reports: {
                             ...prev.step6_reports,
-                            nextVisit: { ...prev.step6_reports.nextVisit, date: dt },
+                            nextVisit: { ...prev.step6_reports.nextVisit, time: tm },
                           },
                         }))
                       }
                     >
-                      <Text style={[styles.smallPillText, isSel && styles.smallPillTextActive]}>{dt}</Text>
+                      <Text style={[styles.smallPillText, isTmSel && styles.smallPillTextActive]}>{tm}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -1327,9 +1365,13 @@ export default function ClinicalConsultationScreen({ route, navigation }) {
 
               {/* Next Visit Card */}
               <View style={styles.nextVisitCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={styles.nextVisitDateLabel}>Date: {consultationData.step6_reports.nextVisit.date}</Text>
-                  <Text style={styles.nextVisitTimeLabel}>Time: {consultationData.step6_reports.nextVisit.time}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.nextVisitDateLabel}>
+                    Date: {consultationData.step6_reports.nextVisit.date || 'In 1 Week (Recommended)'}
+                  </Text>
+                  <Text style={styles.nextVisitTimeLabel}>
+                    Time: {consultationData.step6_reports.nextVisit.time || '10:30 AM'}
+                  </Text>
                 </View>
                 <Text style={styles.nextVisitTypeLabel}>
                   Consultation: {consultationData.step6_reports.nextVisit.consultationType} • {consultationData.step6_reports.nextVisit.clinic}

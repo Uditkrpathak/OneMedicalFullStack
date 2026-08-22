@@ -48,9 +48,13 @@ const AppointmentSchema = new mongoose.Schema({
       'RESCHEDULED',
       'CHECKED_IN',
       'IN_PROGRESS',
+      'DOCUMENTATION_PENDING',
       'COMPLETED',
       'CANCELLED',
       'EXPIRED',
+      'PATIENT_NO_SHOW',
+      'PROVIDER_NO_SHOW',
+      'NO_ATTENDANCE',
     ],
     default: 'HELD',
     index: true,
@@ -120,7 +124,7 @@ const AppointmentSchema = new mongoose.Schema({
   currency:      { type: String, default: 'INR' },
   paymentStatus: {
     type: String,
-    enum: ['PENDING', 'PAID', 'FAILED', 'REFUNDED', 'NOT_APPLICABLE'],
+    enum: ['PENDING', 'PAID', 'FAILED', 'REFUND_PENDING', 'REFUNDED', 'NOT_APPLICABLE'],
     default: 'PENDING',
   },
   paymentOrderId: { type: String },   // Razorpay order ID

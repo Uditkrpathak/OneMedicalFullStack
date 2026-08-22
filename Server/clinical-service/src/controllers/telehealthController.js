@@ -202,6 +202,14 @@ export const endSession = async (req, res) => {
       if (endReason) session.endReason = endReason;
       if (iceConnectionType) session.qualityMetrics.iceConnectionType = iceConnectionType;
       await session.save();
+
+      // Transition linked appointment to DOCUMENTATION_PENDING if currently IN_PROGRESS
+      if (session.appointmentId) {
+        await Appointment.findOneAndUpdate(
+          { _id: session.appointmentId, status: { $in: ['IN_PROGRESS', 'CONFIRMED', 'CHECKED_IN'] } },
+          { $set: { status: 'DOCUMENTATION_PENDING', sessionStatus: 'ENDED' } }
+        ).catch((e) => console.warn('[Telehealth] Appointment status update warning:', e.message));
+      }
     }
 
     // Audit Log entry

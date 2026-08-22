@@ -22,6 +22,5 @@ const AuditLogSchema = new mongoose.Schema({
 
 AuditLogSchema.index({ resourceType: 1, resourceId: 1, timestamp: -1 });
 AuditLogSchema.index({ actorId: 1, timestamp: -1 });
-AuditLogSchema.index({ currentHash: 1 });
 
 export default mongoose.model('AuditLog', AuditLogSchema);
