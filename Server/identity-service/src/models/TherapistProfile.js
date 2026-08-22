@@ -31,7 +31,17 @@ const TherapistProfileSchema = new mongoose.Schema({
   bio:               { type: String },
   profileImageUrl:   { type: String },
   clinicName:        { type: String },
-  clinicLocation:    { type: ClinicLocationSchema, default: {} },
+  clinicLocation:    {
+    type: mongoose.Schema.Types.Mixed,
+    default: () => ({ address: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946 }),
+    set: (v) => {
+      if (typeof v === 'string') return { address: v, lat: 12.9716, lng: 77.5946 };
+      if (typeof v === 'object' && v !== null) {
+        return { address: v.address || 'Bengaluru, Karnataka', lat: Number(v.lat || 12.9716), lng: Number(v.lng || 77.5946) };
+      }
+      return { address: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946 };
+    }
+  },
   consultationFee:   { type: Number, default: 0 },  // in paise (smallest INR unit)
   availabilityTemplate: [AvailabilitySlotSchema],
   leaveExceptions:      [LeaveExceptionSchema],

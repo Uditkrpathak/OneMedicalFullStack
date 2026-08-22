@@ -166,7 +166,8 @@ export default function AddTherapistPage() {
         consultationFee: feePaise,
         languages: form.languages.split(',').map(l => l.trim()).filter(Boolean),
         bio: form.bio.trim(),
-        clinicName: form.practiceClinic,
+        clinicName: form.practiceClinic || 'OneMedical Care Center',
+        clinicLocation: { address: 'Bengaluru, Karnataka', lat: 12.9716, lng: 77.5946 },
         verificationStatus: 'verified',
         isVerified: true,
       };
