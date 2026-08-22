@@ -269,13 +269,14 @@ export const getAppointmentClinicalContext = async (req, res) => {
     if (appointment.patientId) {
       try {
         const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
-        const patRes = await fetch(`${identityUrl}/api/v1/patients/${appointment.patientId}`, {
-          headers: {
-            'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
-            'x-user-role': 'clinic_admin',
-            'x-user-id': 'system',
-          },
-        });
+        const internalKey = process.env.INTERNAL_API_KEY;
+        const headers = {
+          'x-user-role': 'clinic_admin',
+          'x-user-id': 'system',
+        };
+        if (internalKey) headers['x-internal-key'] = internalKey;
+
+        const patRes = await fetch(`${identityUrl}/api/v1/patients/${appointment.patientId}`, { headers });
         const patJson = await patRes.json();
         if (patJson.success && patJson.data) {
           patientUser = patJson.data;
@@ -286,8 +287,8 @@ export const getAppointmentClinicalContext = async (req, res) => {
     }
 
     const patientName = appointment.patientName || patientUser?.name || 'Patient';
-    const age = patientUser?.age || (patientUser?.profile?.age) || appointment.patientAge || 28;
-    const gender = patientUser?.gender || (patientUser?.profile?.gender) || appointment.patientGender || 'Male';
+    const age = patientUser?.age || (patientUser?.profile?.age) || appointment.patientAge || undefined;
+    const gender = patientUser?.gender || (patientUser?.profile?.gender) || appointment.patientGender || undefined;
     const patientIdFormatted = `#OM-${(appointment.patientId || appointment._id || '').toString().slice(-5).toUpperCase()}`;
     const primaryComplaint = appointment.chiefComplaint || appointment.serviceName || (appointment.serviceType ? appointment.serviceType.replace(/_/g, ' ') : 'Physical Rehabilitation');
     const lastVisitDate = lastVisit?.startTime
@@ -295,12 +296,18 @@ export const getAppointmentClinicalContext = async (req, res) => {
       : 'Initial Session';
     const currentProgramName = activeProgram?.programId?.title || activeProgram?.title || (activeProgram ? 'Active Recovery Program' : 'Physical Rehabilitation Assessment');
     const isOnline = appointment.appointmentPlace === 'VIDEO' || appointment.appointmentType === 'telehealth' || appointment.mode === 'online';
-    const isHome = appointment.appointmentPlace === 'HOME' || appointment.mode === 'home';
-    const visitMode = isOnline ? 'Online Video Consultation' : (isHome ? 'Home Visit Session' : 'Clinic Visit');
+    const isHome = (appointment.appointmentPlace || '').toUpperCase() === 'HOME' || appointment.mode === 'home';
+    const visitMode = isOnline ? 'Online Video Consultation' : (isHome ? 'Home Visit (At-Home Care)' : 'In-Person Clinic Visit');
+
+    const homeAddressFormatted = appointment.patientAddressSnapshot?.formattedAddress ||
+      (appointment.patientAddressSnapshot?.addressLine1
+        ? `${appointment.patientAddressSnapshot.addressLine1}${appointment.patientAddressSnapshot.addressLine2 ? ', ' + appointment.patientAddressSnapshot.addressLine2 : ''}${appointment.patientAddressSnapshot.landmark ? ' (Near ' + appointment.patientAddressSnapshot.landmark + ')' : ''}, ${appointment.patientAddressSnapshot.city}, ${appointment.patientAddressSnapshot.state} - ${appointment.patientAddressSnapshot.postalCode}`
+        : (appointment.homeAddress || appointment.patientAddress || 'Patient Residence'));
+
     const clinicLocation = isOnline
       ? 'Secure Video Consultation (Telehealth Room)'
       : (isHome
-          ? (appointment.homeAddress || appointment.patientAddress || 'Patient Registered Residence')
+          ? homeAddressFormatted
           : (appointment.clinicLocation || appointment.clinicName || 'ONE MEDICAL Central Clinic, Indiranagar, Bengaluru'));
 
     // IST Formatted Date & Time
@@ -343,6 +350,7 @@ export const getAppointmentClinicalContext = async (req, res) => {
       painScore,
       visitMode,
       clinicLocation,
+      patientAddressSnapshot: appointment.patientAddressSnapshot,
       appointmentDate,
       appointmentTime,
       durationMins,

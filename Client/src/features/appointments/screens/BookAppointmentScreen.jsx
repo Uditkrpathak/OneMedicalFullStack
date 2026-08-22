@@ -531,7 +531,12 @@ export default function BookAppointmentScreen({ route, navigation }) {
                     const languages = Array.isArray(doctor.languages) && doctor.languages.length > 0 ? doctor.languages : ['English', 'Hindi'];
                     const isFav = !!favorites[docId];
                     return (
-                      <View key={docId} style={styles.doctorListCard}>
+                      <TouchableOpacity
+                        key={docId}
+                        style={styles.doctorListCard}
+                        activeOpacity={0.9}
+                        onPress={() => handleDoctorSelect(doctor)}
+                      >
                         <View style={styles.docRowHeader}>
                           <Image source={getDoctorAvatarSource(doctor)} style={styles.docListAvatar} />
                           <View style={styles.docListMainInfo}>
@@ -564,14 +569,29 @@ export default function BookAppointmentScreen({ route, navigation }) {
                             <Text style={styles.feeLabelText}>CONSULTATION FEE</Text>
                             <Text style={styles.feeAmountText}>₹{feeInRupees.toLocaleString()}</Text>
                           </View>
-                          <TouchableOpacity
-                            style={styles.docViewProfileBtn}
-                            onPress={() => navigation.navigate('TherapistDetail', { doctor, therapistId: docId })}
-                          >
-                            <Text style={styles.docViewProfileBtnText}>View Profile</Text>
-                          </TouchableOpacity>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              style={[styles.docViewProfileBtn, { backgroundColor: '#f1f5f9' }]}
+                              onPress={() => navigation.navigate('TherapistDetail', {
+                                doctor,
+                                therapistId: docId,
+                                appointmentPlace: appointmentPlace === 'home' ? 'HOME' : appointmentPlace === 'online' ? 'VIDEO' : 'CLINIC',
+                                serviceType: selectedCategory ? selectedCategory.name : 'Physiotherapy Session',
+                              })}
+                            >
+                              <Text style={[styles.docViewProfileBtnText, { color: '#475569' }]}>Profile</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.docViewProfileBtn, { backgroundColor: '#003D9B' }]}
+                              onPress={() => handleDoctorSelect(doctor)}
+                            >
+                              <Text style={[styles.docViewProfileBtnText, { color: '#ffffff' }]}>
+                                {appointmentPlace === 'home' ? 'Book Home Visit' : 'Book Slot'}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
+                      </TouchableOpacity>
                     );
                   })
                 ) : (

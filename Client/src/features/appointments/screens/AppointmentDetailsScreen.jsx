@@ -59,18 +59,6 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   const apptDoc = { ...initialAppt, ...(clinicalContext?.appointment || {}) };
   const ctxSnapshot = clinicalContext?.patientSnapshot || {};
 
-  // Deterministic seed helper for realistic per-patient vitals if unassigned
-  const seedString = String(apptDoc.patientName || apptDoc.id || appointmentId || 'patient');
-  let hashVal = 0;
-  for (let i = 0; i < seedString.length; i++) {
-    hashVal = (hashVal << 5) - hashVal + seedString.charCodeAt(i);
-    hashVal |= 0;
-  }
-  const positiveHash = Math.abs(hashVal);
-  const dynamicPain = (positiveHash % 6) + 2; // 2 to 7 / 10
-  const dynamicProgress = 25 + (positiveHash % 65); // 25% to 90%
-  const dynamicAge = 24 + (positiveHash % 35); // 24 to 59 years
-
   const sDate = apptDoc.startTime ? new Date(apptDoc.startTime) : null;
   const isValidSDate = Boolean(sDate && !isNaN(sDate.getTime()));
   const durationMins = apptDoc.durationMin || apptDoc.durationMinutes || ctxSnapshot.durationMins || 45;
@@ -116,12 +104,13 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
   };
 
   const isOnlineMode = apptDoc.visitMode === 'video' || apptDoc.appointmentPlace === 'VIDEO' || apptDoc.appointmentType === 'telehealth' || (ctxSnapshot.visitMode || '').toLowerCase().includes('online');
-  const isHomeMode = apptDoc.visitMode === 'home' || apptDoc.appointmentPlace === 'HOME' || (ctxSnapshot.visitMode || '').toLowerCase().includes('home');
+  const isHomeMode = apptDoc.visitMode === 'home' || (apptDoc.appointmentPlace || '').toUpperCase() === 'HOME' || (ctxSnapshot.visitMode || '').toLowerCase().includes('home');
   const resolvedVisitMode = isOnlineMode ? 'Online Video Consultation' : (isHomeMode ? 'Home Visit (At-Home Care)' : 'In-Person Clinic Visit');
   
-  const snapAddress = apptDoc.patientAddressSnapshot?.addressLine1
-    ? `${apptDoc.patientAddressSnapshot.addressLine1}, ${apptDoc.patientAddressSnapshot.city}`
-    : (apptDoc.patientAddress || apptDoc.address);
+  const snapObj = apptDoc.patientAddressSnapshot || ctxSnapshot.patientAddressSnapshot;
+  const snapAddress = snapObj?.formattedAddress || (snapObj?.addressLine1
+    ? `${snapObj.addressLine1}${snapObj.addressLine2 ? ', ' + snapObj.addressLine2 : ''}${snapObj.landmark ? ' (Near ' + snapObj.landmark + ')' : ''}, ${snapObj.city}, ${snapObj.state} - ${snapObj.postalCode}`
+    : (apptDoc.patientAddress || apptDoc.address || apptDoc.homeAddress));
 
   const rawClinicLoc = apptDoc.clinicLocation || apptDoc.clinicName || ctxSnapshot.clinicLocation || ctxSnapshot.clinicName;
   const resolvedClinicLocation = isOnlineMode
@@ -130,21 +119,25 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
 
   const pName = typeof (ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName) === 'string'
     ? (ctxSnapshot.patientName || apptDoc.patientName || route.params?.patientName)
-    : 'Patient';
+    : (user?.name || 'Patient');
+
+  const resolvedAge = ctxSnapshot.age || apptDoc.patientAge || apptDoc.age || user?.profile?.age || user?.age || 32;
+  const resolvedGender = ctxSnapshot.gender || apptDoc.patientGender || apptDoc.gender || user?.profile?.gender || user?.gender || 'Male';
 
   const snapshot = {
     patientId: apptDoc.patientId || ctxSnapshot.patientId || user?._id || user?.id,
     patientName: pName,
-    age: ctxSnapshot.age || apptDoc.patientAge || apptDoc.age || dynamicAge,
-    gender: ctxSnapshot.gender || apptDoc.patientGender || apptDoc.gender || (positiveHash % 2 === 0 ? 'Male' : 'Female'),
+    age: resolvedAge,
+    gender: resolvedGender,
     patientIdFormatted: ctxSnapshot.patientIdFormatted || `#OM-${String(apptDoc.patientId || apptDoc.id || appointmentId || 'PT').slice(-5).toUpperCase()}`,
     primaryComplaint: apptDoc.condition || apptDoc.serviceName || ctxSnapshot.primaryComplaint || (apptDoc.serviceType ? String(apptDoc.serviceType).replace(/_/g, ' ') : 'Physical Rehabilitation Assessment'),
-    lastVisitDate: ctxSnapshot.lastVisitDate || (positiveHash % 3 === 0 ? 'Initial Session' : '1 Week Ago'),
+    lastVisitDate: ctxSnapshot.lastVisitDate || 'Initial Session',
     currentProgramName: apptDoc.programName || ctxSnapshot.currentProgramName || (isHomeMode ? 'Home Mobility & Posture Plan' : 'Active Recovery Plan'),
-    recoveryGoalProgress: ctxSnapshot.recoveryGoalProgress !== undefined ? ctxSnapshot.recoveryGoalProgress : (apptDoc.recoveryGoalProgress || dynamicProgress),
-    painScore: ctxSnapshot.painScore !== undefined ? ctxSnapshot.painScore : (apptDoc.painScore || dynamicPain),
+    recoveryGoalProgress: ctxSnapshot.recoveryGoalProgress !== undefined ? ctxSnapshot.recoveryGoalProgress : (apptDoc.recoveryGoalProgress || 80),
+    painScore: ctxSnapshot.painScore !== undefined ? ctxSnapshot.painScore : (apptDoc.painScore || 4),
     visitMode: resolvedVisitMode,
     clinicLocation: resolvedClinicLocation,
+    patientAddressSnapshot: snapObj,
     appointmentDate: resolvedDate,
     appointmentTime: resolvedTime,
     status: (apptDoc.status || ctxSnapshot.status || 'CONFIRMED').toUpperCase(),

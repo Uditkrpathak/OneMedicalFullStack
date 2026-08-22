@@ -388,7 +388,12 @@ export default function TherapistDetailScreen({ route, navigation }) {
         <TouchableOpacity
           style={styles.continueBtn}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('SelectDateTime', { doctor, therapistId: doctor._id || doctor.id || therapistId })}
+          onPress={() => navigation.navigate('SelectDateTime', {
+            doctor,
+            therapistId: doctor._id || doctor.id || therapistId,
+            appointmentPlace: route.params?.appointmentPlace || 'CLINIC',
+            serviceType: route.params?.serviceType || 'Physiotherapy Session',
+          })}
         >
           <Text style={styles.continueBtnText}>Continue</Text>
         </TouchableOpacity>

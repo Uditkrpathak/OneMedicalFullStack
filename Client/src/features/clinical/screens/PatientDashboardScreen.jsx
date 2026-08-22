@@ -65,9 +65,10 @@ export default function PatientDashboardScreen({ navigation }) {
           }
 
           if (isMounted && apptRes.success && Array.isArray(apptRes.data)) {
+            const CONFIRMED_ACTIVE_STATUSES = ['CONFIRMED', 'EN_ROUTE', 'ARRIVED', 'CHECKED_IN', 'IN_PROGRESS', 'DOCUMENTED', 'RESCHEDULE_REQUESTED'];
             const activeAppts = apptRes.data.filter(a => {
               const s = (a.status || '').toUpperCase();
-              return s === 'CONFIRMED' || s === 'HELD' || s === 'RESCHEDULE_REQUESTED' || s === 'CHECKED_IN' || s === 'IN_PROGRESS';
+              return CONFIRMED_ACTIVE_STATUSES.includes(s);
             });
             if (activeAppts.length > 0) {
               activeAppts.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());

@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const ConversationSchema = new mongoose.Schema(
   {
+    conversationKey: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     participants: [
       {
         type: String,

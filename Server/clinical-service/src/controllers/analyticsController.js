@@ -5,12 +5,77 @@ import Appointment from '../models/Appointment.js';
 import AuditLog from '../models/AuditLog.js';
 import { hasActiveCareRelationship } from '../utils/careRelationship.js';
 
+// ─── CONSTANTS & HELPERS ───────────────────────────────────────────────────────
+const REVENUE_STATUSES = ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'DOCUMENTED', 'CHECKED_IN'];
+const NON_ACTIVE_STATUSES = ['CANCELLED', 'REJECTED', 'RESCHEDULED', 'EXPIRED', 'PAYMENT_EXPIRED'];
+const PAID_STATUSES = ['PAID', 'SETTLED'];
+const ALLOWED_ADMIN_ROLES = ['clinic_admin', 'super_admin', 'admin'];
+const ALLOWED_RECOVERY_ROLES = ['patient', 'therapist', 'clinic_admin', 'super_admin', 'admin'];
+
+// Asia/Kolkata is UTC+5:30 (330 minutes)
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+function getStartOfTodayIST() {
+  const nowUtc = Date.now();
+  const istTime = new Date(nowUtc + IST_OFFSET_MS);
+  const istYear = istTime.getUTCFullYear();
+  const istMonth = istTime.getUTCMonth();
+  const istDate = istTime.getUTCDate();
+  return new Date(Date.UTC(istYear, istMonth, istDate) - IST_OFFSET_MS);
+}
+
+function getISTDateString(date) {
+  if (!date) return '';
+  const d = new Date(new Date(date).getTime() + IST_OFFSET_MS);
+  return d.toISOString().slice(0, 10);
+}
+
+export function isAuthorizedAdmin(req) {
+  const userRole = req.user?.role || req.headers['x-user-role'];
+  if (ALLOWED_ADMIN_ROLES.includes(userRole)) return true;
+  
+  // Accept internal key ONLY if configured and matching for service-to-service calls
+  const internalKey = req.headers['x-internal-key'];
+  if (internalKey && process.env.INTERNAL_API_KEY && internalKey === process.env.INTERNAL_API_KEY) {
+    return true;
+  }
+  return false;
+}
+
+export function getCanonicalRevenueInr(appointment) {
+  if (!appointment) return 0;
+  if (typeof appointment.amount === 'number') {
+    return Math.max(0, appointment.amount);
+  }
+  if (typeof appointment.paidAmount === 'number') {
+    return Math.max(0, appointment.paidAmount);
+  }
+  if (appointment.amount) {
+    const num = Number(appointment.amount);
+    if (!isNaN(num)) return Math.max(0, num);
+  }
+  return 0;
+}
+
+export function parsePagination(query) {
+  const rawPage = Number.parseInt(query?.page, 10);
+  const rawLimit = Number.parseInt(query?.limit, 10);
+  const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const limit = isNaN(rawLimit) || rawLimit < 1 ? 20 : Math.min(100, rawLimit);
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+}
+
 // ─── GET RECOVERY PROGRESS ANALYTICS (PROGRAM-SCOPED) ─────────────────────────
 export const getRecoveryProgress = async (req, res) => {
   try {
-    const requesterId = req.user?.userId;
-    const requesterRole = req.user?.role;
+    const requesterId = req.user?.userId || req.headers['x-user-id'];
+    const requesterRole = req.user?.role || req.headers['x-user-role'];
     let targetPatientId = req.params.patientId || req.query.patientId;
+
+    if (!requesterRole || !ALLOWED_RECOVERY_ROLES.includes(requesterRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Unauthorized role.' } });
+    }
 
     if (targetPatientId === 'me' || (!targetPatientId && requesterRole === 'patient')) {
       targetPatientId = requesterId?.toString();
@@ -121,13 +186,13 @@ export const getRecoveryProgress = async (req, res) => {
     const timelineMap = new Map();
 
     painAssessments.forEach(p => {
-      const dStr = new Date(p.date || p.recordedAt || p.createdAt).toISOString().slice(0, 10);
+      const dStr = getISTDateString(p.date || p.recordedAt || p.createdAt);
       const score = p.painScore !== undefined ? p.painScore : p.painLevel;
       timelineMap.set(dStr, { date: dStr, painScore: score });
     });
 
     sessionLogs.forEach(s => {
-      const dStr = s.date || new Date(s.completedAt || s.createdAt).toISOString().slice(0, 10);
+      const dStr = s.date || getISTDateString(s.completedAt || s.createdAt);
       const existing = timelineMap.get(dStr) || { date: dStr };
       timelineMap.set(dStr, {
         ...existing,
@@ -165,7 +230,6 @@ export const getRecoveryProgress = async (req, res) => {
         mobility: mobilityData,
         compositeRecoveryScore,
         timeline,
-        // Backward-compatible fields
         sessionMetrics: {
           totalCompletedSessions: completedCount,
           totalExpectedSessions: expectedSessions,
@@ -188,16 +252,14 @@ export const getRecoveryProgress = async (req, res) => {
 
 export const getRecoveryProgressAnalytics = getRecoveryProgress;
 
-const REVENUE_STATUSES = ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'DOCUMENTED', 'CHECKED_IN'];
-const NON_ACTIVE_STATUSES = ['CANCELLED', 'REJECTED', 'RESCHEDULED', 'EXPIRED', 'PAYMENT_EXPIRED'];
-const PAID_STATUSES = ['PAID', 'SETTLED'];
-
 // ─── ADMIN: SUMMARY KPIS (AUTHORITATIVE BACKEND CALCULATION) ────────────────
 export const getAnalyticsSummary = async (req, res) => {
   try {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const startOfToday = getStartOfTodayIST();
 
     const [
       totalAppointments,
@@ -214,65 +276,68 @@ export const getAnalyticsSummary = async (req, res) => {
         isDeleted: false,
         status: { $in: REVENUE_STATUSES },
         paymentStatus: { $in: ['PAID', 'paid', 'SETTLED', 'settled'] }
-      }, 'amount paise paidAmount').lean(),
+      }, 'amount paidAmount').lean(),
       PatientProgram.countDocuments({ isDeleted: false, status: 'active' }),
       SessionLog.countDocuments({ isDeleted: false, status: 'completed' }),
       Appointment.distinct('patientId', { isDeleted: false }),
       Appointment.distinct('therapistId', { isDeleted: false }),
     ]);
 
-    // Fetch authoritative enrolled patients and therapists count from Identity Service (Port 5001)
+    // Fetch authoritative enrolled patients and therapists count from Identity Service
     let enrolledPatientsCount = 0;
     let enrolledTherapistsCount = 0;
     const identityUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
+    const internalKey = process.env.INTERNAL_API_KEY;
 
-    try {
-      const [patRes, therapistRes] = await Promise.all([
-        fetch(`${identityUrl}/api/v1/patients`, {
-          headers: {
-            'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
-            'x-user-role': 'clinic_admin',
-            'x-user-id': 'system',
-          },
-        }),
-        fetch(`${identityUrl}/api/v1/therapists`, {
-          headers: {
-            'x-internal-key': process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod',
-            'x-user-role': 'clinic_admin',
-            'x-user-id': 'system',
-          },
-        }),
-      ]);
+    if (internalKey) {
+      try {
+        const [patRes, therapistRes] = await Promise.all([
+          fetch(`${identityUrl}/api/v1/patients`, {
+            headers: {
+              'x-internal-key': internalKey,
+              'x-user-role': 'clinic_admin',
+              'x-user-id': 'system',
+            },
+          }),
+          fetch(`${identityUrl}/api/v1/therapists`, {
+            headers: {
+              'x-internal-key': internalKey,
+              'x-user-role': 'clinic_admin',
+              'x-user-id': 'system',
+            },
+          }),
+        ]);
 
-      const [patJson, therapistJson] = await Promise.all([patRes.json(), therapistRes.json()]);
+        const [patJson, therapistJson] = await Promise.all([patRes.json(), therapistRes.json()]);
 
-      if (patJson.success && Array.isArray(patJson.data)) {
-        enrolledPatientsCount = patJson.data.length;
+        if (patJson.success && Array.isArray(patJson.data)) {
+          enrolledPatientsCount = patJson.data.length;
+        }
+        if (therapistJson.success && Array.isArray(therapistJson.data)) {
+          enrolledTherapistsCount = therapistJson.data.length;
+        }
+      } catch (e) {
+        console.warn('[Analytics] Identity Service fetch fallback:', e.message);
       }
-      if (therapistJson.success && Array.isArray(therapistJson.data)) {
-        enrolledTherapistsCount = therapistJson.data.length;
-      }
-    } catch (e) {
-      console.warn('[Analytics] Identity Service fetch fallback:', e.message);
     }
 
     if (!enrolledPatientsCount) {
-      enrolledPatientsCount = uniquePatients.filter(id => !id.startsWith('test_') && !id.startsWith('patient_seed_')).length || uniquePatients.length;
+      enrolledPatientsCount = uniquePatients.filter(id => id && !String(id).startsWith('test_') && !String(id).startsWith('patient_seed_')).length || uniquePatients.length;
     }
     if (!enrolledTherapistsCount) {
-      enrolledTherapistsCount = uniqueTherapists.filter(id => !id.startsWith('test_') && !id.startsWith('therapist_')).length || uniqueTherapists.length;
+      enrolledTherapistsCount = uniqueTherapists.filter(id => id && !String(id).startsWith('test_') && !String(id).startsWith('therapist_')).length || uniqueTherapists.length;
     }
 
-    // Sum revenue in Rupees strictly from valid settled consultation records
+    // Canonical INR revenue accumulation without heuristics
     let totalRevenue = 0;
     confirmedAppointments.forEach(a => {
-      const amt = a.amount || a.paidAmount || (a.paise ? a.paise / 100 : 0);
-      if (amt) {
-        totalRevenue += amt >= 5000 ? Math.round(amt / 100) : amt;
-      }
+      totalRevenue += getCanonicalRevenueInr(a);
     });
 
-    const completionRate = totalAppointments > 0 ? Math.round((completedSessionsCount / Math.max(1, totalAppointments)) * 100) : 85;
+    // Authentic completion rate (0 when 0 appointments, NEVER default 85)
+    const completionRate = totalAppointments > 0
+      ? Math.min(100, Math.round((completedSessionsCount / totalAppointments) * 100))
+      : 0;
 
     res.json({
       success: true,
@@ -284,7 +349,7 @@ export const getAnalyticsSummary = async (req, res) => {
         totalRevenue: Math.max(0, totalRevenue),
         activePrograms: activeProgramsCount,
         completedSessions: completedSessionsCount,
-        completionRate: Math.min(100, completionRate),
+        completionRate,
       }
     });
   } catch (err) {
@@ -295,40 +360,39 @@ export const getAnalyticsSummary = async (req, res) => {
 // ─── ADMIN: REVENUE & APPOINTMENTS CHART ──────────────────────────────────────
 export const getRevenueChart = async (req, res) => {
   try {
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
     const { range = '7d' } = req.query;
     const days = range === '30d' ? 30 : range === '90d' ? 90 : 7;
-    const now = new Date();
-    const startDate = new Date();
-    startDate.setDate(now.getDate() - days);
+    const nowUtc = Date.now();
+    const startDate = new Date(nowUtc - days * 24 * 60 * 60 * 1000);
 
     const appointments = await Appointment.find({
       isDeleted: false,
       startTime: { $gte: startDate },
     }).sort({ startTime: 1 }).lean();
 
-    // Bucket by date (YYYY-MM-DD or Day string)
+    // Bucket by IST date (YYYY-MM-DD)
     const dayMap = {};
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(now.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const bucketTime = new Date(nowUtc - i * 24 * 60 * 60 * 1000);
+      const dateStr = getISTDateString(bucketTime);
+      const dayName = new Date(bucketTime.getTime() + IST_OFFSET_MS).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
       dayMap[dateStr] = { date: dateStr, day: dayName, appointments: 0, revenue: 0 };
     }
 
     appointments.forEach(a => {
       if (!a.startTime) return;
-      const dStr = new Date(a.startTime).toISOString().slice(0, 10);
+      const dStr = getISTDateString(a.startTime);
       if (dayMap[dStr]) {
         if (!NON_ACTIVE_STATUSES.includes(a.status)) {
           dayMap[dStr].appointments += 1;
         }
         const isPaid = PAID_STATUSES.includes(String(a.paymentStatus || '').toUpperCase());
         if (REVENUE_STATUSES.includes(a.status) && isPaid) {
-          const amt = a.amount || a.paidAmount || (a.paise ? a.paise / 100 : 0);
-          if (amt) {
-            dayMap[dStr].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
-          }
+          dayMap[dStr].revenue += getCanonicalRevenueInr(a);
         }
       }
     });
@@ -340,70 +404,93 @@ export const getRevenueChart = async (req, res) => {
   }
 };
 
-// ─── ADMIN: THERAPIST PERFORMANCE STATS ───────────────────────────────────────
+// ─── ADMIN: THERAPIST PERFORMANCE STATS (MONGO AGGREGATION) ───────────────────
 export const getTherapistStats = async (req, res) => {
   try {
-    const appts = await Appointment.find({ isDeleted: false }).lean();
-    const statsMap = {};
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
 
-    appts.forEach(a => {
-      const tId = a.therapistId || 'unknown';
-      if (!statsMap[tId]) {
-        statsMap[tId] = {
-          therapistId: tId,
-          name: a.therapistName || 'Specialist',
-          sessions: 0,
-          revenue: 0,
-          rating: 4.9,
-          activePatients: new Set(),
-        };
-      }
-      if (!NON_ACTIVE_STATUSES.includes(a.status)) {
-        statsMap[tId].sessions += 1;
-      }
-      if (a.patientId) statsMap[tId].activePatients.add(a.patientId);
-      const isPaid = PAID_STATUSES.includes(String(a.paymentStatus || '').toUpperCase());
-      if (REVENUE_STATUSES.includes(a.status) && isPaid) {
-        const amt = a.amount || (a.paise ? a.paise / 100 : 0);
-        if (amt) {
-          statsMap[tId].revenue += amt >= 5000 ? Math.round(amt / 100) : amt;
+    const stats = await Appointment.aggregate([
+      { $match: { isDeleted: false } },
+      {
+        $group: {
+          _id: { $ifNull: ['$therapistId', 'unknown'] },
+          therapistName: { $last: '$therapistName' },
+          sessions: {
+            $sum: {
+              $cond: [{ $in: ['$status', NON_ACTIVE_STATUSES] }, 0, 1]
+            }
+          },
+          revenue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $in: ['$status', REVENUE_STATUSES] },
+                    { $in: [{ $toUpper: '$paymentStatus' }, PAID_STATUSES] }
+                  ]
+                },
+                { $ifNull: ['$amount', 0] },
+                0
+              ]
+            }
+          },
+          patients: { $addToSet: '$patientId' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          therapistId: '$_id',
+          name: { $ifNull: ['$therapistName', 'Specialist'] },
+          sessions: '$sessions',
+          revenue: '$revenue',
+          rating: { $literal: null },
+          patientsCount: {
+            $size: {
+              $filter: {
+                input: '$patients',
+                as: 'p',
+                cond: { $and: [{ $ne: ['$$p', null] }, { $ne: ['$$p', ''] }] }
+              }
+            }
+          }
         }
       }
-    });
+    ]);
 
-    const result = Object.values(statsMap).map(s => ({
-      therapistId: s.therapistId,
-      name: s.name,
-      sessions: s.sessions,
-      revenue: s.revenue,
-      rating: s.rating,
-      patientsCount: s.activePatients.size,
-    }));
-
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: stats });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
 
-// ─── ADMIN: AUDIT LOGS QUERY ──────────────────────────────────────────────────
+// ─── ADMIN: AUDIT LOGS QUERY (ESCAPED REGEX & BOUNDED PAGINATION) ─────────────
 export const getAdminAuditLog = async (req, res) => {
   try {
-    const { page = 1, limit = 20, patientId, category, actorId } = req.query;
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { page, limit, skip } = parsePagination(req.query);
+    const { patientId, category, actorId } = req.query;
+
     const filter = {};
     if (patientId) filter.resourceId = patientId;
     if (actorId) filter.actorId = actorId;
-    if (category) filter.action = new RegExp(category, 'i');
+    if (category) {
+      const escaped = String(category).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.action = new RegExp(escaped, 'i');
+    }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
     const [logs, total] = await Promise.all([
-      AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(parseInt(limit)).lean(),
+      AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
       AuditLog.countDocuments(filter),
     ]);
 
-    res.json({ success: true, data: logs, meta: { page: parseInt(page), limit: parseInt(limit), total } });
+    res.json({ success: true, data: logs, meta: { page, limit, total } });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
-

@@ -245,7 +245,7 @@ export default function TherapistScheduleScreen({ navigation }) {
 
   const filteredAppointments = appointments.filter((item) => {
     // Status Filter
-    if (activeFilter === 'Confirmed' && !['CONFIRMED', 'SCHEDULED', 'CHECKED_IN', 'HELD'].includes(item.status)) return false;
+    if (activeFilter === 'Confirmed' && !['CONFIRMED', 'SCHEDULED', 'CHECKED_IN', 'EN_ROUTE', 'ARRIVED', 'RESCHEDULE_REQUESTED'].includes(item.status)) return false;
     if (activeFilter === 'In Progress' && item.status !== 'IN_PROGRESS') return false;
     if (activeFilter === 'Completed' && !['COMPLETED', 'DOCUMENTED', 'DOCUMENTATION_PENDING'].includes(item.status)) return false;
 
