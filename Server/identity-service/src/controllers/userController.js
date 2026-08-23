@@ -293,9 +293,98 @@ export const getTherapistById = async (req, res) => {
 // ─── INTERNAL: GET USERS BY IDS ──────────────────────────────────────────────
 export const internalGetUsersByIds = async (req, res) => {
   try {
-    const ids = (req.query.ids || '').split(',').filter(id => mongoose.isValidObjectId(id));
-    const users = await User.find({ _id: { $in: ids } }, 'name email phoneNumber profileImageUrl role status').lean();
-    res.json({ success: true, data: users });
+    const rawIds = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    const validObjIds = rawIds.filter(id => mongoose.isValidObjectId(id)).map(id => new mongoose.Types.ObjectId(id));
+
+    if (validObjIds.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const [users, therapistProfiles, patientProfiles] = await Promise.all([
+      User.find({ _id: { $in: validObjIds } }, 'name email phoneNumber profileImageUrl role status').lean(),
+      TherapistProfile.find({ $or: [{ _id: { $in: validObjIds } }, { userId: { $in: validObjIds } }] })
+        .populate('userId', 'name email phoneNumber profileImageUrl role status')
+        .lean(),
+      PatientProfile.find({ $or: [{ _id: { $in: validObjIds } }, { userId: { $in: validObjIds } }] })
+        .populate('userId', 'name email phoneNumber profileImageUrl role status')
+        .lean(),
+    ]);
+
+    const resultMap = new Map();
+
+    // 1. Add direct users
+    users.forEach(u => {
+      const uId = u._id.toString();
+      resultMap.set(uId, {
+        _id: u._id,
+        id: u._id,
+        name: u.name,
+        email: u.email,
+        phoneNumber: u.phoneNumber,
+        phone: u.phoneNumber,
+        profileImageUrl: u.profileImageUrl || null,
+        avatarUrl: u.profileImageUrl || null,
+        role: u.role,
+        status: u.status,
+      });
+    });
+
+    // 2. Add therapist profiles (keyed by both therapistProfile._id AND userId)
+    therapistProfiles.forEach(tp => {
+      const u = tp.userId && typeof tp.userId === 'object' ? tp.userId : {};
+      const tpId = tp._id.toString();
+      const uId = (u._id || tp.userId)?.toString();
+      const img = tp.profileImageUrl || u.profileImageUrl || null;
+      const tData = {
+        _id: tp._id,
+        id: tp._id,
+        therapistId: tp._id,
+        userId: uId,
+        name: u.name || tp.name || 'Specialist',
+        email: u.email || tp.email || '',
+        phoneNumber: u.phoneNumber || tp.phoneNumber || '',
+        phone: u.phoneNumber || tp.phoneNumber || '',
+        profileImageUrl: img,
+        avatarUrl: img,
+        avatar: img,
+        role: 'therapist',
+        specializations: tp.specializations || [],
+        clinicName: tp.clinicName,
+      };
+
+      resultMap.set(tpId, tData);
+      if (uId) {
+        resultMap.set(uId, { ...tData, _id: u._id || uId });
+      }
+    });
+
+    // 3. Add patient profiles
+    patientProfiles.forEach(pp => {
+      const u = pp.userId && typeof pp.userId === 'object' ? pp.userId : {};
+      const ppId = pp._id.toString();
+      const uId = (u._id || pp.userId)?.toString();
+      const img = pp.profileImageUrl || u.profileImageUrl || null;
+      const pData = {
+        _id: pp._id,
+        id: pp._id,
+        patientId: pp._id,
+        userId: uId,
+        name: u.name || pp.name || 'Patient',
+        email: u.email || '',
+        phoneNumber: u.phoneNumber || '',
+        phone: u.phoneNumber || '',
+        profileImageUrl: img,
+        avatarUrl: img,
+        role: 'patient',
+      };
+
+      resultMap.set(ppId, pData);
+      if (uId) {
+        resultMap.set(uId, { ...pData, _id: u._id || uId });
+      }
+    });
+
+    res.json({ success: true, data: Array.from(resultMap.values()) });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }

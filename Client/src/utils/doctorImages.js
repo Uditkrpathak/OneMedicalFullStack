@@ -9,9 +9,9 @@ export const KNOWN_DOCTOR_IMAGES = {
   'anuj verma': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800',
   'dr. anuj verma': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800',
 
-  'vivek': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=800',
-  'vivek joshi': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=800',
-  'dr. vivek joshi': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?w=800',
+  'vivek': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800',
+  'vivek joshi': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800',
+  'dr. vivek joshi': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=800',
 
   'aarav': 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=800',
   'aarav sharma': 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=800',

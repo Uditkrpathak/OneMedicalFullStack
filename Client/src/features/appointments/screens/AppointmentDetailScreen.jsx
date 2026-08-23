@@ -195,10 +195,11 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (resolveLocationString(user?.address) || 'Patient Registered Residence') : resolvedClinicLocation),
             receiptId: a.paymentId ? `#RC-${String(a.paymentId).slice(-8).toUpperCase()}` : `#RC-${String(a._id).slice(-8).toUpperCase()}`,
             amount: cleanAmount,
-            paymentStatus: a.paymentStatus || 'PAID',
             therapistPhone: resolvedPhone,
             ratingAvg: resolvedRating,
-            avatar: getDoctorImageUri(therapistData || resolvedDoctorName),
+            avatar: a.therapistAvatarUrl || a.avatarUrl || getDoctorImageUri(therapistData || resolvedDoctorName),
+            avatarUrl: a.therapistAvatarUrl || a.avatarUrl,
+            therapistAvatarUrl: a.therapistAvatarUrl,
           }));
         }
       } catch (e) {
@@ -216,7 +217,12 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     { id: 3, text: 'Keep recent medical scans / doctor prescriptions accessible', checked: false },
   ]);
 
-  const doctorAvatarSource = getDoctorAvatarSource(booking.avatar || booking.doctorName);
+  const doctorAvatarSource = getDoctorAvatarSource(
+    booking.therapistAvatarUrl ||
+    booking.avatarUrl ||
+    booking.avatar ||
+    booking.doctorName
+  );
 
   const toggleCheck = (id) => {
     setChecklist(prev => prev.map(item => item.id === id ? { ...item, checked: !item.checked } : item));

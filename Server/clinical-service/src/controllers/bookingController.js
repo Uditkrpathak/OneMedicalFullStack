@@ -5,11 +5,11 @@ import TherapistSchedule from '../models/TherapistSchedule.js';
 import ConsultationLead from '../models/ConsultationLead.js';
 import { acquireSlotLock, releaseSlotLock } from '../utils/redis.js';
 import { publishEvent } from '../utils/rabbitmq.js';
-import { resolveTherapistIds } from '../utils/therapistHelper.js';
+import { resolveTherapistIds, fetchUsersByIds } from '../utils/therapistHelper.js';
 import { assertAppointmentTransition } from '../utils/stateTransitions.js';
 import { logAudit } from '../utils/auditLogger.js';
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const IDENTITY_URL  = process.env.IDENTITY_SERVICE_URL || 'http://localhost:5001';
 const HOLD_MINUTES  = parseInt(process.env.APPOINTMENT_HOLD_MINUTES) || 10;
@@ -24,20 +24,6 @@ const fetchTherapistProfile = async (therapistId) => {
     return json.success ? json.data : null;
   } catch {
     return null;
-  }
-};
-
-const fetchUsersByIds = async (userIds) => {
-  if (!userIds || userIds.length === 0) return [];
-  try {
-    const res = await fetch(`${IDENTITY_URL}/internal/users?ids=${userIds.join(',')}`, {
-      headers: { 'x-internal-key': process.env.INTERNAL_API_KEY || '' }
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.success && Array.isArray(json.data) ? json.data : [];
-  } catch {
-    return [];
   }
 };
 
@@ -300,11 +286,14 @@ export const createHold = async (req, res) => {
       patientAddressSnapshot = undefined;
     }
 
+    const therapistAvatarUrl = therapistProfile.profileImageUrl || therapistProfile.avatarUrl || therapistProfile.avatar || therapistProfile.user?.profileImageUrl || undefined;
+
     const appointment = await Appointment.create({
       patientId,
       patientName:  resolvedPatientName || undefined,
       therapistId,
       therapistName,
+      therapistAvatarUrl,
       serviceType:  normalizedServiceType,
       appointmentPlace: resolvedPlace,
       patientAddressSnapshot,
@@ -329,6 +318,7 @@ export const createHold = async (req, res) => {
       currency:     appointment.currency,
       paymentStatus:appointment.paymentStatus,
       therapistName:appointment.therapistName,
+      therapistAvatarUrl: appointment.therapistAvatarUrl,
       patientName:  appointment.patientName,
       serviceType:  appointment.serviceType,
       patientAddressSnapshot: appointment.patientAddressSnapshot,
@@ -617,13 +607,15 @@ export const getMyAppointments = async (req, res) => {
     const appointments = rawAppointments.map(a => {
       const p = a.patientId ? userMap[a.patientId.toString()] : null;
       const t = a.therapistId ? userMap[a.therapistId.toString()] : null;
-      const tImg = t?.profileImageUrl || t?.avatarUrl || t?.avatar || undefined;
+      const tImg = t?.profileImageUrl || t?.avatarUrl || t?.avatar || a.therapistAvatarUrl || undefined;
+      const pImg = p?.profileImageUrl || p?.avatarUrl || p?.avatar || a.patientAvatarUrl || undefined;
       return {
         ...a,
         patientName: a.patientName || p?.name || 'Patient',
         therapistName: t?.name || a.therapistName || 'Dr. Specialist',
         therapistAvatarUrl: tImg,
         avatarUrl: tImg,
+        patientAvatarUrl: pImg,
       };
     });
 

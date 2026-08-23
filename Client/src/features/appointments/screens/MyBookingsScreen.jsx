@@ -57,22 +57,26 @@ export default function MyBookingsScreen({ navigation }) {
       // Backend classifies view — pass tab directly
       const res = await appointmentApi.getMyAppointments(tab, token);
       if (res.success && Array.isArray(res.data)) {
-        const formatted = res.data.map(item => ({
-          id: `#${item._id?.slice(-8).toUpperCase()}`,
-          _id: item._id,
-          doctorName: item.therapistName || item.doctorName || 'Dr. Specialist',
-          therapistId: item.therapistId,
-          avatarUrl: item.therapistAvatarUrl || item.avatarUrl || getDoctorImageUri({ name: item.therapistName || item.doctorName, _id: item.therapistId }),
-          specialty: item.serviceType?.replace(/_/g, ' ') || 'Physiotherapy',
-          status: STATUS_LABELS[item.status] || item.status,
-          rawStatus: item.status,
-          date: item.startTime ? new Date(item.startTime).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '',
-          time: item.startTime
-            ? `${new Date(item.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} – ${new Date(item.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`
-            : '',
-          format: item.appointmentPlace === 'VIDEO' ? 'Video Consultation' : item.appointmentPlace === 'HOME' ? 'Home Visit' : 'Clinic Visit',
-          amount: item.amount ? `₹${(item.amount / 100).toLocaleString('en-IN')}` : '₹500',
-        }));
+        const formatted = res.data.map(item => {
+          const directImg = item.therapistAvatarUrl || item.avatarUrl || item.avatar || item.profileImageUrl;
+          return {
+            id: `#${item._id?.slice(-8).toUpperCase()}`,
+            _id: item._id,
+            doctorName: item.therapistName || item.doctorName || 'Dr. Specialist',
+            therapistId: item.therapistId,
+            therapistAvatarUrl: directImg,
+            avatarUrl: directImg || getDoctorImageUri({ name: item.therapistName || item.doctorName, _id: item.therapistId }),
+            specialty: item.serviceType?.replace(/_/g, ' ') || 'Physiotherapy',
+            status: STATUS_LABELS[item.status] || item.status,
+            rawStatus: item.status,
+            date: item.startTime ? new Date(item.startTime).toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '',
+            time: item.startTime
+              ? `${new Date(item.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} – ${new Date(item.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`
+              : '',
+            format: item.appointmentPlace === 'VIDEO' ? 'Video Consultation' : item.appointmentPlace === 'HOME' ? 'Home Visit' : 'Clinic Visit',
+            amount: item.amount ? `₹${(item.amount / 100).toLocaleString('en-IN')}` : '₹500',
+          };
+        });
         setBookings(formatted);
       } else {
         setBookings([]);
@@ -160,6 +164,7 @@ export default function MyBookingsScreen({ navigation }) {
                       source={getDoctorAvatarSource({
                         name: item.doctorName,
                         avatarUrl: item.avatarUrl,
+                        therapistAvatarUrl: item.therapistAvatarUrl,
                         _id: item.therapistId,
                       })}
                       style={styles.docAvatar}

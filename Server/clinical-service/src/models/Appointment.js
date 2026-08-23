@@ -6,8 +6,10 @@ const AppointmentSchema = new mongoose.Schema({
   therapistId: { type: String, required: true, index: true },
 
   // Denormalized for read performance — avoids cross-service joins on list queries
-  therapistName: { type: String },
-  patientName:   { type: String },
+  therapistName:      { type: String },
+  patientName:        { type: String },
+  therapistAvatarUrl: { type: String },
+  patientAvatarUrl:   { type: String },
 
   // ─── Scheduling (UTC Date objects) ────────────────────────────────────────
   // Stored as UTC; display layer converts to Asia/Kolkata for rendering
