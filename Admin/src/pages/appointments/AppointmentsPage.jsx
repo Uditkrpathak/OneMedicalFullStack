@@ -243,6 +243,19 @@ export default function AppointmentsPage() {
     }
   };
 
+  const handleRejectAppointment = async (apptId) => {
+    if (!window.confirm('Are you sure you want to decline & delete this unconfirmed booking? The patient will be notified with instructions to re-book.')) return;
+    try {
+      await api.cancelAppointment(token, apptId, {
+        reason: 'Appointment is not confirmed by clinic administration. If you want, please book a new appointment and complete payment.'
+      });
+      showToast('Appointment declined & slot released. Patient notified.');
+      loadDashboard();
+    } catch (err) {
+      alert(err.message || 'Failed to decline appointment.');
+    }
+  };
+
   const handleSendReminder = async (specificApptId, specificType) => {
     const targetId = specificApptId || selectedApptForAction?._id || appointments[0]?._id;
     if (!targetId) return;
@@ -861,27 +874,36 @@ export default function AppointmentsPage() {
                     const d = new Date(p.startTime);
                     return (
                       <div key={p._id} className="p-3 bg-slate-50/70 border border-slate-200/70 rounded-xl flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <UserAvatar
                             src={p.patientAvatar || p.patientAvatarUrl}
                             name={p.patientName}
-                            className="w-8 h-8"
+                            className="w-8 h-8 shrink-0"
                           />
-                          <div>
-                            <div className="text-xs font-bold text-slate-900">{p.patientName}</div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-900 truncate">{p.patientName}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5 truncate">
                               {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} • {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </div>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleConfirmAppointment(p._id)}
-                          className="btn btn-secondary btn-xs text-emerald-600 hover:bg-emerald-50 border-emerald-200 cursor-pointer"
-                          title="Confirm appointment"
-                        >
-                          <Check size={13} /> Confirm
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleConfirmAppointment(p._id)}
+                            className="btn btn-secondary btn-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-300 border border-emerald-200 cursor-pointer flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-2xs"
+                            title="Confirm appointment"
+                          >
+                            <Check size={12} strokeWidth={2.5} /> Confirm
+                          </button>
+                          <button
+                            onClick={() => handleRejectAppointment(p._id)}
+                            className="btn btn-secondary btn-xs text-rose-700 bg-rose-50 hover:bg-rose-100 hover:border-rose-300 border border-rose-200 cursor-pointer flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shadow-2xs"
+                            title="Decline & delete unconfirmed appointment"
+                          >
+                            <X size={12} strokeWidth={2.5} /> Delete
+                          </button>
+                        </div>
                       </div>
                     );
                   })

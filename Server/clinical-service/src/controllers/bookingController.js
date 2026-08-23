@@ -552,8 +552,13 @@ export const cancelAppointment = async (req, res) => {
       }
     }
 
+    const isUnconfirmed = appointment.status === 'HELD' || appointment.paymentStatus !== 'PAID';
+    const cancellationReason = reason || (isUnconfirmed
+      ? 'Appointment is not confirmed by clinic administration. If you want, please book a fresh slot and complete payment.'
+      : (isClinicAdmin ? 'Cancelled by clinic administration' : 'Cancelled by patient'));
+
     appointment.status             = 'CANCELLED';
-    appointment.cancellationReason = reason || (isClinicAdmin ? 'Cancelled by administrator' : '');
+    appointment.cancellationReason = cancellationReason;
     appointment.cancellationPolicy = cancellationPolicy;
     appointment.paymentStatus      = (appointment.paymentStatus === 'PAID' || appointment.amount > 0)
       ? (cancellationPolicy === 'REFUND_ELIGIBLE' ? 'REFUND_PENDING' : 'NOT_APPLICABLE')
@@ -561,11 +566,22 @@ export const cancelAppointment = async (req, res) => {
     await appointment.save();
 
     await publishEvent(eventName, {
-      appointmentId: appointment._id, patientId: appointment.patientId,
-      therapistId: appointment.therapistId, cancellationPolicy, amount: appointment.amount,
+      eventId: `APPT_CANCELLED:${appointment._id}_${Date.now()}`,
+      type: eventName,
+      appointmentId: appointment._id,
+      patientId: appointment.patientId,
+      therapistId: appointment.therapistId,
+      patientName: appointment.patientName,
+      therapistName: appointment.therapistName,
+      cancellationPolicy,
+      amount: appointment.amount,
+      reason: cancellationReason,
+      route: 'BookAppointment',
+      appointmentDate: appointment.startTime ? new Date(appointment.startTime).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Kolkata' }) : '',
+      appointmentTime: appointment.startTime ? new Date(appointment.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) : '',
     });
 
-    res.json({ success: true, data: { appointment } });
+    res.json({ success: true, message: 'Appointment cancelled/declined successfully.', data: { appointment } });
   } catch (err) {
     const status = err.statusCode || 500;
     res.status(status).json({ success: false, error: { code: err.code || 'INTERNAL_ERROR', message: err.message } });

@@ -54,11 +54,14 @@ export const renderNotificationContent = ({
       };
 
     case 'appointment.cancelled':
+    case 'appointment.cancelled_refund_eligible':
+    case 'appointment.cancelled_no_refund':
+    case 'appointment.declined':
       return {
-        title: 'Appointment Cancelled ❌',
-        message: `Booking #${data.appointmentId} scheduled for ${data.appointmentDate} has been cancelled.`,
+        title: 'Appointment Not Confirmed ❌',
+        message: data.reason || `Your appointment #${String(data.appointmentId).slice(-8).toUpperCase()} was not confirmed. If you want, please book a new session and complete payment.`,
         email: appointmentCancelledTemplate({ ...data, isTherapist }),
-        sms: `OneMedical: Appointment #${data.appointmentId} cancelled. Reason: ${data.reason || 'User request'}`,
+        sms: `OneMedical: Appointment #${String(data.appointmentId).slice(-8).toUpperCase()} was not confirmed. Please re-book and complete payment in the app: ${data.route || 'Open app'}`,
       };
 
     case 'appointment.reminder_24h':
