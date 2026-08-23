@@ -54,6 +54,8 @@ export const api = {
   getTherapistSchedule:   (token, therapistId) => request(`/therapists/schedule/${therapistId}`, {}, token),
   getTherapistPatients:   (token)              => request('/therapists/patients/assigned', {}, token),
   getTherapistReviews:    (token, id)          => request(`/therapists/${id}/reviews`, {}, token),
+  listAdminReviews:       (token, params = {}) => request(`/admin/reviews?${new URLSearchParams(params)}`, {}, token),
+  moderateReviewStatus:   (token, id, body)    => request(`/admin/reviews/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }, token),
 
   // ── Appointments & Scheduling ─────────────────────────────────────────────────
   getAppointmentsDashboard:(token, params = {}) => request(`/appointments/dashboard?${new URLSearchParams(params)}`, {}, token),

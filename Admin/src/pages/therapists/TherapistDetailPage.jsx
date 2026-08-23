@@ -19,7 +19,7 @@ import {
   normalizePhoneNumber
 } from '../../utils/validation.js';
 
-const TABS = ['Profile', 'Availability & Schedule', 'Assigned Patients', 'Revenue & Sessions'];
+const TABS = ['Profile', 'Availability & Schedule', 'Assigned Patients', 'Revenue & Sessions', 'Patient Reviews'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const PRESET_AVATARS = [
@@ -43,6 +43,8 @@ export default function TherapistDetailPage() {
   const [schedule, setSchedule] = useState(null);
   const [assignedPatients, setAssignedPatients] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsStats, setReviewsStats] = useState({ averageRating: 5.0, reviewCount: 0 });
   const [stats, setStats] = useState({ totalRevenue: 0, completedSessions: 0 });
 
   // Modals & form state
@@ -188,6 +190,18 @@ export default function TherapistDetailPage() {
         totalRevenue: totalRev,
         completedSessions: compCount || apptsList.length,
       });
+
+      // Load verified doctor reviews
+      try {
+        const revRes = await api.getTherapistReviews(token, id);
+        if (revRes?.success && revRes.data) {
+          setReviews(revRes.data.reviews || []);
+          setReviewsStats({
+            averageRating: revRes.data.averageRating || 5.0,
+            reviewCount: revRes.data.reviewCount || 0,
+          });
+        }
+      } catch (e) {}
 
     } catch (err) {
       console.error('Failed to load therapist details:', err);
@@ -644,6 +658,58 @@ export default function TherapistDetailPage() {
             </div>
           ) : (
             <p className="text-xs text-slate-400 text-center py-6">No session records found.</p>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: PATIENT REVIEWS & RATINGS */}
+      {activeTab === 'Patient Reviews' && (
+        <div className="card p-6 bg-white border border-slate-200 space-y-5">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Verified Patient Reviews</h3>
+              <p className="text-xs text-slate-400">Authentic feedback from completed clinical consultations</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-black text-slate-900">{reviewsStats.averageRating?.toFixed(1) || '5.0'}</span>
+              <div className="text-xs text-amber-500 font-bold">★ ★ ★ ★ ★</div>
+              <span className="text-xs text-slate-400 font-semibold">({reviewsStats.reviewCount || reviews.length} reviews)</span>
+            </div>
+          </div>
+
+          {reviews.length > 0 ? (
+            <div className="space-y-3">
+              {reviews.map((r) => (
+                <div key={r._id || r.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
+                        {r.patientName?.[0] || 'P'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">{r.patientName || 'Verified Patient'}</div>
+                        <div className="text-[10px] text-slate-400">{r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : 'Recent'}</div>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-xs font-extrabold">
+                      {r.rating} ★
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-700">"{r.comment || r.reviewText}"</p>
+                  {r.tags && r.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {r.tags.map((t, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-white border border-slate-200 text-slate-600 rounded-md text-[10px] font-bold">
+                          ✓ {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 text-center py-6">No patient reviews submitted yet for this specialist.</p>
           )}
         </div>
       )}

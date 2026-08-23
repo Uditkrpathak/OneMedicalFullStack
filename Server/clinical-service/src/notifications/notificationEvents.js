@@ -22,6 +22,7 @@ export const EVENT_TYPES = {
   APPOINTMENT_NO_ATTENDANCE: 'appointment.no_attendance',
   APPOINTMENT_TECHNICAL_FAILURE: 'appointment.technical_failure',
   APPOINTMENT_COMPLETED: 'appointment.completed',
+  REVIEW_PROMPT: 'appointment.review_prompt',
 
   // Telehealth
   TELEHEALTH_CALL_STARTING: 'telehealth.call_starting',
@@ -229,6 +230,15 @@ export const EVENT_POLICIES = {
     channels: {
       patient: { inApp: true, push: true, email: false, sms: false },
       therapist: { inApp: true, push: false, email: false, sms: false },
+    },
+    retentionDays: 60,
+  },
+  [EVENT_TYPES.REVIEW_PROMPT]: {
+    type: 'appointment',
+    priority: 'normal',
+    channels: {
+      patient: { inApp: true, push: true, email: true, sms: false },
+      therapist: { inApp: false, push: false, email: false, sms: false },
     },
     retentionDays: 60,
   },

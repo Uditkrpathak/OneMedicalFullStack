@@ -311,7 +311,7 @@ const CLINICAL_URL = process.env.CLINICAL_SERVICE_URL || 'http://localhost:5003'
 
 // Clinical Medical Info & Reviews (Dispatched to Clinical Service Port 5003)
 app.use((req, res, next) => {
-  if (req.path.includes('/medical-info') || req.path.includes('/reviews')) {
+  if (req.path.includes('/medical-info') || req.path.includes('/reviews') || req.path.includes('/review')) {
     return makeProxy(CLINICAL_URL)(req, res, next);
   }
   next();

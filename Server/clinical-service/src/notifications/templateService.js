@@ -129,6 +129,29 @@ export const renderNotificationContent = ({
         sms: `OneMedical: Technical connection issue recorded for session #${data.appointmentId}. Support team notified.`,
       };
 
+    case 'appointment.review_prompt': {
+      const docName = data.therapistName || data.doctorName || 'your doctor';
+      return {
+        title: `⭐ Rate Your Session with ${docName}`,
+        message: `How was your consultation with ${docName}? Tap to share your feedback and help others.`,
+        email: {
+          subject: `⭐ How was your consultation with ${docName}? - OneMedical`,
+          html: `<div style="font-family:sans-serif;padding:24px;color:#1e293b">
+            <h2 style="color:#0038A8;margin-top:0">We value your feedback!</h2>
+            <p>Thank you for completing your consultation with <strong>${docName}</strong>.</p>
+            <p>Please take a moment to rate your overall experience and help fellow patients make informed health decisions.</p>
+            <div style="margin-top:24px">
+              <a href="https://onemedical.app/review/${data.appointmentId}" style="background:#003882;color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:10px;font-weight:bold;display:inline-block">Rate & Review Doctor</a>
+            </div>
+          </div>`,
+          text: `How was your consultation with ${docName}? Share your feedback in the OneMedical app.`
+        },
+        sms: `OneMedical: How was your session with ${docName}? Please rate your experience: https://onemedical.app/review/${data.appointmentId}`,
+        action: 'WRITE_REVIEW',
+        deepLink: `onemedical://review?appointmentId=${data.appointmentId}&therapistId=${data.therapistId || ''}`,
+      };
+    }
+
     case 'clinical.high_pain_alert':
       return {
         title: '⚠️ CRITICAL PAIN ALERT',

@@ -549,6 +549,18 @@ export const completeAppointment = async (req, res) => {
       completedAt: appointment.completedAt,
     });
 
+    // Invariant: Idempotent review prompt event with unique eventId
+    await publishEvent('appointment.review_prompt', {
+      eventId: `REVIEW_PROMPT:${appointment._id}`,
+      type: 'appointment.review_prompt',
+      appointmentId: appointment._id.toString(),
+      patientId: appointment.patientId,
+      therapistId: appointment.therapistId,
+      doctorName: appointment.therapistName,
+      patientName: appointment.patientName,
+      serviceType: appointment.serviceType,
+    });
+
     res.json({ success: true, data: { appointment } });
   } catch (err) {
     const status = err.statusCode || 500;

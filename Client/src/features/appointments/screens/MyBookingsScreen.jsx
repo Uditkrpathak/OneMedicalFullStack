@@ -240,7 +240,27 @@ export default function MyBookingsScreen({ navigation }) {
                       <Text style={styles.viewDetailsBtnText}>View Details</Text>
                     </TouchableOpacity>
 
-                    {item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' ? (
+                    {item.status === 'COMPLETED' ? (
+                      <TouchableOpacity
+                        style={[styles.rescheduleBtn, { backgroundColor: '#f0f9ff', borderColor: '#bae6fd' }]}
+                        onPress={() => navigation.navigate('WriteDoctorReview', {
+                          appointmentId: item.id || item._id,
+                          booking: item,
+                          doctor: {
+                            id: item.therapistId,
+                            _id: item.therapistId,
+                            name: item.doctorName,
+                            specializations: [item.service || 'Physiotherapist'],
+                            avatarUrl: item.therapistAvatarUrl || item.avatarUrl,
+                          },
+                          doctorName: item.doctorName,
+                        })}
+                      >
+                        <Text style={[styles.rescheduleBtnText, { color: '#0284c7', fontWeight: '700' }]}>
+                          ⭐ Rate Doctor
+                        </Text>
+                      </TouchableOpacity>
+                    ) : item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' ? (
                       <TouchableOpacity
                         style={[styles.rescheduleBtn, { backgroundColor: '#003D9B', borderWidth: 0 }]}
                         onPress={() => navigation.navigate('ChoosePayment', {

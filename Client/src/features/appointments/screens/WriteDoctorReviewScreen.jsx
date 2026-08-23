@@ -75,14 +75,14 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
     specialty: rawDoctor.specialty || rawDoctor.specializations?.[0] || 'Senior Orthopedic Specialist',
     clinic: rawDoctor.clinic || rawDoctor.clinicName || 'One Medical Central, Indiranagar',
     avatarUrl: getDoctorImageUri(rawDoctor.name || route.params?.doctorName || rawDoctor || 'Dr. Vivek Joshi'),
-    rating: rawDoctor.rating || rawDoctor.ratingAvg || 4.9,
-    reviewsCount: rawDoctor.reviewsCount || rawDoctor.ratingCount || 128,
+    rating: rawDoctor.rating || rawDoctor.ratingAvg || 5.0,
+    reviewsCount: rawDoctor.reviewsCount || rawDoctor.ratingCount || 0,
   };
 
   const booking = route.params?.booking || {
-    id: '#APT-2024-8842',
-    date: 'Oct 24, 2024',
-    service: 'Post-Surgery Knee Rehab',
+    id: route.params?.appointmentId || '#APT-2026-LIVE',
+    date: 'Recent Consultation',
+    service: 'Clinical Consultation',
   };
 
   // State
@@ -90,17 +90,56 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
   const [overallRating, setOverallRating] = useState(5);
   const [communicationRating, setCommunicationRating] = useState(5);
   const [explanationRating, setExplanationRating] = useState(5);
-  const [waitTimeRating, setWaitTimeRating] = useState('Less than 15 mins');
+  const [waitTimeRating, setWaitTimeRating] = useState('< 15 mins');
   const [selectedTags, setSelectedTags] = useState(['empathetic', 'explanation']);
   const [reviewText, setReviewText] = useState('');
   const [npsScore, setNpsScore] = useState(10);
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [reviewsList, setReviewsList] = useState(INITIAL_REVIEWS);
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewsList, setReviewsList] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [ratingStats, setRatingStats] = useState({
+    averageRating: doctor.rating || 5.0,
+    reviewCount: doctor.reviewsCount || 0,
+    distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+  });
   const [helpfulLiked, setHelpfulLiked] = useState({});
   const [selectedFilter, setSelectedFilter] = useState('All');
 
   const waitTimeOptions = ['< 15 mins', '15-30 mins', '30-45 mins', '45+ mins'];
+
+  const loadDoctorReviews = async () => {
+    if (!doctor.id) return;
+    setReviewsLoading(true);
+    try {
+      const res = await appointmentApi.getTherapistReviews(doctor.id, token);
+      if (res?.success && res.data) {
+        const fetchedReviews = res.data.reviews || [];
+        setReviewsList(fetchedReviews);
+        setRatingStats({
+          averageRating: res.data.averageRating || 5.0,
+          reviewCount: res.data.reviewCount || fetchedReviews.length,
+          distribution: res.data.distribution || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+        });
+
+        // Initialize helpful states
+        const likedMap = {};
+        fetchedReviews.forEach(r => {
+          if (r.isHelpful) likedMap[r.id || r._id] = true;
+        });
+        setHelpfulLiked(likedMap);
+      }
+    } catch (err) {
+      console.warn('Could not load doctor reviews:', err.message);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    loadDoctorReviews();
+  }, [doctor.id, token]);
 
   const toggleTag = (tagId) => {
     if (selectedTags.includes(tagId)) {
@@ -110,38 +149,62 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
     }
   };
 
-  const toggleHelpful = (reviewId) => {
+  const toggleHelpful = async (reviewId) => {
     const currentlyLiked = helpfulLiked[reviewId];
     setHelpfulLiked((prev) => ({ ...prev, [reviewId]: !currentlyLiked }));
     setReviewsList((prev) =>
       prev.map((r) =>
-        r.id === reviewId
-          ? { ...r, helpfulCount: r.helpfulCount + (currentlyLiked ? -1 : 1) }
+        (r.id === reviewId || r._id === reviewId)
+          ? { ...r, helpfulCount: Math.max(0, (r.helpfulCount || 0) + (currentlyLiked ? -1 : 1)), isHelpful: !currentlyLiked }
           : r
       )
     );
+
+    try {
+      if (currentlyLiked) {
+        await appointmentApi.removeReviewHelpful(reviewId, token);
+      } else {
+        await appointmentApi.addReviewHelpful(reviewId, token);
+      }
+    } catch (e) {
+      console.warn('Helpful vote request failed:', e.message);
+    }
   };
 
   const handleSubmit = async () => {
-    if (reviewText.trim().length < 10) {
-      Alert.alert('Review Short', 'Please write at least 10 characters describing your experience.');
+    if (reviewText.trim().length < 5) {
+      Alert.alert('Review Required', 'Please provide at least 5 characters describing your consultation experience.');
       return;
     }
 
+    setSubmitting(true);
     try {
       const selectedLabels = selectedTags.map((tId) => TAG_OPTIONS.find((t) => t.id === tId)?.label.replace(/^.\s*/, '') || tId);
-      await appointmentApi.submitReview({
-        appointmentId: booking?._id || booking?.id,
+      const res = await appointmentApi.submitReview({
+        appointmentId: booking?._id || booking?.id || route.params?.appointmentId,
         therapistId: doctor?.userId || doctor?._id || doctor?.id,
         rating: overallRating,
-        feedback: reviewText.trim(),
+        communicationRating,
+        explanationRating,
+        waitTimeRating,
+        reviewText: reviewText.trim(),
         tags: selectedLabels,
+        npsScore,
+        isAnonymous,
       }, token);
-    } catch (e) {
-      console.log('Review API call:', e.message);
-    }
 
-    navigation.navigate('ReviewSubmitted', { doctorName: doctor.name, rating: overallRating });
+      if (res?.success === false) {
+        Alert.alert('Unable to Submit', res.error?.message || 'Please ensure you attended and completed this consultation.');
+        return;
+      }
+
+      await loadDoctorReviews();
+      setIsSubmitted(true);
+    } catch (e) {
+      Alert.alert('Error', e.message || 'Failed to submit review.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getRatingLabel = (stars) => {
@@ -445,32 +508,41 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
           <View style={styles.sectionCard}>
             <View style={styles.overviewRow}>
               <View style={styles.overviewBigRating}>
-                <Text style={styles.bigRatingText}>4.9</Text>
+                <Text style={styles.bigRatingText}>{(ratingStats.averageRating || 5.0).toFixed(1)}</Text>
                 <View style={{ flexDirection: 'row', marginVertical: 4 }}>
                   {[1, 2, 3, 4, 5].map((s) => (
-                    <Ionicons key={s} name="star" size={16} color="#f59e0b" />
+                    <Ionicons
+                      key={s}
+                      name="star"
+                      size={16}
+                      color={s <= Math.round(ratingStats.averageRating || 5) ? '#f59e0b' : '#cbd5e1'}
+                    />
                   ))}
                 </View>
-                <Text style={styles.overviewTotalText}>Based on 128 reviews</Text>
+                <Text style={styles.overviewTotalText}>
+                  Based on {ratingStats.reviewCount} {ratingStats.reviewCount === 1 ? 'review' : 'reviews'}
+                </Text>
               </View>
 
               {/* BAR DISTRIBUTION */}
               <View style={{ flex: 1, marginLeft: 16 }}>
-                {[
-                  { stars: 5, pct: '92%' },
-                  { stars: 4, pct: '6%' },
-                  { stars: 3, pct: '2%' },
-                  { stars: 2, pct: '0%' },
-                  { stars: 1, pct: '0%' },
-                ].map((bar) => (
-                  <View key={bar.stars} style={styles.distRow}>
-                    <Text style={styles.distStarText}>{bar.stars} ★</Text>
-                    <View style={styles.distBarBg}>
-                      <View style={[styles.distBarFill, { width: bar.pct }]} />
+                {[5, 4, 3, 2, 1].map((stars) => {
+                  const cnt = ratingStats.distribution?.[stars] || 0;
+                  const pctVal = ratingStats.reviewCount > 0
+                    ? Math.round((cnt / ratingStats.reviewCount) * 100)
+                    : (stars === 5 ? 100 : 0);
+                  const pct = `${pctVal}%`;
+
+                  return (
+                    <View key={stars} style={styles.distRow}>
+                      <Text style={styles.distStarText}>{stars} ★</Text>
+                      <View style={styles.distBarBg}>
+                        <View style={[styles.distBarFill, { width: pct }]} />
+                      </View>
+                      <Text style={styles.distPctText}>{pct}</Text>
                     </View>
-                    <Text style={styles.distPctText}>{bar.pct}</Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </View>
           </View>
@@ -491,71 +563,96 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
           </View>
 
           {/* REVIEWS LIST */}
-          {filteredReviews.map((item) => (
-            <View key={item.id} style={styles.reviewCard}>
-              <View style={styles.reviewCardHeader}>
-                {item.avatar ? (
-                  <Image source={{ uri: item.avatar }} style={styles.reviewerAvatar} />
-                ) : (
-                  <View style={styles.reviewerAvatarPlaceholder}>
-                    <Ionicons name="person" size={16} color="#0284c7" />
-                  </View>
-                )}
+          {reviewsList.length === 0 ? (
+            <View style={[styles.sectionCard, { alignItems: 'center', paddingVertical: 32 }]}>
+              <Ionicons name="chatbox-ellipses-outline" size={40} color="#94a3b8" />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#334155', marginTop: 10 }}>No Reviews Yet</Text>
+              <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', marginTop: 4, paddingHorizontal: 20 }}>
+                Be the first patient to share your consultation experience with {doctor.name}!
+              </Text>
+              <TouchableOpacity
+                style={[styles.submitBtn, { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10 }]}
+                onPress={() => setActiveTab('write')}
+              >
+                <Text style={styles.submitBtnText}>Write a Review</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            filteredReviews.map((item) => {
+              const reviewId = item._id || item.id;
+              const formattedDate = item.createdAt
+                ? new Date(item.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })
+                : (item.date || 'Recent');
+              const avatarUri = item.avatarUrl || item.patientAvatarUrl || item.avatar;
+              const isLiked = Boolean(helpfulLiked[reviewId] || item.isHelpful);
 
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={styles.reviewerName}>{item.patientName}</Text>
-                    {item.verified && (
-                      <View style={styles.verifiedCheckBadge}>
-                        <Ionicons name="shield-checkmark" size={12} color="#16a34a" />
-                        <Text style={styles.verifiedCheckText}>Verified</Text>
+              return (
+                <View key={reviewId} style={styles.reviewCard}>
+                  <View style={styles.reviewCardHeader}>
+                    {avatarUri ? (
+                      <Image source={{ uri: avatarUri }} style={styles.reviewerAvatar} />
+                    ) : (
+                      <View style={styles.reviewerAvatarPlaceholder}>
+                        <Ionicons name="person" size={16} color="#0284c7" />
                       </View>
                     )}
-                  </View>
-                  <Text style={styles.reviewDate}>{item.date}</Text>
-                </View>
 
-                <View style={styles.reviewRatingPill}>
-                  <Text style={styles.reviewRatingPillText}>{item.rating} ★</Text>
-                </View>
-              </View>
-
-              <Text style={styles.reviewBody}>{item.comment}</Text>
-
-              {/* TAGS */}
-              {item.tags && item.tags.length > 0 && (
-                <View style={styles.reviewTagsRow}>
-                  {item.tags.map((t, idx) => (
-                    <View key={idx} style={styles.reviewTagPill}>
-                      <Text style={styles.reviewTagPillText}>✓ {t}</Text>
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.reviewerName}>{item.displayName || item.patientName || 'Verified Patient'}</Text>
+                        {item.isVerifiedConsultation !== false && (
+                          <View style={styles.verifiedCheckBadge}>
+                            <Ionicons name="shield-checkmark" size={12} color="#16a34a" />
+                            <Text style={styles.verifiedCheckText}>Verified</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.reviewDate}>{formattedDate}</Text>
                     </View>
-                  ))}
+
+                    <View style={styles.reviewRatingPill}>
+                      <Text style={styles.reviewRatingPillText}>{item.rating} ★</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.reviewBody}>{item.comment || item.reviewText}</Text>
+
+                  {/* TAGS */}
+                  {item.tags && item.tags.length > 0 && (
+                    <View style={styles.reviewTagsRow}>
+                      {item.tags.map((t, idx) => (
+                        <View key={idx} style={styles.reviewTagPill}>
+                          <Text style={styles.reviewTagPillText}>✓ {t}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* HELPFUL BUTTON */}
+                  <View style={styles.reviewFooterRow}>
+                    <TouchableOpacity
+                      style={[styles.helpfulBtn, isLiked && styles.helpfulBtnActive]}
+                      onPress={() => toggleHelpful(reviewId)}
+                    >
+                      <Ionicons
+                        name={isLiked ? 'thumbs-up' : 'thumbs-up-outline'}
+                        size={14}
+                        color={isLiked ? '#0284c7' : '#64748b'}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={[styles.helpfulBtnText, isLiked && styles.helpfulBtnTextActive]}>
+                        Helpful ({item.helpfulCount || 0})
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.reportBtn}>
+                      <Ionicons name="flag-outline" size={14} color="#94a3b8" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
-
-              {/* HELPFUL BUTTON */}
-              <View style={styles.reviewFooterRow}>
-                <TouchableOpacity
-                  style={[styles.helpfulBtn, helpfulLiked[item.id] && styles.helpfulBtnActive]}
-                  onPress={() => toggleHelpful(item.id)}
-                >
-                  <Ionicons
-                    name={helpfulLiked[item.id] ? 'thumbs-up' : 'thumbs-up-outline'}
-                    size={14}
-                    color={helpfulLiked[item.id] ? '#0284c7' : '#64748b'}
-                    style={{ marginRight: 4 }}
-                  />
-                  <Text style={[styles.helpfulBtnText, helpfulLiked[item.id] && styles.helpfulBtnTextActive]}>
-                    Helpful ({item.helpfulCount})
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.reportBtn}>
-                  <Ionicons name="flag-outline" size={14} color="#94a3b8" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
+              );
+            })
+          )}
         </ScrollView>
       )}
 

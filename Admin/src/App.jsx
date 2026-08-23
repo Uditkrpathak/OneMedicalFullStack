@@ -31,6 +31,7 @@ import ExercisesPage from './pages/exercises/ExercisesPage.jsx';
 import CreateExercisePage from './pages/exercises/CreateExercisePage.jsx';
 
 import PaymentsPage from './pages/payments/PaymentsPage.jsx';
+import ReviewsPage from './pages/reviews/ReviewsPage.jsx';
 import AnalyticsPage from './pages/analytics/AnalyticsPage.jsx';
 import MedicalRecordsPage from './pages/records/MedicalRecordsPage.jsx';
 import UsersPage from './pages/users/UsersPage.jsx';
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="/programs/create" element={<ProtectedPage><CreateProgramPage /></ProtectedPage>} />
             <Route path="/programs/:id" element={<ProtectedPage><ProgramOverviewPage /></ProtectedPage>} />
             <Route path="/payments"     element={<ProtectedPage roles={ADMIN_ROLES}><PaymentsPage /></ProtectedPage>} />
+            <Route path="/reviews"      element={<ProtectedPage roles={ADMIN_ROLES}><ReviewsPage /></ProtectedPage>} />
             <Route path="/settings"     element={<ProtectedPage roles={ADMIN_ROLES}><SettingsPage /></ProtectedPage>} />
             <Route path="/support"      element={<ProtectedPage><SupportPage /></ProtectedPage>} />
             <Route path="*"             element={<Navigate to="/" replace />} />

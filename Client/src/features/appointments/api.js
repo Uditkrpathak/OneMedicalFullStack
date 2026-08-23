@@ -132,6 +132,30 @@ export const appointmentApi = {
     return { success: res.success, data: res.data, error: res.error };
   },
 
+  getAppointmentReview: async (appointmentId, token) => {
+    const res = await resilientFetch(
+      `/clinical/appointments/${appointmentId}/review`,
+      { headers: authHeaders(token) }
+    );
+    return { success: res.success, data: res.data, error: res.error };
+  },
+
+  addReviewHelpful: async (reviewId, token) => {
+    const res = await resilientFetch(
+      `/clinical/reviews/${reviewId}/helpful`,
+      { method: 'PUT', headers: authHeaders(token) }
+    );
+    return { success: res.success, data: res.data, error: res.error };
+  },
+
+  removeReviewHelpful: async (reviewId, token) => {
+    const res = await resilientFetch(
+      `/clinical/reviews/${reviewId}/helpful`,
+      { method: 'DELETE', headers: authHeaders(token) }
+    );
+    return { success: res.success, data: res.data, error: res.error };
+  },
+
   // ─── Services Catalog ─────────────────────────────────────────────
   getServices: async (token) => {
     const res = await resilientFetch('/services', { headers: authHeaders(token) });
@@ -141,7 +165,7 @@ export const appointmentApi = {
   // ─── Therapist Reviews ────────────────────────────────────────────
   getTherapistReviews: async (therapistId, token) => {
     const res = await resilientFetch(
-      `/therapists/${therapistId}/reviews`,
+      `/clinical/therapists/${therapistId}/reviews`,
       { headers: authHeaders(token) }
     );
     return { success: res.success, data: res.data, error: res.error };

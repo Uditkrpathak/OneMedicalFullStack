@@ -58,8 +58,16 @@ import {
   getAssignedPatientsRoster,
   getPatientClinicalOverview,
   getConsultationQueue,
-  getTherapistReviews,
 } from '../controllers/scheduleController.js';
+import {
+  submitReview,
+  getTherapistReviews,
+  getAppointmentReview,
+  addHelpfulVote,
+  removeHelpfulVote,
+  getAdminReviews,
+  moderateReviewStatus,
+} from '../controllers/reviewController.js';
 import {
   getPatientMedicalInfo,
   updatePatientMedicalInfo
@@ -71,8 +79,37 @@ const router = express.Router();
 // ─── CLINICAL SERVICES CATALOG ───────────────────────────────────────────────
 router.get('/services',                               listServices);
 router.get('/api/v1/services',                        listServices);
+
+// ─── DOCTOR REVIEWS & RATINGS ────────────────────────────────────────────────
+router.post('/reviews',                               submitReview);
+router.post('/clinical/reviews',                      submitReview);
+router.post('/api/v1/clinical/reviews',               submitReview);
+
 router.get('/therapists/:therapistId/reviews',        getTherapistReviews);
+router.get('/clinical/therapists/:therapistId/reviews', getTherapistReviews);
 router.get('/api/v1/therapists/:therapistId/reviews', getTherapistReviews);
+router.get('/api/v1/clinical/therapists/:therapistId/reviews', getTherapistReviews);
+
+router.get('/appointments/:appointmentId/review',     getAppointmentReview);
+router.get('/clinical/appointments/:appointmentId/review', getAppointmentReview);
+router.get('/api/v1/clinical/appointments/:appointmentId/review', getAppointmentReview);
+
+router.put('/reviews/:id/helpful',                    addHelpfulVote);
+router.put('/clinical/reviews/:id/helpful',           addHelpfulVote);
+router.put('/api/v1/clinical/reviews/:id/helpful',    addHelpfulVote);
+
+router.delete('/reviews/:id/helpful',                 removeHelpfulVote);
+router.delete('/clinical/reviews/:id/helpful',        removeHelpfulVote);
+router.delete('/api/v1/clinical/reviews/:id/helpful', removeHelpfulVote);
+
+// ─── ADMIN REVIEWS MODERATION ────────────────────────────────────────────────
+router.get('/admin/reviews',                          getAdminReviews);
+router.get('/clinical/admin/reviews',                 getAdminReviews);
+router.get('/api/v1/clinical/admin/reviews',          getAdminReviews);
+
+router.patch('/admin/reviews/:id/status',             moderateReviewStatus);
+router.patch('/clinical/admin/reviews/:id/status',    moderateReviewStatus);
+router.patch('/api/v1/clinical/admin/reviews/:id/status', moderateReviewStatus);
 
 // ─── SESSIONS & WORKOUT TRACKING ──────────────────────────────────────────────
 router.post('/sessions',                              logSession);
