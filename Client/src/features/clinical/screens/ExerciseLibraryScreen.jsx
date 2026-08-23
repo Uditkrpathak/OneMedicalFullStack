@@ -29,7 +29,8 @@ const EXERCISE_DEFAULT_IMAGES = {
 };
 
 export default function ExerciseLibraryScreen({ navigation }) {
-  const { token } = useSelector((state) => state.auth);
+  const { token, user } = useSelector((state) => state.auth);
+  const isTherapist = user?.role === 'therapist' || user?.role === 'clinic_admin';
 
   const [exercises, setExercises] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -139,6 +140,22 @@ export default function ExerciseLibraryScreen({ navigation }) {
               <Ionicons name="timer-outline" size={14} color="#64748b" />
               <Text style={styles.metricText}>{hold}s Hold</Text>
             </View>
+
+            {isTherapist && (
+              <TouchableOpacity
+                style={styles.cardPrescribeBtn}
+                activeOpacity={0.8}
+                onPress={() =>
+                  navigation.navigate('PrescribeProgram', {
+                    exercise: item,
+                    exerciseId: item._id,
+                  })
+                }
+              >
+                <Ionicons name="clipboard-outline" size={13} color="#003D9B" style={{ marginRight: 4 }} />
+                <Text style={styles.cardPrescribeText}>Prescribe</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -159,6 +176,17 @@ export default function ExerciseLibraryScreen({ navigation }) {
             {filteredExercises.length} clinical protocols available
           </Text>
         </View>
+
+        {isTherapist && (
+          <TouchableOpacity
+            style={styles.headerPrescribeBtn}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('PrescribeProgram')}
+          >
+            <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 2 }} />
+            <Text style={styles.headerPrescribeText}>Prescribe</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search Input */}
@@ -382,7 +410,7 @@ const styles = StyleSheet.create({
   metricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
     paddingTop: 10,
@@ -396,6 +424,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#334155',
+  },
+  cardPrescribeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  cardPrescribeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#003D9B',
+  },
+  headerPrescribeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#003D9B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  headerPrescribeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ffffff',
   },
   centerContainer: {
     flex: 1,

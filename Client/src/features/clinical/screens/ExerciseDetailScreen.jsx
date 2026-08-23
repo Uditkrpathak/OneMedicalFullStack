@@ -18,7 +18,8 @@ import clinicalApi from '../api';
 const { width } = Dimensions.get('window');
 
 export default function ExerciseDetailScreen({ route, navigation }) {
-  const { token } = useSelector((state) => state.auth);
+  const { token, user } = useSelector((state) => state.auth);
+  const isTherapist = user?.role === 'therapist' || user?.role === 'clinic_admin';
   const initialExercise = route.params?.exercise || {};
   const prescription = route.params?.prescription || {};
   const exerciseId = route.params?.exerciseId || initialExercise._id || initialExercise.id || prescription.exerciseId;
@@ -158,21 +159,54 @@ export default function ExerciseDetailScreen({ route, navigation }) {
             </>
           )}
 
-          {/* START BUTTON */}
-          <TouchableOpacity
-            style={styles.startBtn}
-            activeOpacity={0.85}
-            onPress={() => {
-              navigation.navigate('ExerciseTimer', {
-                exercise,
-                prescription: { ...prescription, sets: targetSets, reps: targetReps, holdSeconds: targetHold, restSeconds: targetRest },
-                exercisesList: route.params?.exercisesList || [exercise],
-              });
-            }}
-          >
-            <Ionicons name="play" size={18} color="#ffffff" style={{ marginRight: 8 }} />
-            <Text style={styles.startBtnText}>Start Exercise Timer</Text>
-          </TouchableOpacity>
+          {/* ACTION BUTTONS */}
+          {isTherapist ? (
+            <View style={{ gap: 10, marginTop: 12 }}>
+              <TouchableOpacity
+                style={styles.startBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  navigation.navigate('PrescribeProgram', {
+                    exercise,
+                    exerciseId: exercise._id || exercise.id,
+                  });
+                }}
+              >
+                <Ionicons name="clipboard-outline" size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.startBtnText}>📋 Prescribe to Patient</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.startBtn, { backgroundColor: '#e2e8f0', elevation: 0 }]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  navigation.navigate('ExerciseTimer', {
+                    exercise,
+                    prescription: { ...prescription, sets: targetSets, reps: targetReps, holdSeconds: targetHold, restSeconds: targetRest },
+                    exercisesList: route.params?.exercisesList || [exercise],
+                  });
+                }}
+              >
+                <Ionicons name="play-outline" size={18} color="#0f172a" style={{ marginRight: 8 }} />
+                <Text style={[styles.startBtnText, { color: '#0f172a' }]}>Preview Exercise Timer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.startBtn}
+              activeOpacity={0.85}
+              onPress={() => {
+                navigation.navigate('ExerciseTimer', {
+                  exercise,
+                  prescription: { ...prescription, sets: targetSets, reps: targetReps, holdSeconds: targetHold, restSeconds: targetRest },
+                  exercisesList: route.params?.exercisesList || [exercise],
+                });
+              }}
+            >
+              <Ionicons name="play" size={18} color="#ffffff" style={{ marginRight: 8 }} />
+              <Text style={styles.startBtnText}>Start Exercise Timer</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
     </SafeAreaView>

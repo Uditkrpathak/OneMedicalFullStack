@@ -119,16 +119,25 @@ const DEFAULT_CLINICAL_EXERCISES = [
 ];
 
 export default function PrescribeProgramScreen({ route, navigation }) {
-  const patientId = route.params?.patientId || route.params?.targetPatientId || route.params?.patient?._id || 'pat_demo_01';
-  const patientName = route.params?.patientName || route.params?.patient?.name || 'Patient';
+  const initialPatientId = route.params?.patientId || route.params?.targetPatientId || route.params?.patient?._id;
+  const initialPatientName = route.params?.patientName || route.params?.patient?.name;
   const initialProgramId = route.params?.programId;
-  const { token } = useSelector((state) => state.auth);
+  const initialExercise = route.params?.exercise;
+  const initialExerciseId = route.params?.exerciseId || initialExercise?._id;
+
+  const { token, user } = useSelector((state) => state.auth);
   const { showInAppNotification } = useNotification() || {};
+
+  const [patientsList, setPatientsList] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(
+    route.params?.patient || (initialPatientId ? { _id: initialPatientId, name: initialPatientName || 'Patient' } : null)
+  );
+  const [loadingPatients, setLoadingPatients] = useState(true);
 
   const [programs, setPrograms] = useState(DEFAULT_PROGRAM_TEMPLATES);
   const [selectedProgram, setSelectedProgram] = useState(DEFAULT_PROGRAM_TEMPLATES[0]);
   const [exercises, setExercises] = useState(DEFAULT_CLINICAL_EXERCISES);
-  const [selectedExercise, setSelectedExercise] = useState(DEFAULT_CLINICAL_EXERCISES[0]);
+  const [selectedExercise, setSelectedExercise] = useState(initialExercise || DEFAULT_CLINICAL_EXERCISES[0]);
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -149,10 +158,21 @@ export default function PrescribeProgramScreen({ route, navigation }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [progRes, exRes] = await Promise.all([
+        const [progRes, exRes, patRes] = await Promise.all([
           clinicalApi.listPrograms(token).catch(() => ({ success: false })),
           clinicalApi.getExercises(token).catch(() => ({ success: false })),
+          clinicalApi.getAssignedPatients(token).catch(() => ({ success: false })),
         ]);
+
+        if (patRes.success && Array.isArray(patRes.data) && patRes.data.length > 0) {
+          setPatientsList(patRes.data);
+          if (!selectedPatient) {
+            const foundPat = initialPatientId
+              ? patRes.data.find(p => (p._id || p.id || p.patientId) === initialPatientId)
+              : patRes.data[0];
+            setSelectedPatient(foundPat || patRes.data[0]);
+          }
+        }
 
         if (progRes.success && Array.isArray(progRes.data) && progRes.data.length > 0) {
           setPrograms(progRes.data);
@@ -167,29 +187,33 @@ export default function PrescribeProgramScreen({ route, navigation }) {
 
         if (exRes.success && Array.isArray(exRes.data) && exRes.data.length > 0) {
           setExercises(exRes.data);
-          setSelectedExercise(exRes.data[0]);
+          const matchedEx = initialExerciseId
+            ? exRes.data.find(e => (e._id || e.id) === initialExerciseId)
+            : exRes.data[0];
+          setSelectedExercise(matchedEx || exRes.data[0]);
         } else {
           setExercises(DEFAULT_CLINICAL_EXERCISES);
-          setSelectedExercise(DEFAULT_CLINICAL_EXERCISES[0]);
+          setSelectedExercise(initialExercise || DEFAULT_CLINICAL_EXERCISES[0]);
         }
       } catch (err) {
         console.warn('[PrescribeProgram] Catalog fetch fallback:', err.message);
       } finally {
         setLoading(false);
+        setLoadingPatients(false);
       }
     };
     fetchData();
-  }, [token, initialProgramId]);
+  }, [token, initialProgramId, initialPatientId, initialExerciseId]);
 
   useEffect(() => {
     if (selectedExercise) {
       reset({
         targetWeeks: selectedProgram?.durationWeeks?.toString() || '4',
         targetSessionsPerWeek: selectedProgram?.targetSessionsPerWeek?.toString() || '3',
-        sets: selectedExercise.defaultSets?.toString() || '3',
-        reps: selectedExercise.defaultReps?.toString() || '10',
-        holdSeconds: selectedExercise.defaultHoldSeconds?.toString() || '5',
-        restSeconds: selectedExercise.defaultRestSeconds?.toString() || '30',
+        sets: selectedExercise.defaultSets?.toString() || selectedExercise.sets?.toString() || '3',
+        reps: selectedExercise.defaultReps?.toString() || selectedExercise.reps?.toString() || '10',
+        holdSeconds: selectedExercise.defaultHoldSeconds?.toString() || selectedExercise.holdSeconds?.toString() || '5',
+        restSeconds: selectedExercise.defaultRestSeconds?.toString() || selectedExercise.restSeconds?.toString() || '30',
         patientGoals: 'Improve range of motion, muscle strength, and reduce pain symptoms.',
         notes: 'Perform slowly with smooth controlled breathing. Stop if sharp pain occurs.',
       });
@@ -201,14 +225,18 @@ export default function PrescribeProgramScreen({ route, navigation }) {
       Alert.alert('Template Required', 'Please select a program template from the list.');
       return;
     }
-    if (!patientId) {
-      Alert.alert('Patient Required', 'No patient ID provided for assignment.');
+
+    const effectivePatientId = selectedPatient?._id || selectedPatient?.id || selectedPatient?.patientId || initialPatientId;
+    if (!effectivePatientId) {
+      Alert.alert('Patient Required', 'Please select the patient to whom you want to assign this program.');
       return;
     }
 
     setSubmitting(true);
+    const targetPatientName = selectedPatient?.name || selectedPatient?.user?.name || initialPatientName || 'Patient';
+
     const prescriptionData = {
-      patientId,
+      patientId: effectivePatientId,
       programId: selectedProgram._id,
       startDate: new Date().toISOString(),
       targetWeeks: parseInt(formData.targetWeeks) || selectedProgram.durationWeeks || 4,
@@ -217,7 +245,7 @@ export default function PrescribeProgramScreen({ route, navigation }) {
       exerciseOverrides: selectedExercise
         ? [
             {
-              exerciseId: selectedExercise._id,
+              exerciseId: selectedExercise._id || selectedExercise.id,
               sets: parseInt(formData.sets) || 3,
               reps: parseInt(formData.reps) || 10,
               holdSeconds: parseInt(formData.holdSeconds) || 5,
@@ -234,13 +262,17 @@ export default function PrescribeProgramScreen({ route, navigation }) {
         if (showInAppNotification) {
           showInAppNotification({
             title: 'Protocol Assigned Successfully',
-            message: `Prescribed "${selectedProgram.title || selectedProgram.name}" (${prescriptionData.targetWeeks}w, ${prescriptionData.targetSessionsPerWeek}x/wk).`,
+            message: `Prescribed "${selectedProgram.title || selectedProgram.name}" for ${targetPatientName}.`,
             type: 'program.assigned',
             category: 'RECOVERY PROTOCOL',
-            data: { patientId: targetPatientId, programId: selectedProgram._id },
+            data: { patientId: effectivePatientId, programId: selectedProgram._id },
           });
         }
-        navigation.goBack();
+        Alert.alert(
+          'Prescription Activated',
+          `Rehabilitation routine successfully assigned to ${targetPatientName}.`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
       } else {
         Alert.alert('Assignment Error', res.error?.message || 'Failed to prescribe program.');
       }
@@ -272,8 +304,55 @@ export default function PrescribeProgramScreen({ route, navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollInner} showsVerticalScrollIndicator={false}>
-        {/* PROGRAM TEMPLATE SELECTOR */}
-        <Text style={styles.sectionHeader}>1. SELECT PROGRAM TEMPLATE</Text>
+        {/* 1. PATIENT SELECTOR */}
+        <Text style={styles.sectionHeader}>1. ASSIGN TO PATIENT</Text>
+        {loadingPatients ? (
+          <ActivityIndicator size="small" color="#003D9B" style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
+        ) : patientsList.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
+            {patientsList.map((p, idx) => {
+              const pId = p._id || p.id || p.patientId || `patient-${idx}`;
+              const isSelected = (selectedPatient?._id || selectedPatient?.id || selectedPatient?.patientId) === pId;
+              const pName = p.name || p.user?.name || 'Patient';
+              const pCondition = p.condition || p.diagnosis || 'Rehabilitation';
+              const pRecovery = p.recoveryScore || p.complianceRate || 75;
+
+              return (
+                <TouchableOpacity
+                  key={`prescribe-pat-${pId}-${idx}`}
+                  style={[styles.patientCardChip, isSelected && styles.patientCardChipActive]}
+                  onPress={() => setSelectedPatient(p)}
+                >
+                  <View style={styles.patCardHeader}>
+                    <View style={styles.patAvatarBox}>
+                      <Ionicons name="person" size={16} color={isSelected ? '#003D9B' : '#475569'} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.patCardName, isSelected && styles.patCardNameActive]} numberOfLines={1}>
+                        {pName}
+                      </Text>
+                      <Text style={styles.patCardSub}>{pCondition}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.patCardFooter}>
+                    <Text style={styles.patScoreLabel}>Recovery Score</Text>
+                    <Text style={[styles.patScoreVal, isSelected && styles.patScoreValActive]}>{pRecovery}%</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <View style={styles.singlePatNotice}>
+            <Ionicons name="person-circle-outline" size={20} color="#003D9B" />
+            <Text style={styles.singlePatNoticeText}>
+              Prescribing for: <Text style={{ fontWeight: '700' }}>{selectedPatient?.name || 'Active Patient'}</Text>
+            </Text>
+          </View>
+        )}
+
+        {/* 2. PROGRAM TEMPLATE SELECTOR */}
+        <Text style={styles.sectionHeader}>2. SELECT REHABILITATION PROTOCOL</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalChips}>
           {programs.map((prog) => {
             const isSelected = selectedProgram?._id === prog._id;
@@ -498,6 +577,81 @@ const styles = StyleSheet.create({
   },
   horizontalChips: {
     marginBottom: 14,
+  },
+  patientCardChip: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    marginRight: 10,
+    minWidth: 190,
+  },
+  patientCardChipActive: {
+    borderColor: '#003D9B',
+    backgroundColor: '#eff6ff',
+  },
+  patCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  patAvatarBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  patCardName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  patCardNameActive: {
+    color: '#003D9B',
+  },
+  patCardSub: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  patCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  patScoreLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  patScoreVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#16a34a',
+  },
+  patScoreValActive: {
+    color: '#003D9B',
+  },
+  singlePatNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 14,
+    gap: 8,
+  },
+  singlePatNoticeText: {
+    fontSize: 13,
+    color: '#003D9B',
   },
   programCardChip: {
     backgroundColor: '#ffffff',

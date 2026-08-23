@@ -7,6 +7,7 @@ import SessionLog from '../models/SessionLog.js';
 import Appointment from '../models/Appointment.js';
 import Exercise from '../models/Exercise.js';
 import { hasActiveCareRelationship } from '../utils/careRelationship.js';
+import { publishEvent } from '../utils/rabbitmq.js';
 
 // ─── CREATE PROGRAM TEMPLATE (Therapist/Admin) ────────────────────────────────
 export const createProgram = async (req, res) => {
@@ -319,6 +320,20 @@ export const assignProgram = async (req, res) => {
     const populated = await PatientProgram.findById(assignment._id)
       .populate({ path: 'programId', populate: { path: 'exercises.exerciseId' } })
       .lean();
+
+    try {
+      await publishEvent('clinical.exercise_assigned', {
+        eventId: `PROG_ASSIGN:${assignment._id}_${Date.now()}`,
+        type: 'clinical.exercise_assigned',
+        patientId: patientId.toString(),
+        therapistId: therapistId ? therapistId.toString() : 'system',
+        therapistName: req.user?.name || 'Dr. Vivek Joshi',
+        programTitle: program.title,
+        route: 'TodaysSession',
+      });
+    } catch (evtErr) {
+      console.warn('[Program] Notification publish error:', evtErr.message);
+    }
 
     res.status(201).json({ success: true, data: { assignment: populated } });
   } catch (err) {
