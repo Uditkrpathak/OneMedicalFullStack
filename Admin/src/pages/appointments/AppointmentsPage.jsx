@@ -47,11 +47,47 @@ export default function AppointmentsPage() {
   const [toastMessage, setToastMessage] = useState(null);
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderMethods, setReminderMethods] = useState({ sms: true, email: true });
+  const [reminderType, setReminderType] = useState('PAYMENT_DUE'); // 'PAYMENT_DUE' | 'SESSION'
   const [selectedApptForAction, setSelectedApptForAction] = useState(null);
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const getPaymentStatusBadge = (apt) => {
+    const payStatus = (apt?.paymentStatus || 'PENDING').toUpperCase();
+    const rawAmt = apt?.amount || 500;
+    const amt = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+
+    if (payStatus === 'PAID') {
+      return {
+        label: `PAID (₹${amt})`,
+        style: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 font-bold',
+        isPaid: true,
+      };
+    }
+    if (payStatus === 'REFUNDED') {
+      return {
+        label: 'REFUNDED',
+        style: 'bg-purple-50 text-purple-700 border-purple-200 font-bold',
+        isRefunded: true,
+      };
+    }
+    if (payStatus === 'REFUND_PENDING') {
+      return {
+        label: 'REFUND PENDING',
+        style: 'bg-amber-50 text-amber-800 border-amber-300 font-bold',
+        isRefundPending: true,
+      };
+    }
+    const isVideo = (apt?.appointmentPlace || '').toUpperCase() === 'VIDEO';
+    return {
+      label: `PAYMENT DUE (₹${amt})`,
+      sub: isVideo ? 'Online Video Required' : 'Due at Clinic / Online',
+      style: 'bg-amber-50 text-amber-800 border-amber-300 font-bold',
+      isPending: true,
+    };
   };
 
   const loadDashboard = useCallback(async () => {
@@ -207,13 +243,17 @@ export default function AppointmentsPage() {
     }
   };
 
-  const handleSendReminder = async () => {
-    const targetId = selectedApptForAction?._id || appointments[0]?._id;
+  const handleSendReminder = async (specificApptId, specificType) => {
+    const targetId = specificApptId || selectedApptForAction?._id || appointments[0]?._id;
     if (!targetId) return;
+    const typeToSend = specificType || reminderType;
     setReminderLoading(true);
     try {
-      await api.sendReminder(token, targetId, { methods: reminderMethods });
-      showToast(`Reminder sent via ${[reminderMethods.sms && 'SMS', reminderMethods.email && 'Email'].filter(Boolean).join(' & ')}!`);
+      await api.sendReminder(token, targetId, {
+        reminderType: typeToSend,
+        methods: reminderMethods
+      });
+      showToast(`${typeToSend === 'PAYMENT_DUE' ? 'Payment due reminder' : 'Session reminder'} sent via ${[reminderMethods.sms && 'SMS', reminderMethods.email && 'Email'].filter(Boolean).join(' & ')}!`);
     } catch (err) {
       alert(err.message || 'Failed to send reminder notification.');
     } finally {
@@ -587,7 +627,7 @@ export default function AppointmentsPage() {
                 />
               ) : viewMode === 'list' ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[650px]">
+                  <table className="w-full text-left border-collapse min-w-[750px]">
                     <thead>
                       <tr className="bg-slate-50/70 border-b border-slate-200/80">
                         <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Patient</th>
@@ -595,6 +635,8 @@ export default function AppointmentsPage() {
                         <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Type</th>
                         <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Date & Time</th>
                         <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Status</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Payment</th>
+                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -603,6 +645,7 @@ export default function AppointmentsPage() {
                         const dateFormatted = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' });
                         const timeFormatted = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
                         const badge = getStatusBadge(apt.status);
+                        const payBadge = getPaymentStatusBadge(apt);
                         const typeStyle = apt.appointmentPlace === 'VIDEO' ? 'bg-purple-50 text-purple-700 border-purple-200/60' : apt.appointmentPlace === 'HOME' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' : 'bg-cyan-50 text-cyan-700 border-cyan-200/60';
 
                         return (
@@ -613,9 +656,11 @@ export default function AppointmentsPage() {
                           >
                             <td className="py-3.5 px-5">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs shrink-0">
-                                  {apt.patientName?.[0] || 'P'}
-                                </div>
+                                <UserAvatar
+                                  src={apt.patientAvatar || apt.patientAvatarUrl}
+                                  name={apt.patientName}
+                                  className="w-9 h-9"
+                                />
                                 <div>
                                   <div className="text-xs font-bold text-slate-900 leading-snug">{apt.patientName}</div>
                                   <div className="text-[11px] text-slate-400 font-normal">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
@@ -624,8 +669,17 @@ export default function AppointmentsPage() {
                             </td>
 
                             <td className="py-3.5 px-5">
-                              <div className="text-xs font-bold text-slate-800 leading-snug">{apt.therapistName}</div>
-                              <div className="text-[11px] text-slate-400 font-normal">{apt.therapistSubtitle}</div>
+                              <div className="flex items-center gap-2.5">
+                                <UserAvatar
+                                  src={apt.therapistAvatar || apt.therapistAvatarUrl}
+                                  name={apt.therapistName}
+                                  className="w-8 h-8"
+                                />
+                                <div>
+                                  <div className="text-xs font-bold text-slate-800 leading-snug">{apt.therapistName}</div>
+                                  <div className="text-[11px] text-slate-400 font-normal">{apt.therapistSubtitle}</div>
+                                </div>
+                              </div>
                             </td>
 
                             <td className="py-3.5 px-5">
@@ -639,10 +693,56 @@ export default function AppointmentsPage() {
                               <div className="text-[11px] text-slate-400 font-normal">{timeFormatted}</div>
                             </td>
 
+                            {/* APPOINTMENT LIFECYCLE STATUS */}
                             <td className="py-3.5 px-5">
                               <span className={`inline-block px-3 py-0.5 text-[11px] font-bold rounded-full border ${badge.style}`}>
                                 {badge.label}
                               </span>
+                            </td>
+
+                            {/* PAYMENT STATUS BADGE */}
+                            <td className="py-3.5 px-5">
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`inline-block px-2.5 py-0.5 text-[10px] rounded-full border text-center ${payBadge.style}`}>
+                                  ● {payBadge.label}
+                                </span>
+                                {payBadge.sub && (
+                                  <span className="text-[9px] text-slate-400 font-medium text-center">
+                                    {payBadge.sub}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* ROW ACTIONS */}
+                            <td className="py-3.5 px-5 text-right" onClick={e => e.stopPropagation()}>
+                              {payBadge.isPending ? (
+                                <button
+                                  onClick={() => {
+                                    setSelectedApptForAction(apt);
+                                    setReminderType('PAYMENT_DUE');
+                                    setActiveModal('reminder');
+                                  }}
+                                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold rounded-lg shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  title="Send payment due reminder to patient"
+                                >
+                                  <Bell size={11} className="text-amber-700" />
+                                  <span>Remind Payment</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setSelectedApptForAction(apt);
+                                    setReminderType('SESSION');
+                                    setActiveModal('reminder');
+                                  }}
+                                  className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-lg shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  title="Send session reminder to patient"
+                                >
+                                  <Send size={11} className="text-slate-500" />
+                                  <span>Remind</span>
+                                </button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -655,6 +755,7 @@ export default function AppointmentsPage() {
                   {appointments.map(apt => {
                     const d = new Date(apt.startTime);
                     const badge = getStatusBadge(apt.status);
+                    const payBadge = getPaymentStatusBadge(apt);
                     const typeStyle = apt.appointmentPlace === 'VIDEO' ? 'bg-purple-50 text-purple-700 border-purple-200/60' : apt.appointmentPlace === 'HOME' ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' : 'bg-cyan-50 text-cyan-700 border-cyan-200/60';
 
                     return (
@@ -665,17 +766,24 @@ export default function AppointmentsPage() {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
-                              {apt.patientName?.[0] || 'P'}
-                            </div>
+                            <UserAvatar
+                              src={apt.patientAvatar || apt.patientAvatarUrl}
+                              name={apt.patientName}
+                              className="w-10 h-10"
+                            />
                             <div>
                               <div className="text-xs font-bold text-slate-900">{apt.patientName}</div>
                               <div className="text-[11px] text-slate-400">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
                             </div>
                           </div>
-                          <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${badge.style}`}>
-                            {badge.label}
-                          </span>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full border ${badge.style}`}>
+                              {badge.label}
+                            </span>
+                            <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full border ${payBadge.style}`}>
+                              ● {payBadge.label}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -685,8 +793,21 @@ export default function AppointmentsPage() {
                           </span>
                         </div>
 
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
-                          <Clock size={12} /> {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} · {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1">
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={12} /> {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} · {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedApptForAction(apt);
+                              setReminderType(payBadge.isPending ? 'PAYMENT_DUE' : 'SESSION');
+                              setActiveModal('reminder');
+                            }}
+                            className="text-[11px] font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Bell size={11} /> Remind
+                          </button>
                         </div>
                       </div>
                     );
@@ -702,35 +823,30 @@ export default function AppointmentsPage() {
             <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Today's Timeline</h3>
-                <span className="text-[11px] font-bold text-blue-600">{timeline.length} Scheduled</span>
+                <span className="text-xs font-bold text-blue-600">{timeline.length} Scheduled</span>
               </div>
 
-              <div className="space-y-4 relative pl-1">
+              <div className="space-y-3">
                 {timeline.length > 0 ? (
-                  timeline.map((item, idx) => {
-                    const badge = getStatusBadge(item.status);
+                  timeline.map(t => {
+                    const badge = getStatusBadge(t.status);
                     return (
-                      <div key={item.id} className="flex items-start justify-between relative">
-                        <div className="flex items-start gap-3">
-                          <div className="relative mt-0.5">
-                            <div className={`w-3 h-3 rounded-full border-2 bg-white ${idx === 0 ? 'border-blue-600 ring-4 ring-blue-50' : 'border-slate-300'}`} />
-                            {idx < timeline.length - 1 && (
-                              <div className="absolute top-3 left-1.5 -translate-x-1/2 w-0.5 h-7 bg-slate-100" />
-                            )}
-                          </div>
+                      <div key={t.id} className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-2 h-2 rounded-full border-2 border-blue-600 bg-white" />
                           <div>
-                            <div className="text-xs font-bold text-slate-900 leading-snug">{item.name}</div>
-                            <div className="text-[11px] text-slate-400 font-normal">{item.detail}</div>
+                            <div className="text-xs font-bold text-slate-900 leading-tight">{t.name}</div>
+                            <div className="text-[11px] text-slate-400 font-normal mt-0.5">{t.detail}</div>
                           </div>
                         </div>
-                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${badge.style}`}>
-                          {item.status}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badge.style}`}>
+                          {t.status}
                         </span>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-xs text-slate-400 italic py-2">No appointments scheduled for today.</p>
+                  <p className="text-xs text-slate-400 italic py-2">No timeline sessions for today.</p>
                 )}
               </div>
             </div>
@@ -759,7 +875,7 @@ export default function AppointmentsPage() {
 
                         <button
                           onClick={() => handleConfirmAppointment(p._id)}
-                          className="btn btn-secondary btn-xs text-emerald-600 hover:bg-emerald-50 border-emerald-200"
+                          className="btn btn-secondary btn-xs text-emerald-600 hover:bg-emerald-50 border-emerald-200 cursor-pointer"
                           title="Confirm appointment"
                         >
                           <Check size={13} /> Confirm
@@ -779,8 +895,12 @@ export default function AppointmentsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => setActiveModal('reminder')}
-                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs"
+                  onClick={() => {
+                    setSelectedApptForAction(appointments[0] || null);
+                    setReminderType(appointments[0]?.paymentStatus === 'PENDING' ? 'PAYMENT_DUE' : 'SESSION');
+                    setActiveModal('reminder');
+                  }}
+                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs cursor-pointer"
                 >
                   <Send size={18} className="text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold text-slate-800">Send Reminder</span>
@@ -788,7 +908,7 @@ export default function AppointmentsPage() {
 
                 <button
                   onClick={handlePrintLedger}
-                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs"
+                  className="p-3.5 bg-white border border-slate-200/80 hover:border-blue-300 hover:bg-blue-50/40 rounded-2xl flex flex-col items-center justify-center text-center group transition-all shadow-2xs cursor-pointer"
                 >
                   <Printer size={18} className="text-blue-600 mb-2 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-bold text-slate-800">Print Ledger</span>
@@ -804,13 +924,78 @@ export default function AppointmentsPage() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-fade-up">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-extrabold text-slate-900">Send Appointment Reminder</h3>
-              <button onClick={() => setActiveModal(null)} className="p-1 hover:bg-slate-100 rounded-lg">
+              <h3 className="text-base font-extrabold text-slate-900">
+                {reminderType === 'PAYMENT_DUE' ? 'Send Payment Due Reminder' : 'Send Session Reminder'}
+              </h3>
+              <button onClick={() => setActiveModal(null)} className="p-1 hover:bg-slate-100 rounded-lg cursor-pointer">
                 <X size={16} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-500">Choose notification channels to send session reminder to patient:</p>
+            {selectedApptForAction ? (
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Patient:</span>
+                  <span className="font-bold text-slate-900">{selectedApptForAction.patientName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Doctor:</span>
+                  <span className="font-bold text-slate-800">{selectedApptForAction.therapistName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Payment Status:</span>
+                  <span className={`font-bold ${selectedApptForAction.paymentStatus === 'PAID' ? 'text-emerald-700' : 'text-amber-800'}`}>
+                    {selectedApptForAction.paymentStatus === 'PAID' ? 'PAID' : `PAYMENT DUE (₹${selectedApptForAction.amount || 500})`}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Mode:</span>
+                  <span className="font-bold text-slate-800">
+                    {selectedApptForAction.appointmentPlace === 'VIDEO' ? 'Online Video Consultation' : (selectedApptForAction.appointmentPlace === 'HOME' ? 'Home Visit' : 'Clinic Visit')}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            {/* REMINDER TYPE SELECTOR */}
+            <div>
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Reminder Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReminderType('PAYMENT_DUE')}
+                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer ${
+                    reminderType === 'PAYMENT_DUE'
+                      ? 'bg-amber-50 border-amber-400 text-amber-900 ring-2 ring-amber-200'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-amber-700 mb-0.5">
+                    <Bell size={13} />
+                    <span>Payment Due</span>
+                  </div>
+                  <span className="text-[10px] font-normal text-slate-500 block">Send payment notice & link</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReminderType('SESSION')}
+                  className={`p-2.5 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer ${
+                    reminderType === 'SESSION'
+                      ? 'bg-blue-50 border-blue-400 text-blue-900 ring-2 ring-blue-200'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-blue-700 mb-0.5">
+                    <Clock size={13} />
+                    <span>Session Reminder</span>
+                  </div>
+                  <span className="text-[10px] font-normal text-slate-500 block">Schedule & join instructions</span>
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">Choose delivery channels to dispatch notification:</p>
 
             <div className="space-y-2 text-xs">
               <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl cursor-pointer">
@@ -835,15 +1020,17 @@ export default function AppointmentsPage() {
             </div>
 
             <div className="flex justify-end gap-2 pt-3">
-              <button onClick={() => setActiveModal(null)} className="btn btn-secondary text-xs">
+              <button onClick={() => setActiveModal(null)} className="btn btn-secondary text-xs cursor-pointer">
                 Cancel
               </button>
               <button
-                onClick={handleSendReminder}
+                onClick={() => handleSendReminder()}
                 disabled={reminderLoading || (!reminderMethods.sms && !reminderMethods.email)}
-                className="btn btn-primary text-xs flex items-center gap-1.5"
+                className={`btn text-xs flex items-center gap-1.5 cursor-pointer ${
+                  reminderType === 'PAYMENT_DUE' ? 'btn-primary bg-amber-600 hover:bg-amber-700 border-amber-700 text-white' : 'btn-primary'
+                }`}
               >
-                <Send size={13} /> {reminderLoading ? 'Sending...' : 'Send Reminder'}
+                <Send size={13} /> {reminderLoading ? 'Sending...' : (reminderType === 'PAYMENT_DUE' ? 'Send Payment Reminder' : 'Send Session Reminder')}
               </button>
             </div>
           </div>

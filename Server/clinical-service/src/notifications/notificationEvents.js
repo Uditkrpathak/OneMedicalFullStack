@@ -53,6 +53,7 @@ export const EVENT_TYPES = {
 
   // Payment
   PAYMENT_INITIATED: 'payment.initiated',
+  PAYMENT_DUE: 'payment.due',
   PAYMENT_SUCCEEDED: 'payment.succeeded',
   PAYMENT_FAILED: 'payment.failed',
   PAYMENT_REFUNDED: 'payment.refunded',
@@ -427,6 +428,15 @@ export const EVENT_POLICIES = {
       clinic_admin: { inApp: true, push: false, email: false, sms: false },
     },
     retentionDays: 60,
+  },
+  [EVENT_TYPES.PAYMENT_DUE]: {
+    type: 'payment',
+    priority: 'high',
+    channels: {
+      patient: { inApp: true, push: true, email: true, sms: true },
+      clinic_admin: { inApp: true, push: false, email: false, sms: false },
+    },
+    retentionDays: 90,
   },
   [EVENT_TYPES.PAYMENT_SUCCEEDED]: {
     type: 'payment',

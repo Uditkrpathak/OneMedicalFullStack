@@ -102,6 +102,23 @@ export const authorizeCall = async (req, res) => {
       });
     }
 
+    // Telehealth Payment Gatekeeper: Ensure payment completed for Video Consultations
+    const isVideoConsultation = (appointment.appointmentPlace || '').toUpperCase() === 'VIDEO' || appointment.serviceType === 'VIDEO_CONSULTATION';
+    const userRole = req.user?.role || req.headers['x-user-role'] || 'patient';
+    const isPrivileged = ['clinic_admin', 'super_admin'].includes(userRole);
+
+    if (isVideoConsultation && appointment.paymentStatus !== 'PAID' && !isPrivileged && userId === patientId) {
+      return res.status(402).json({
+        success: false,
+        error: {
+          code: 'PAYMENT_REQUIRED',
+          message: 'Payment must be completed before entering the video consultation room.',
+          paymentAmount: appointment.amount > 5000 ? Math.round(appointment.amount / 100) : (appointment.amount || 500),
+          appointmentId: appointment._id,
+        }
+      });
+    }
+
     res.json({
       success: true,
       authorized: true,

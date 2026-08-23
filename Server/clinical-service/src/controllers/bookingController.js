@@ -308,15 +308,22 @@ export const createHold = async (req, res) => {
       createdBy:    userRole === 'patient' ? 'patient' : (userRole === 'super_admin' ? 'super_admin' : 'clinic_admin'),
     });
 
+    const payAmt = appointment.amount ? (appointment.amount > 5000 ? Math.round(appointment.amount / 100) : appointment.amount) : 500;
+    const isPaid = appointment.paymentStatus === 'PAID';
+
     res.status(201).json({ success: true, data: { appointment: {
       _id:          appointment._id,
       status:       appointment.status,
       holdExpiresAt:appointment.holdExpiresAt,
       startTime:    appointment.startTime,
       endTime:      appointment.endTime,
-      amount:       appointment.amount,
+      amount:       payAmt,
+      paymentAmount:payAmt,
       currency:     appointment.currency,
       paymentStatus:appointment.paymentStatus,
+      paymentRequired: !isPaid,
+      appointmentPlace: (appointment.appointmentPlace || 'CLINIC').toUpperCase(),
+      invoiceStatus: isPaid ? 'PAID' : 'PENDING',
       therapistName:appointment.therapistName,
       therapistAvatarUrl: appointment.therapistAvatarUrl,
       patientName:  appointment.patientName,
@@ -385,8 +392,9 @@ export const confirmAppointment = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot confirm appointment in status: ${appointment.status}` } });
     }
 
+    const isPaid = Boolean(paymentId || transactionId || req.body.paymentStatus === 'PAID');
     appointment.status         = 'CONFIRMED';
-    appointment.paymentStatus  = 'PAID';
+    appointment.paymentStatus  = isPaid ? 'PAID' : (appointment.paymentStatus || 'PENDING');
     appointment.paymentOrderId = paymentOrderId || appointment.paymentOrderId;
     appointment.paymentId      = paymentId || appointment.paymentId;
     appointment.transactionId  = transactionId || appointment.transactionId;
@@ -400,21 +408,50 @@ export const confirmAppointment = async (req, res) => {
       ? new Date(appointment.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
       : '';
 
-    await publishEvent('appointment.confirmed', {
-      type:            'appointment.confirmed',
-      appointmentId:   appointment._id,
-      transactionId:   transactionId || appointment.transactionId,
-      patientId:       appointment.patientId,
-      therapistId:     appointment.therapistId,
-      patientName:     appointment.patientName,
-      therapistName:   appointment.therapistName,
-      serviceName:     appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation',
-      startTime:       appointment.startTime,
-      appointmentDate,
-      appointmentTime,
-    });
+    if (appointment.paymentStatus === 'PAID') {
+      await publishEvent('appointment.confirmed', {
+        eventId:         `APPT_CONFIRMED:${appointment._id}`,
+        type:            'appointment.confirmed',
+        appointmentId:   appointment._id,
+        transactionId:   transactionId || appointment.transactionId,
+        patientId:       appointment.patientId,
+        therapistId:     appointment.therapistId,
+        patientName:     appointment.patientName,
+        therapistName:   appointment.therapistName,
+        serviceName:     appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation',
+        startTime:       appointment.startTime,
+        appointmentPlace: appointment.appointmentPlace || 'CLINIC',
+        appointmentDate,
+        appointmentTime,
+      });
+    } else {
+      // Emit idempotent PAYMENT_DUE notification for unpaid confirmed booking
+      await publishEvent('payment.due', {
+        eventId:         `PAYMENT_DUE:${appointment._id}`,
+        type:            'payment.due',
+        appointmentId:   appointment._id,
+        patientId:       appointment.patientId,
+        therapistId:     appointment.therapistId,
+        patientName:     appointment.patientName,
+        therapistName:   appointment.therapistName,
+        amount:          appointment.amount,
+        appointmentPlace: appointment.appointmentPlace || 'CLINIC',
+        serviceType:     appointment.serviceType,
+        startTime:       appointment.startTime,
+        appointmentDate,
+        appointmentTime,
+      });
+    }
 
-    res.json({ success: true, data: { appointment } });
+    const apptObj = appointment.toObject ? appointment.toObject() : { ...appointment };
+    const payAmt = apptObj.amount ? (apptObj.amount > 5000 ? Math.round(apptObj.amount / 100) : apptObj.amount) : 500;
+    const isPaidAppt = apptObj.paymentStatus === 'PAID';
+    apptObj.paymentAmount = payAmt;
+    apptObj.paymentRequired = !isPaidAppt;
+    apptObj.appointmentPlace = (apptObj.appointmentPlace || 'CLINIC').toUpperCase();
+    apptObj.invoiceStatus = isPaidAppt ? 'PAID' : (apptObj.paymentStatus === 'REFUNDED' ? 'REFUNDED' : 'PENDING');
+
+    res.json({ success: true, data: { appointment: apptObj } });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
@@ -609,6 +646,9 @@ export const getMyAppointments = async (req, res) => {
       const t = a.therapistId ? userMap[a.therapistId.toString()] : null;
       const tImg = t?.profileImageUrl || t?.avatarUrl || t?.avatar || a.therapistAvatarUrl || undefined;
       const pImg = p?.profileImageUrl || p?.avatarUrl || p?.avatar || a.patientAvatarUrl || undefined;
+      const payStatus = a.paymentStatus || 'PENDING';
+      const isPaid = payStatus === 'PAID';
+      const amtClean = a.amount ? (a.amount > 5000 ? Math.round(a.amount / 100) : a.amount) : 500;
       return {
         ...a,
         patientName: a.patientName || p?.name || 'Patient',
@@ -616,6 +656,11 @@ export const getMyAppointments = async (req, res) => {
         therapistAvatarUrl: tImg,
         avatarUrl: tImg,
         patientAvatarUrl: pImg,
+        paymentStatus: payStatus,
+        paymentRequired: !isPaid,
+        paymentAmount: amtClean,
+        appointmentPlace: (a.appointmentPlace || 'CLINIC').toUpperCase(),
+        invoiceStatus: isPaid ? 'PAID' : (payStatus === 'REFUNDED' ? 'REFUNDED' : 'PENDING'),
       };
     });
 
@@ -652,6 +697,7 @@ export const getAppointmentById = async (req, res) => {
           appointment.patientPhone = users[0].phoneNumber || undefined;
           appointment.patientAge = users[0].age || users[0].profile?.age || undefined;
           appointment.patientGender = users[0].gender || users[0].profile?.gender || undefined;
+          appointment.patientAvatarUrl = appointment.patientAvatarUrl || users[0].profileImageUrl || users[0].avatarUrl || users[0].avatar || users[0].profile?.profileImageUrl || undefined;
         }
       } catch (err) {
         console.warn('[getAppointmentById] Error fetching patient info:', err.message);
@@ -692,6 +738,16 @@ export const getAppointmentById = async (req, res) => {
       appointment.formattedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`;
       appointment.dateString = `${appointment.formattedDate} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}`;
     }
+
+    const payStatus = appointment.paymentStatus || 'PENDING';
+    const isPaid = payStatus === 'PAID';
+    const amtClean = appointment.amount ? (appointment.amount > 5000 ? Math.round(appointment.amount / 100) : appointment.amount) : 500;
+
+    appointment.paymentStatus = payStatus;
+    appointment.paymentRequired = !isPaid;
+    appointment.paymentAmount = amtClean;
+    appointment.appointmentPlace = (appointment.appointmentPlace || 'CLINIC').toUpperCase();
+    appointment.invoiceStatus = isPaid ? 'PAID' : (payStatus === 'REFUNDED' ? 'REFUNDED' : 'PENDING');
 
     res.json({ success: true, data: { appointment } });
   } catch (err) {
@@ -1282,10 +1338,11 @@ export const getAppointmentsDashboard = async (req, res) => {
       const resolvedPatientName = a.patientName || p?.name || 'Patient';
       const resolvedPatientPhone = p?.phoneNumber || '';
       const resolvedPatientConcern = p?.profile?.primaryConcern || (a.appointmentPlace === 'HOME' ? 'Home Visit' : 'In-Clinic Consultation');
+      const resolvedPatientAvatar = a.patientAvatarUrl || p?.profileImageUrl || p?.avatarUrl || p?.avatar || p?.profile?.profileImageUrl || null;
 
       const resolvedTherapistName = a.therapistName || tUser?.name || t?.name || 'Dr. Specialist';
       const resolvedSpecialization = t?.specializations?.[0] || 'Physiotherapy Specialist';
-      const resolvedAvatar = tUser?.profileImageUrl || t?.avatarUrl || null;
+      const resolvedAvatar = a.therapistAvatarUrl || tUser?.profileImageUrl || tUser?.avatarUrl || t?.profileImageUrl || t?.avatarUrl || t?.avatar || null;
 
       let effectiveStatus = a.status?.toUpperCase() || 'CONFIRMED';
       if (effectiveStatus === 'CONFIRMED' && new Date(a.endTime || a.startTime) < startOfToday) {
@@ -1299,10 +1356,13 @@ export const getAppointmentsDashboard = async (req, res) => {
         patientName: resolvedPatientName,
         patientPhone: resolvedPatientPhone,
         patientSubtitle: resolvedPatientPhone ? `${resolvedPatientPhone} • ${resolvedPatientConcern}` : resolvedPatientConcern,
+        patientAvatar: resolvedPatientAvatar,
+        patientAvatarUrl: resolvedPatientAvatar,
         therapistId: a.therapistId,
         therapistName: resolvedTherapistName,
         therapistSubtitle: resolvedSpecialization,
         therapistAvatar: resolvedAvatar,
+        therapistAvatarUrl: resolvedAvatar,
         serviceType: a.serviceType,
         appointmentPlace: a.appointmentPlace,
         type: a.serviceType?.replace(/_/g, ' ') || a.appointmentPlace || 'Physiotherapy Session',
@@ -1886,6 +1946,103 @@ export const updateLeadStatus = async (req, res) => {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }
 };
+
+/**
+ * POST /appointments/:id/reminder
+ * Send manual payment due or session reminder to patient from admin / clinician portal
+ */
+export const sendAppointmentReminder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reminderType, methods = { sms: true, email: true } } = req.body;
+    const appointment = await Appointment.findById(id);
+
+    if (!appointment || appointment.isDeleted) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Appointment not found' } });
+    }
+
+    // Resolve patient details
+    let patientName = appointment.patientName || 'Patient';
+    let patientPhone = '';
+    let patientEmail = '';
+    if (appointment.patientId) {
+      try {
+        const users = await fetchUsersByIds([appointment.patientId]);
+        if (users?.[0]) {
+          patientName = users[0].name || patientName;
+          patientPhone = users[0].phoneNumber || '';
+          patientEmail = users[0].email || '';
+        }
+      } catch (err) {
+        console.warn('[sendAppointmentReminder] User lookup err:', err.message);
+      }
+    }
+
+    const appointmentDate = appointment.startTime
+      ? new Date(appointment.startTime).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+      : '';
+    const appointmentTime = appointment.startTime
+      ? new Date(appointment.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+      : '';
+
+    const isUnpaid = (appointment.paymentStatus || 'PENDING') === 'PENDING';
+    const isPaymentReminder = reminderType === 'PAYMENT_DUE' || (isUnpaid && reminderType !== 'SESSION');
+
+    const eventId = isPaymentReminder
+      ? `REMINDER_PAYMENT_DUE_${appointment._id}_${Date.now()}`
+      : `REMINDER_SESSION_${appointment._id}_${Date.now()}`;
+
+    if (isPaymentReminder) {
+      await publishEvent('payment.due', {
+        eventId,
+        type: 'payment.due',
+        appointmentId: appointment._id,
+        patientId: appointment.patientId,
+        therapistId: appointment.therapistId,
+        patientName,
+        therapistName: appointment.therapistName,
+        amount: appointment.amount,
+        appointmentPlace: appointment.appointmentPlace || 'CLINIC',
+        serviceType: appointment.serviceType,
+        action: 'PAY_NOW',
+        startTime: appointment.startTime,
+        appointmentDate,
+        appointmentTime,
+        channels: methods,
+      });
+    } else {
+      await publishEvent('appointment.reminder_1h', {
+        eventId,
+        type: 'appointment.reminder_1h',
+        appointmentId: appointment._id,
+        patientId: appointment.patientId,
+        therapistId: appointment.therapistId,
+        patientName,
+        therapistName: appointment.therapistName,
+        appointmentPlace: appointment.appointmentPlace || 'CLINIC',
+        startTime: appointment.startTime,
+        appointmentDate,
+        appointmentTime,
+        channels: methods,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: isPaymentReminder ? 'Payment due reminder sent to patient.' : 'Session reminder sent to patient.',
+      data: {
+        appointmentId: appointment._id,
+        reminderType: isPaymentReminder ? 'PAYMENT_DUE' : 'SESSION',
+        channels: methods,
+        sentAt: new Date().toISOString(),
+      }
+    });
+  } catch (err) {
+    console.error('[sendAppointmentReminder] Error:', err);
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
 
 
 

@@ -173,8 +173,10 @@ export default function MyBookingsScreen({ navigation }) {
                       <Text style={styles.docName}>{item.doctorName}</Text>
                       <Text style={styles.docSpecialty}>{item.specialty}</Text>
                     </View>
-                    <View style={styles.upcomingBadge}>
-                      <Text style={styles.upcomingBadgeText}>{item.status}</Text>
+                    <View style={[styles.upcomingBadge, item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' && { backgroundColor: '#fef3c7' }]}>
+                      <Text style={[styles.upcomingBadgeText, item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' && { color: '#b45309' }]}>
+                        {item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' ? 'PAYMENT DUE' : item.status}
+                      </Text>
                     </View>
                   </View>
 
@@ -238,12 +240,29 @@ export default function MyBookingsScreen({ navigation }) {
                       <Text style={styles.viewDetailsBtnText}>View Details</Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.rescheduleBtn}
-                      onPress={() => navigation.navigate('RescheduleAppointment', { booking: item })}
-                    >
-                      <Text style={styles.rescheduleBtnText}>Reschedule</Text>
-                    </TouchableOpacity>
+                    {item.paymentStatus === 'PENDING' && item.status !== 'CANCELLED' ? (
+                      <TouchableOpacity
+                        style={[styles.rescheduleBtn, { backgroundColor: '#003D9B', borderWidth: 0 }]}
+                        onPress={() => navigation.navigate('ChoosePayment', {
+                          appointmentId: item.id || item._id,
+                          appointment: item,
+                          doctor: { name: item.doctorName, therapistId: item.therapistId, profileImageUrl: item.therapistAvatarUrl || item.avatarUrl },
+                          doctorName: item.doctorName,
+                          amount: item.amount ? (item.amount > 5000 ? Math.round(item.amount / 100) : item.amount) : 500,
+                        })}
+                      >
+                        <Text style={[styles.rescheduleBtnText, { color: '#ffffff', fontWeight: '700' }]}>
+                          Pay Now (₹{item.amount ? (item.amount > 5000 ? Math.round(item.amount / 100) : item.amount) : 500})
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.rescheduleBtn}
+                        onPress={() => navigation.navigate('RescheduleAppointment', { booking: item })}
+                      >
+                        <Text style={styles.rescheduleBtnText}>Reschedule</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );

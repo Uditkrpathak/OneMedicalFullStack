@@ -81,6 +81,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           } else if (routeParams.amount || routeParams.doctorName) {
             const rawAmt = routeParams.amount || 800;
             const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+            const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
             setInvoice({
               _id: transactionId,
               invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
@@ -90,6 +91,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               patientName: user?.name || 'Patient',
               patientPhone: user?.phoneNumber || '+91 98765 43210',
               serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
+              appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
               totalAmount: amtVal,
               consultationFee: amtVal,
               taxes: 0,
@@ -97,8 +99,9 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
               issuedTime: '11:30 AM',
               gstin: '29AABCU9603R1ZM',
-              status: 'PAID',
-              paymentMethod: 'UPI (ONLINE)',
+              status: paramPayStatus,
+              paymentStatus: paramPayStatus,
+              paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
             });
             setErrorMsg(null);
           } else {
@@ -110,6 +113,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           if (routeParams.amount || routeParams.doctorName) {
             const rawAmt = routeParams.amount || 800;
             const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+            const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
             setInvoice({
               _id: transactionId,
               invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
@@ -119,6 +123,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               patientName: user?.name || 'Patient',
               patientPhone: user?.phoneNumber || '+91 98765 43210',
               serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
+              appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
               totalAmount: amtVal,
               consultationFee: amtVal,
               taxes: 0,
@@ -126,8 +131,9 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
               issuedTime: '11:30 AM',
               gstin: '29AABCU9603R1ZM',
-              status: 'PAID',
-              paymentMethod: 'UPI (ONLINE)',
+              status: paramPayStatus,
+              paymentStatus: paramPayStatus,
+              paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
             });
             setErrorMsg(null);
           } else {
@@ -143,15 +149,24 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
     return () => { isMounted = false; };
   }, [transactionId, token]);
 
-  const isRefunded = invoice?.status === 'REFUNDED' || invoice?.isRefunded;
-  const isRefundPending = invoice?.status === 'REFUND_PENDING' || invoice?.isRefundPending;
+  const statusStr = (invoice?.status || invoice?.paymentStatus || routeParams.paymentStatus || '').toUpperCase();
+  const isPaid = statusStr === 'PAID' || statusStr === 'CAPTURED';
+  const isRefunded = statusStr === 'REFUNDED' || invoice?.isRefunded;
+  const isRefundPending = statusStr === 'REFUND_PENDING' || invoice?.isRefundPending;
+  const isPending = !isPaid && !isRefunded && !isRefundPending;
+
+  const apptPlace = (invoice?.appointmentPlace || routeParams.appointmentPlace || 'CLINIC').toUpperCase();
+  const isVideo = apptPlace === 'VIDEO';
+  const isHome = apptPlace === 'HOME';
+  const isPayAtClinic = isPending && apptPlace === 'CLINIC';
+  const isPaidOnline = isPaid;
 
   const handleDownloadPdf = () => {
     if (!invoice) return;
-    const documentType = isRefunded ? 'Credit Note & Refund Receipt' : 'GST Tax Invoice';
+    const documentType = isRefunded ? 'Credit Note & Refund Receipt' : (isPending ? 'Proforma Invoice / Payment Demand' : 'GST Tax Invoice');
     Alert.alert(
       `${documentType} Downloaded`,
-      `Official Document #${invoice.invoiceNumber} has been verified and saved to your device & Medical Records Vault.\n\n${isRefunded ? 'Refunded Amount: ₹' + (invoice.refundAmount || invoice.totalAmount || 0).toLocaleString('en-IN') : 'Total Paid: ₹' + (invoice.totalAmount || 0).toLocaleString('en-IN')}\nDoctor: ${invoice.doctorName}\nPatient: ${invoice.patientName}\nGSTIN: ${invoice.gstin}\nSAC Code: ${invoice.sacCode || '999312'}`,
+      `Official Document #${invoice.invoiceNumber} has been verified and saved to your device & Medical Records Vault.\n\n${isRefunded ? 'Refunded Amount: ₹' + (invoice.refundAmount || invoice.totalAmount || 0).toLocaleString('en-IN') : (isPending ? 'Amount Due: ₹' : 'Total Paid: ₹') + (invoice.totalAmount || 0).toLocaleString('en-IN')}\nDoctor: ${invoice.doctorName}\nPatient: ${invoice.patientName}\nGSTIN: ${invoice.gstin}\nSAC Code: ${invoice.sacCode || '999312'}`,
       [
         { text: 'View Records Vault', onPress: () => navigation.navigate('MedicalRecordsVault') },
         { text: 'OK' }
@@ -162,8 +177,8 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
   const handleShare = async () => {
     if (!invoice) return;
     try {
-      const docTitle = isRefunded ? 'ONE MEDICAL Official Credit Note' : 'ONE MEDICAL Official Tax Invoice';
-      const amtText = isRefunded ? `Refunded Amount: ₹${(invoice.refundAmount || invoice.totalAmount || 0).toLocaleString('en-IN')}` : `Amount Paid: ₹${(invoice.totalAmount || 0).toLocaleString('en-IN')}`;
+      const docTitle = isRefunded ? 'ONE MEDICAL Official Credit Note' : (isPending ? 'ONE MEDICAL Proforma Invoice' : 'ONE MEDICAL Official Tax Invoice');
+      const amtText = isRefunded ? `Refunded Amount: ₹${(invoice.refundAmount || invoice.totalAmount || 0).toLocaleString('en-IN')}` : (isPending ? `Amount Due: ₹${(invoice.totalAmount || 0).toLocaleString('en-IN')}` : `Amount Paid: ₹${(invoice.totalAmount || 0).toLocaleString('en-IN')}`);
       await Share.share({
         title: `${docTitle} - ${invoice.invoiceNumber}`,
         message: `${docTitle}\nInvoice/Credit No: ${invoice.invoiceNumber}\nDoctor: ${invoice.doctorName}\nPatient: ${invoice.patientName}\nService: ${invoice.serviceName}\n${amtText}\nDate: ${invoice.issuedDate}\nGSTIN: ${invoice.gstin}\nStatus: ${invoice.status}`,
@@ -213,9 +228,6 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
   const effectiveAmount = isRefunded ? (invoice.refundAmount || invoice.totalAmount || 0) : (invoice.totalAmount || 0);
   const amtWords = convertNumberToWords(effectiveAmount);
 
-  const isPaidOnline = invoice.paymentStatus === 'PAID' || invoice.status === 'PAID' || routeParams.paymentStatus === 'PAID' || (invoice.paymentChannel || '').toLowerCase().includes('online') || (invoice.paymentChannel || '').toLowerCase().includes('upi');
-  const isPayAtClinic = !isPaidOnline && !isRefunded && !isRefundPending;
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* HEADER */}
@@ -224,7 +236,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {isRefunded ? 'Credit Note & Refund' : 'Official Tax Invoice'}
+          {isRefunded ? 'Credit Note & Refund' : (isPending ? 'Proforma Invoice' : 'Official Tax Invoice')}
         </Text>
         <TouchableOpacity style={styles.shareHeaderBtn} onPress={handleShare} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="share-outline" size={20} color="#003D9B" />
@@ -256,13 +268,33 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
               </Text>
             </View>
           </View>
-        ) : isPayAtClinic ? (
+        ) : isPending && isVideo ? (
+          <View style={[styles.refundBanner, { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }]}>
+            <Ionicons name="videocam" size={22} color="#0284c7" style={{ marginRight: 10, marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.refundBannerTitle, { color: '#0369a1' }]}>Online Payment Required (Video Consultation)</Text>
+              <Text style={[styles.refundBannerDesc, { color: '#075985' }]}>
+                Please complete digital payment of ₹{(invoice.totalAmount || 499).toLocaleString('en-IN')} to access your secure telehealth consultation room and validate this tax invoice.
+              </Text>
+            </View>
+          </View>
+        ) : isPending && isHome ? (
+          <View style={[styles.refundBanner, { backgroundColor: '#fefce8', borderColor: '#fef08a' }]}>
+            <Ionicons name="home" size={22} color="#854d0e" style={{ marginRight: 10, marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.refundBannerTitle, { color: '#854d0e' }]}>Payment Due (Home Visit)</Text>
+              <Text style={[styles.refundBannerDesc, { color: '#713f12' }]}>
+                Please settle ₹{(invoice.totalAmount || 499).toLocaleString('en-IN')} with your visiting physiotherapist upon arrival or pay online now.
+              </Text>
+            </View>
+          </View>
+        ) : isPending ? (
           <View style={[styles.refundBanner, { backgroundColor: '#fefce8', borderColor: '#fef08a' }]}>
             <Ionicons name="alert-circle" size={22} color="#854d0e" style={{ marginRight: 10, marginTop: 1 }} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.refundBannerTitle, { color: '#854d0e' }]}>Payment Required: Pay at Clinic</Text>
+              <Text style={[styles.refundBannerTitle, { color: '#854d0e' }]}>Payment Due: Clinic Reception</Text>
               <Text style={[styles.refundBannerDesc, { color: '#713f12' }]}>
-                Please settle ₹{(invoice.totalAmount || 499).toLocaleString('en-IN')} at the clinic reception desk upon arrival via Cash, UPI QR code, or Card POS machine.
+                Please settle ₹{(invoice.totalAmount || 499).toLocaleString('en-IN')} at the clinic reception desk upon arrival via Cash, UPI QR code, or Card POS, or pay online now.
               </Text>
             </View>
           </View>
@@ -281,21 +313,21 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
         {/* FORMAL TAX INVOICE CARD */}
         <View style={styles.invoiceSheet}>
           {/* WATERMARK ACCENT TOP BAR */}
-          <View style={[styles.topAccentBar, isRefunded && { backgroundColor: '#7e22ce' }, isPayAtClinic && { backgroundColor: '#eab308' }]} />
+          <View style={[styles.topAccentBar, isRefunded && { backgroundColor: '#7e22ce' }, isPending && { backgroundColor: '#eab308' }]} />
 
           {/* CLINIC BRANDING HEADER */}
           <View style={styles.clinicHeaderBlock}>
             <View style={styles.clinicBadgeRow}>
-              <View style={[styles.logoBox, isRefunded && { backgroundColor: '#7e22ce' }, isPayAtClinic && { backgroundColor: '#eab308' }]}>
+              <View style={[styles.logoBox, isRefunded && { backgroundColor: '#7e22ce' }, isPending && { backgroundColor: '#eab308' }]}>
                 <Ionicons name="medical" size={20} color="#ffffff" />
               </View>
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={[styles.brandTitle, isRefunded && { color: '#7e22ce' }]}>ONE MEDICAL</Text>
                 <Text style={styles.brandSubtitle}>CLINIC & REHABILITATION HUB</Text>
               </View>
-              <View style={[styles.taxInvoiceTag, isRefunded && { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe' }]}>
-                <Text style={[styles.taxInvoiceTagText, isRefunded && { color: '#7e22ce' }]}>
-                  {isRefunded ? 'GST CREDIT NOTE' : 'GST TAX INVOICE'}
+              <View style={[styles.taxInvoiceTag, isRefunded && { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe' }, isPending && { backgroundColor: '#fef3c7', borderColor: '#fde047' }]}>
+                <Text style={[styles.taxInvoiceTagText, isRefunded && { color: '#7e22ce' }, isPending && { color: '#b45309' }]}>
+                  {isRefunded ? 'GST CREDIT NOTE' : (isPending ? 'PROFORMA INVOICE' : 'GST TAX INVOICE')}
                 </Text>
               </View>
             </View>
@@ -317,7 +349,7 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           <View style={styles.invoiceMetaRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.metaLabel}>
-                {isRefunded ? 'CREDIT NOTE / INVOICE NUMBER' : 'INVOICE NUMBER'}
+                {isRefunded ? 'CREDIT NOTE / INVOICE NUMBER' : (isPending ? 'PROFORMA / INVOICE NUMBER' : 'INVOICE NUMBER')}
               </Text>
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center' }}
@@ -341,27 +373,27 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
                 styles.paidBadge,
                 isRefunded && { backgroundColor: '#f3e8ff', borderColor: '#d8b4fe' },
                 isRefundPending && { backgroundColor: '#fef3c7', borderColor: '#fde68a' },
-                isPayAtClinic && { backgroundColor: '#fef3c7', borderColor: '#fde047' },
+                isPending && { backgroundColor: '#fef3c7', borderColor: '#fde047' },
                 isPaidOnline && { backgroundColor: '#dcfce7', borderColor: '#86efac' }
               ]}>
                 <Ionicons
-                  name={isRefunded ? 'arrow-undo-circle' : isRefundPending ? 'time' : isPayAtClinic ? 'wallet-outline' : 'checkmark-circle'}
+                  name={isRefunded ? 'arrow-undo-circle' : isRefundPending ? 'time' : isPending ? 'alert-circle' : 'checkmark-circle'}
                   size={14}
-                  color={isRefunded ? '#7e22ce' : isRefundPending ? '#b45309' : isPayAtClinic ? '#b45309' : '#15803d'}
+                  color={isRefunded ? '#7e22ce' : isRefundPending ? '#b45309' : isPending ? '#b45309' : '#15803d'}
                   style={{ marginRight: 4 }}
                 />
                 <Text style={[
                   styles.paidBadgeText,
                   isRefunded && { color: '#7e22ce' },
                   isRefundPending && { color: '#b45309' },
-                  isPayAtClinic && { color: '#b45309' },
+                  isPending && { color: '#b45309' },
                   isPaidOnline && { color: '#15803d' }
                 ]}>
-                  {isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND PENDING' : isPayAtClinic ? 'PAY AT CLINIC' : 'PAID')}
+                  {isRefunded ? 'REFUNDED' : (isRefundPending ? 'REFUND PENDING' : isPending ? 'PAYMENT DUE' : 'PAID')}
                 </Text>
               </View>
-              <Text style={[styles.authVerifiedText, isRefunded && { color: '#7e22ce' }, isPayAtClinic && { color: '#b45309' }]}>
-                {isRefunded ? 'Settled to Bank' : isPayAtClinic ? 'Due at Reception' : 'Verified via UPI / Gateway'}
+              <Text style={[styles.authVerifiedText, isRefunded && { color: '#7e22ce' }, isPending && { color: '#b45309' }]}>
+                {isRefunded ? 'Settled to Bank' : isPending ? (isVideo ? 'Online Payment Required' : (isHome ? 'Due on Visit' : 'Due at Reception')) : 'Verified via UPI / Gateway'}
               </Text>
             </View>
           </View>
@@ -413,8 +445,12 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
             </View>
             <View style={styles.serviceContextRow}>
               <Text style={styles.serviceContextLabel}>PAYMENT</Text>
-              <Text style={[styles.serviceContextVal, { color: isPayAtClinic ? '#b45309' : '#15803d', fontWeight: '700' }]}>
-                {isPayAtClinic ? 'Pay at Clinic Desk (Cash / UPI QR / Card POS)' : 'Paid Online (UPI / Card / Instant Gateway)'}
+              <Text style={[styles.serviceContextVal, { color: isPending ? '#b45309' : '#15803d', fontWeight: '700' }]}>
+                {isPaid
+                  ? 'Paid Online (UPI / Card / Instant Gateway)'
+                  : (isVideo
+                    ? 'Online Payment Pending'
+                    : (isHome ? 'Pending (Pay on Visit / Online)' : 'Pay at Clinic Desk / Online'))}
               </Text>
             </View>
             <View style={styles.serviceContextRow}>
@@ -484,33 +520,33 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           <View style={styles.grandTotalRow}>
             <View>
               <Text style={styles.grandTotalLabel}>
-                {isRefunded ? 'NET REFUND PROCESSED' : 'TOTAL AMOUNT PAID'}
+                {isRefunded ? 'NET REFUND PROCESSED' : (isPending ? 'TOTAL AMOUNT DUE' : 'TOTAL AMOUNT PAID')}
               </Text>
               <Text style={styles.amountInWordsText}>{amtWords}</Text>
             </View>
-            <Text style={[styles.grandTotalValue, isRefunded && { color: '#7e22ce' }]}>
+            <Text style={[styles.grandTotalValue, isRefunded && { color: '#7e22ce' }, isPending && { color: '#b45309' }]}>
               ₹{effectiveAmount.toLocaleString('en-IN')}
             </Text>
           </View>
 
           {/* PAYMENT & GATEWAY LEDGER */}
-          <View style={[styles.paymentMethodCard, isRefunded && { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }]}>
+          <View style={[styles.paymentMethodCard, isRefunded && { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }, isPending && { backgroundColor: '#fefce8', borderColor: '#fef08a' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
               <Ionicons
-                name={isRefunded ? 'arrow-undo-circle' : 'checkmark-circle'}
+                name={isRefunded ? 'arrow-undo-circle' : isPending ? 'alert-circle' : 'checkmark-circle'}
                 size={16}
-                color={isRefunded ? '#7e22ce' : '#16a34a'}
+                color={isRefunded ? '#7e22ce' : isPending ? '#b45309' : '#16a34a'}
                 style={{ marginRight: 6 }}
               />
-              <Text style={[styles.paymentMethodTitle, isRefunded && { color: '#6b21a8' }]}>
-                Payment Mode: {invoice.paymentMethod || 'UPI (ONLINE)'}
+              <Text style={[styles.paymentMethodTitle, isRefunded && { color: '#6b21a8' }, isPending && { color: '#854d0e' }]}>
+                Payment Status: {isPaid ? (invoice.paymentMethod || 'UPI (ONLINE)') : (isVideo ? 'Online Payment Required' : (isHome ? 'Pending — Home Visit' : 'Pending — Pay at Reception or Online'))}
               </Text>
             </View>
-            <Text style={[styles.paymentMethodDetail, isRefunded && { color: '#7e22ce' }]}>
-              Transaction ID: {invoice.transactionId || 'TXN-UPI'}
+            <Text style={[styles.paymentMethodDetail, isRefunded && { color: '#7e22ce' }, isPending && { color: '#854d0e' }]}>
+              Transaction ID: {invoice.transactionId || (isPending ? 'PAYMENT_PENDING' : 'TXN-UPI')}
             </Text>
-            <Text style={[styles.paymentMethodDetail, isRefunded && { color: '#7e22ce' }]}>
-              Gateway Ref: {invoice.gatewayPaymentId || 'pay_verified'}
+            <Text style={[styles.paymentMethodDetail, isRefunded && { color: '#7e22ce' }, isPending && { color: '#854d0e' }]}>
+              Gateway Ref: {invoice.gatewayPaymentId || (isPending ? 'Awaiting Payment' : 'pay_verified')}
             </Text>
             {isRefunded && (
               <Text style={[styles.paymentMethodDetail, { color: '#7e22ce', fontWeight: '700' }]}>
@@ -533,10 +569,10 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           {/* SIGN-OFF STAMP */}
           <View style={styles.signOffRow}>
             <View style={styles.stampBox}>
-              <Ionicons name="shield-checkmark" size={24} color={isRefunded ? '#7e22ce' : '#003D9B'} />
-              <Text style={[styles.stampText, isRefunded && { color: '#7e22ce' }]}>ONE MEDICAL BILLING DESK</Text>
-              <Text style={[styles.stampSub, isRefunded && { color: '#7e22ce' }]}>
-                {isRefunded ? 'CREDIT NOTE VERIFIED' : 'OFFICIALLY AUTHENTICATED'}
+              <Ionicons name="shield-checkmark" size={24} color={isRefunded ? '#7e22ce' : (isPending ? '#b45309' : '#003D9B')} />
+              <Text style={[styles.stampText, isRefunded && { color: '#7e22ce' }, isPending && { color: '#b45309' }]}>ONE MEDICAL BILLING DESK</Text>
+              <Text style={[styles.stampSub, isRefunded && { color: '#7e22ce' }, isPending && { color: '#b45309' }]}>
+                {isRefunded ? 'CREDIT NOTE VERIFIED' : (isPending ? 'PAYMENT PENDING' : 'OFFICIALLY AUTHENTICATED')}
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
@@ -546,15 +582,43 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ACTION BUTTONS */}
+        {/* ACTION BUTTONS: PAY NOW (IF PENDING) & DOWNLOAD */}
+        {isPending ? (
+          <TouchableOpacity
+            style={[styles.primaryActionBtn, { backgroundColor: '#003D9B', marginBottom: 12 }]}
+            activeOpacity={0.88}
+            onPress={() => {
+              navigation.navigate('ChoosePayment', {
+                appointmentId: invoice.appointmentId || transactionId,
+                appointment: {
+                  _id: invoice.appointmentId || transactionId,
+                  doctorName: invoice.doctorName,
+                  therapistName: invoice.doctorName,
+                  therapistId: invoice.therapistId,
+                  serviceType: invoice.serviceName,
+                  amount: (invoice.totalAmount || 500) * 100,
+                  appointmentPlace: apptPlace,
+                },
+                doctorName: invoice.doctorName,
+                amount: invoice.totalAmount || 500,
+              });
+            }}
+          >
+            <Ionicons name="card-outline" size={18} color="#ffffff" style={{ marginRight: 8 }} />
+            <Text style={styles.primaryActionBtnText}>
+              Pay Now Online (₹{(invoice.totalAmount || 500).toLocaleString('en-IN')})
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity
-          style={[styles.primaryActionBtn, isRefunded && { backgroundColor: '#7e22ce' }]}
+          style={[styles.primaryActionBtn, isRefunded && { backgroundColor: '#7e22ce' }, isPending && { backgroundColor: '#f1f5f9' }]}
           activeOpacity={0.88}
           onPress={handleDownloadPdf}
         >
-          <Ionicons name="download-outline" size={18} color="#ffffff" style={{ marginRight: 8 }} />
-          <Text style={styles.primaryActionBtnText}>
-            {isRefunded ? 'Download PDF Credit Note' : 'Download PDF Tax Invoice'}
+          <Ionicons name="download-outline" size={18} color={isPending ? '#0f172a' : '#ffffff'} style={{ marginRight: 8 }} />
+          <Text style={[styles.primaryActionBtnText, isPending && { color: '#0f172a' }]}>
+            {isRefunded ? 'Download PDF Credit Note' : (isPending ? 'Download Proforma Invoice' : 'Download PDF Tax Invoice')}
           </Text>
         </TouchableOpacity>
 

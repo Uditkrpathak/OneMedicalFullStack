@@ -84,12 +84,14 @@ export default function AppointmentDetailsPage() {
             condition: pConcern,
             recoveryScore: pScore,
             phone: pPhone,
+            avatarUrl: apt.patientAvatarUrl || apt.patientAvatar || patientDetail?.profileImageUrl || patientDetail?.avatarUrl || patientDetail?.avatar || null,
           },
           therapist: {
             id: apt.therapistId,
             name: tName,
             specialization: tSpec,
             availability: 'Available',
+            avatarUrl: apt.therapistAvatarUrl || apt.therapistAvatar || therapistDetail?.profileImageUrl || therapistDetail?.avatarUrl || therapistDetail?.avatar || therapistDetail?.user?.profileImageUrl || null,
           },
           notes: apt.notes || 'No pre-session clinical notes provided.',
           raw: apt,
@@ -156,9 +158,13 @@ export default function AppointmentDetailsPage() {
 
   const handleSendReminder = async () => {
     setActionLoading(true);
+    const isUnpaid = appointment?.paymentStatus === 'PENDING';
     try {
-      await api.sendReminder(token, id, { methods: { sms: true, email: true } });
-      showToast('Reminder notification sent to patient!');
+      await api.sendReminder(token, id, {
+        reminderType: isUnpaid ? 'PAYMENT_DUE' : 'SESSION',
+        methods: { sms: true, email: true }
+      });
+      showToast(isUnpaid ? 'Payment due reminder notice sent to patient!' : 'Session reminder sent to patient!');
     } catch (err) {
       alert(err.message || 'Failed to send reminder.');
     } finally {
@@ -207,7 +213,7 @@ export default function AppointmentDetailsPage() {
             <span>/</span>
             <span className="text-slate-900 font-bold">#{appointment.id}</span>
           </div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Appointment Details</h1>
             <span className={`px-3 py-0.5 text-xs font-bold rounded-full border ${
               isCompleted ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -218,6 +224,20 @@ export default function AppointmentDetailsPage() {
             }`}>
               ● {appointment.status}
             </span>
+
+            <span className={`px-3 py-0.5 text-xs font-bold rounded-full border ${
+              appointment.paymentStatus === 'PAID'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : appointment.paymentStatus === 'REFUNDED'
+                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                : 'bg-amber-50 text-amber-800 border-amber-300'
+            }`}>
+              ● {appointment.paymentStatus === 'PAID'
+                ? `PAID (₹${appointment.amount ? (appointment.amount > 5000 ? Math.round(appointment.amount / 100) : appointment.amount) : 500})`
+                : appointment.paymentStatus === 'REFUNDED'
+                ? 'REFUNDED'
+                : `PAYMENT DUE (₹${appointment.amount ? (appointment.amount > 5000 ? Math.round(appointment.amount / 100) : appointment.amount) : 500})`}
+            </span>
           </div>
         </div>
 
@@ -227,28 +247,33 @@ export default function AppointmentDetailsPage() {
             <>
               <button
                 onClick={() => navigate(`/appointments/${id}/reschedule`)}
-                className="btn btn-secondary text-xs"
+                className="btn btn-secondary text-xs cursor-pointer"
               >
                 <RefreshCcw size={13} /> Reschedule
               </button>
               <button
                 onClick={handleCancel}
                 disabled={actionLoading}
-                className="btn btn-secondary text-xs text-rose-600 hover:bg-rose-50 border-rose-200"
+                className="btn btn-secondary text-xs text-rose-600 hover:bg-rose-50 border-rose-200 cursor-pointer"
               >
                 <XCircle size={13} /> Cancel
               </button>
               <button
-                onClick={handleSendReminder}
+                onClick={() => handleSendReminder()}
                 disabled={actionLoading}
-                className="btn btn-secondary text-xs"
+                className={`btn text-xs flex items-center gap-1.5 cursor-pointer ${
+                  appointment.paymentStatus === 'PENDING'
+                    ? 'btn-secondary bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 font-bold'
+                    : 'btn-secondary'
+                }`}
+                title={appointment.paymentStatus === 'PENDING' ? 'Send payment due reminder notice' : 'Send session reminder'}
               >
-                <Send size={13} /> Send Reminder
+                <Send size={13} /> {appointment.paymentStatus === 'PENDING' ? 'Send Payment Reminder' : 'Send Session Reminder'}
               </button>
               <button
                 onClick={handleComplete}
                 disabled={actionLoading}
-                className="btn btn-primary text-xs flex items-center gap-1.5"
+                className="btn btn-primary text-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <CheckCircle size={14} /> Mark Completed
               </button>
@@ -518,19 +543,24 @@ export default function AppointmentDetailsPage() {
             <div className="card p-5 bg-white border border-slate-200 space-y-4">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patient Profile</div>
               <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 font-extrabold flex items-center justify-center text-sm shadow-xs">
-                  {appointment.patient.name[0]}
-                </div>
+                <UserAvatar
+                  src={appointment.patient.avatarUrl}
+                  name={appointment.patient.name}
+                  className="w-12 h-12"
+                />
                 <div>
                   <div className="text-sm font-bold text-slate-900">{appointment.patient.name}</div>
                   <div className="text-[11px] text-slate-500">{appointment.patient.condition}</div>
+                  {appointment.patient.phone && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">{appointment.patient.phone}</div>
+                  )}
                 </div>
               </div>
 
               <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
                 <button
                   onClick={() => navigate(`/patients/${appointment.patient.id}`)}
-                  className="text-blue-600 hover:text-blue-700 font-bold text-[11px] flex items-center gap-1"
+                  className="text-blue-600 hover:text-blue-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                 >
                   View Full Patient Record →
                 </button>
@@ -541,9 +571,11 @@ export default function AppointmentDetailsPage() {
             <div className="card p-5 bg-white border border-slate-200 space-y-4">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Specialist</div>
               <div className="flex items-center gap-3.5">
-                <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 font-extrabold flex items-center justify-center text-sm shadow-xs">
-                  {appointment.therapist.name.replace('Dr. ', '')[0]}
-                </div>
+                <UserAvatar
+                  src={appointment.therapist.avatarUrl}
+                  name={appointment.therapist.name}
+                  className="w-12 h-12"
+                />
                 <div>
                   <div className="text-sm font-bold text-slate-900">{appointment.therapist.name}</div>
                   <div className="text-[11px] text-slate-500">{appointment.therapist.specialization}</div>
@@ -553,7 +585,7 @@ export default function AppointmentDetailsPage() {
               <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
                 <button
                   onClick={() => navigate(`/therapists/${appointment.therapist.id}`)}
-                  className="text-blue-600 hover:text-blue-700 font-bold text-[11px] flex items-center gap-1"
+                  className="text-blue-600 hover:text-blue-700 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                 >
                   View Specialist Profile →
                 </button>

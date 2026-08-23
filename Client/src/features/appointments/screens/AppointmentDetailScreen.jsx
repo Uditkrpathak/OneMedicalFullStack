@@ -517,30 +517,76 @@ export default function AppointmentDetailScreen({ route, navigation }) {
             </View>
           </View>
 
-          {/* PAYMENT INSTRUCTION NOTE */}
+          {/* PAYMENT INSTRUCTION NOTE & PAY NOW ACTION */}
           {(() => {
             const isPaid = booking.paymentStatus === 'PAID';
             const isRefunded = booking.paymentStatus === 'REFUNDED';
             const isRefundPending = booking.paymentStatus === 'REFUND_PENDING';
             const amtFormatted = (booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 499).toLocaleString('en-IN');
+            const place = (booking.appointmentPlace || booking.place || 'CLINIC').toUpperCase();
+            const isVideo = place === 'VIDEO' || booking.consultationMode === 'Virtual Video Room';
+            const isHome = place === 'HOME';
 
             if (isPaid) {
               return (
-                <View style={{ backgroundColor: '#f0fdf4', padding: 10, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="checkmark-circle" size={16} color="#16a34a" style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 11, color: '#166534', fontWeight: '600', flex: 1, lineHeight: 16 }}>
+                <View style={{ backgroundColor: '#f0fdf4', padding: 12, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#bbf7d0', flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="checkmark-circle" size={18} color="#16a34a" style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600', flex: 1, lineHeight: 16 }}>
                     Pre-settled online. No payment required at the clinic or during consultation.
                   </Text>
                 </View>
               );
             }
             if (!isRefunded && !isRefundPending && booking.status !== 'CANCELLED') {
+              let noticeText = `Payment required at clinic: Please settle ₹${amtFormatted} at the reception desk via Cash, UPI QR code, or Card POS, or pay online.`;
+              let iconName = 'alert-circle';
+              let bgColor = '#fefce8';
+              let borderColor = '#fef08a';
+              let textColor = '#854d0e';
+
+              if (isVideo) {
+                noticeText = `Online Payment Required: Please complete ₹${amtFormatted} digital payment before accessing your secure video consultation room.`;
+                iconName = 'videocam';
+                bgColor = '#eff6ff';
+                borderColor = '#bfdbfe';
+                textColor = '#0369a1';
+              } else if (isHome) {
+                noticeText = `Payment due for Home Visit: Please settle ₹${amtFormatted} with your visiting therapist upon arrival or pay online.`;
+                iconName = 'home';
+              }
+
               return (
-                <View style={{ backgroundColor: '#fefce8', padding: 10, borderRadius: 10, marginTop: 10, borderWidth: 1, borderColor: '#fef08a', flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="information-circle" size={16} color="#b45309" style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 11, color: '#854d0e', fontWeight: '600', flex: 1, lineHeight: 16 }}>
-                    Payment required at clinic: Please settle ₹{amtFormatted} at the reception desk via Cash, UPI QR code, or Card POS.
-                  </Text>
+                <View style={{ marginTop: 10 }}>
+                  <View style={{ backgroundColor: bgColor, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: borderColor, flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Ionicons name={iconName} size={18} color={isVideo ? '#0284c7' : '#b45309'} style={{ marginRight: 8 }} />
+                    <Text style={{ fontSize: 12, color: textColor, fontWeight: '600', flex: 1, lineHeight: 16 }}>
+                      {noticeText}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: '#003D9B',
+                      height: 44,
+                      borderRadius: 10,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: 8,
+                    }}
+                    activeOpacity={0.88}
+                    onPress={() => navigation.navigate('ChoosePayment', {
+                      appointmentId: booking._id || appointmentId,
+                      appointment: booking,
+                      doctor: { name: booking.doctorName, therapistId: booking.therapistId, profileImageUrl: booking.therapistAvatarUrl || booking.avatarUrl },
+                      doctorName: booking.doctorName,
+                      amount: booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 500,
+                    })}
+                  >
+                    <Ionicons name="card-outline" size={16} color="#ffffff" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#ffffff' }}>
+                      Pay Now Online (₹{amtFormatted})
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               );
             }
@@ -559,6 +605,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
               dateStr: booking.date,
               amount: booking.amount ? (booking.amount > 5000 ? Math.round(booking.amount / 100) : booking.amount) : 499,
               paymentStatus: booking.paymentStatus,
+              appointmentPlace: booking.appointmentPlace || booking.place || 'CLINIC',
             })}
             activeOpacity={0.85}
           >

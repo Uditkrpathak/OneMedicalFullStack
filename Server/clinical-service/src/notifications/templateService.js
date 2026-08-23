@@ -162,13 +162,22 @@ export const renderNotificationContent = ({
       };
 
     case 'payment.succeeded':
-      const amt = data.amountPaise ? (data.amountPaise / 100).toFixed(2) : (data.amount || '0.00');
+    case 'payment.successful': {
+      const docName = data.therapistName || data.doctorName || 'your specialist';
+      const rawAmt = data.amountPaise ? Math.round(data.amountPaise / 100) : (data.amount || 500);
+      const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+
       return {
-        title: `Payment Successful (₹${amt}) 💳`,
-        message: `Payment of ₹${amt} received for ${data.serviceName || 'Session'}. Transaction: ${data.transactionId || ''}`,
-        email: paymentSuccessTemplate({ ...data, amount: amt }),
-        sms: `OneMedical: Payment of ₹${amt} received. Txn: ${data.transactionId}`,
+        title: 'Payment Successful ✅',
+        message: `Your ₹${amtVal} payment for your consultation with ${docName} has been received successfully. Your official invoice is now available.`,
+        email: {
+          subject: 'Payment Successful — OneMedical Official Receipt',
+          text: `Hello ${data.patientName || 'Patient'},\n\nYour ₹${amtVal} payment for your consultation with ${docName} has been received successfully.\n\nYour official GST Tax Invoice #${data.invoiceNumber || data.invoiceId || ''} is now available in your OneMedical app.`,
+          html: `<div style="font-family: sans-serif; padding: 20px; color: #0f172a;"><h2 style="color: #16a34a;">Payment Confirmed</h2><p>Your payment of <strong>₹${amtVal}</strong> for consultation with <strong>${docName}</strong> has been received successfully.</p><p>Your official tax invoice is now available in your patient app.</p></div>`,
+        },
+        sms: `OneMedical: Payment of ₹${amtVal} received for your consultation with ${docName}. Official invoice available in app.`,
       };
+    }
 
     case 'payment.failed':
       return {
@@ -239,6 +248,37 @@ export const renderNotificationContent = ({
         email: null,
         sms: null,
       };
+
+    case 'payment.due': {
+      const place = (data.appointmentPlace || '').toUpperCase();
+      const isVideo = place === 'VIDEO';
+      const isHome = place === 'HOME';
+      const docName = data.therapistName || data.doctorName || 'your specialist';
+      const rawAmt = data.amount || 500;
+      const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+
+      let title = 'Payment Due for Your Clinic Appointment';
+      let message = `Your ₹${amtVal} payment is pending. You can pay online now or settle the amount at the clinic reception.`;
+
+      if (isVideo) {
+        title = 'Payment Required for Your Video Consultation';
+        message = `Your ₹${amtVal} payment for the consultation with ${docName} is pending. Please complete payment before joining your video consultation.`;
+      } else if (isHome) {
+        title = 'Payment Due for Your Home Visit';
+        message = `Your ₹${amtVal} payment is pending. You can pay online now or settle the payment with your visiting therapist.`;
+      }
+
+      return {
+        title,
+        message,
+        email: {
+          subject: `${title} — OneMedical`,
+          text: `Hello ${data.patientName || 'Patient'},\n\n${message}\n\nAppointment ID: #${data.appointmentId}\nAmount Due: ₹${amtVal}\n\nOpen your OneMedical app to complete payment online.`,
+          html: `<div style="font-family: sans-serif; padding: 20px; color: #0f172a;"><h2 style="color: #003D9B;">OneMedical</h2><p><strong>${title}</strong></p><p>${message}</p><p><strong>Amount:</strong> ₹${amtVal}</p><p><a href="${process.env.APP_URL || 'https://onemedical.app'}" style="display:inline-block; background:#003D9B; color:#ffffff; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">Pay Now Online</a></p></div>`,
+        },
+        sms: `OneMedical: ${message}`,
+      };
+    }
 
     default:
       return {

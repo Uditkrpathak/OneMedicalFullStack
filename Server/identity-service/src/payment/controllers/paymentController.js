@@ -831,8 +831,18 @@ export const getInvoiceById = async (req, res) => {
     const discount = invoice?.discount ? (invoice.discount > 5000 ? Math.round(invoice.discount / 100) : invoice.discount) : 0;
 
     const isRefunded = txn?.status === 'refunded' || txn?.status === 'REFUNDED' || appt?.paymentStatus === 'REFUNDED' || invoice?.status === 'REFUNDED';
+    const isRefundPending = txn?.status === 'refund_pending' || txn?.status === 'REFUND_PENDING' || appt?.paymentStatus === 'REFUND_PENDING' || invoice?.status === 'REFUND_PENDING';
+    const isPaid = (txn?.status === 'captured' || txn?.status === 'CAPTURED' || txn?.status === 'paid' || txn?.status === 'PAID' || appt?.paymentStatus === 'PAID' || invoice?.status === 'PAID');
+
+    let resolvedStatus = 'PENDING';
+    if (isRefunded) resolvedStatus = 'REFUNDED';
+    else if (isRefundPending) resolvedStatus = 'REFUND_PENDING';
+    else if (isPaid) resolvedStatus = 'PAID';
+
     const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`;
     const genDate = invoice?.generatedAt || txn?.capturedAt || txn?.createdAt || appt?.createdAt || new Date();
+    const apptPlace = (appt?.appointmentPlace || invoice?.appointmentPlace || 'CLINIC').toUpperCase();
+    const serviceName = appt?.serviceName || appt?.serviceType?.replace(/_/g, ' ') || invoice?.serviceName || 'Physiotherapy Consultation';
 
     const result = {
       invoiceId: invoice?._id || txn?._id,
@@ -845,12 +855,17 @@ export const getInvoiceById = async (req, res) => {
       patientName,
       patientPhone,
       therapistName,
+      serviceName,
+      appointmentPlace: apptPlace,
       totalAmount,
       consultationFee,
       taxes,
       discount,
       currency: 'INR',
-      status: isRefunded ? 'REFUNDED' : 'PAID',
+      status: resolvedStatus,
+      paymentStatus: resolvedStatus,
+      paymentRequired: resolvedStatus === 'PENDING',
+      paymentMethod: isPaid ? (txn?.paymentMethod || 'UPI (ONLINE)') : (apptPlace === 'VIDEO' ? 'ONLINE_GATEWAY_PENDING' : 'PAY_AT_CLINIC_OR_ONLINE'),
       issuedDate: new Date(genDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
       issuedTime: new Date(genDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
       isComputerGenerated: true,

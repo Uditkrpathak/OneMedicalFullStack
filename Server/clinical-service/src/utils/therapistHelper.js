@@ -96,17 +96,22 @@ export const fetchUsersByIds = async (userIds) => {
           ]);
           if (users.length > 0 || therapistProfiles.length > 0 || patientProfiles.length > 0) {
             const userMap = new Map();
-            users.forEach(u => userMap.set(u._id.toString(), {
-              ...u,
-              id: u._id,
-              profileImageUrl: u.profileImageUrl || null,
-              avatarUrl: u.profileImageUrl || null,
-            }));
+            users.forEach(u => {
+              const img = u.profileImageUrl || u.avatarUrl || u.avatar || null;
+              userMap.set(u._id.toString(), {
+                ...u,
+                id: u._id,
+                profileImageUrl: img,
+                avatarUrl: img,
+                avatar: img,
+              });
+            });
+
             therapistProfiles.forEach(t => {
               const tpId = t._id.toString();
               const uId = t.userId?.toString();
               const u = uId ? userMap.get(uId) : null;
-              const img = t.profileImageUrl || u?.profileImageUrl || null;
+              const img = t.profileImageUrl || t.avatarUrl || t.avatar || u?.profileImageUrl || u?.avatarUrl || null;
               const tItem = {
                 ...t,
                 _id: t._id,
@@ -118,27 +123,29 @@ export const fetchUsersByIds = async (userIds) => {
                 avatar: img,
               };
               userMap.set(tpId, tItem);
-              if (uId && !userMap.has(uId)) {
+              if (uId) {
                 userMap.set(uId, tItem);
               }
             });
+
             patientProfiles.forEach(p => {
               const ppId = p._id.toString();
               const uId = p.userId?.toString();
               const u = uId ? userMap.get(uId) : null;
-              const img = p.profileImageUrl || u?.profileImageUrl || null;
+              const img = p.profileImageUrl || p.avatarUrl || p.avatar || u?.profileImageUrl || u?.avatarUrl || null;
               const pItem = {
+                ...(u || {}),
                 ...p,
-                _id: p._id,
-                id: p._id,
+                _id: u?._id || p._id,
+                id: u?._id || p._id,
                 patientId: p._id,
-                name: u?.name || p.name || 'Patient',
+                name: u?.name || p.name || p.fullName || 'Patient',
                 profileImageUrl: img,
                 avatarUrl: img,
                 avatar: img,
               };
               userMap.set(ppId, pItem);
-              if (uId && !userMap.has(uId)) {
+              if (uId) {
                 userMap.set(uId, pItem);
               }
             });

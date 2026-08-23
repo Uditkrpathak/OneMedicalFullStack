@@ -19,6 +19,7 @@ import {
   publicBooking,
   listConsultationLeads,
   updateLeadStatus,
+  sendAppointmentReminder,
 } from '../controllers/bookingController.js';
 
 const router = express.Router();
@@ -38,6 +39,7 @@ router.get('/appointments/outage-impact',          getOutageImpact);      // Out
 router.get('/appointments/outage/impact',          getOutageImpact);
 router.get('/appointments/:id',                    getAppointmentById);   // Single appointment (RBAC enforced)
 router.patch('/appointments/:id',                  updateAppointment);    // Update appointment attributes & status
+router.post('/appointments/:id/reminder',          sendAppointmentReminder); // Send reminder / payment due notice
 
 router.post('/appointments/:id/check-in',          patientCheckIn);       // Patient check-in
 router.post('/appointments/:id/join',              therapistJoinSession); // Therapist join session
