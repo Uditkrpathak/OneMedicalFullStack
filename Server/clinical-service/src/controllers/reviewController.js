@@ -96,10 +96,30 @@ export const submitReview = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'REVIEW_TOO_SHORT', message: 'Please provide at least 5 characters of feedback.' } });
     }
 
-    // 1. Fetch & Validate Appointment
-    const appointment = await Appointment.findById(appointmentId);
+    // 1. Fetch & Validate Appointment (with ObjectId validation and automatic resolution)
+    let appointment = null;
+    if (appointmentId && mongoose.isValidObjectId(appointmentId)) {
+      appointment = await Appointment.findById(appointmentId);
+    }
+
+    if (!appointment) {
+      // Find latest completed/confirmed consultation for this patient with the therapist
+      const targetTherapistId = therapistId || req.body.doctorId;
+      const query = {
+        patientId: patientId.toString(),
+        isDeleted: false,
+      };
+      if (targetTherapistId && mongoose.isValidObjectId(targetTherapistId)) {
+        query.$or = [
+          { therapistId: targetTherapistId },
+          { therapistProfileId: targetTherapistId },
+        ];
+      }
+      appointment = await Appointment.findOne(query).sort({ startTime: -1, createdAt: -1 });
+    }
+
     if (!appointment || appointment.isDeleted) {
-      return res.status(404).json({ success: false, error: { code: 'APPOINTMENT_NOT_FOUND', message: 'Appointment not found.' } });
+      return res.status(404).json({ success: false, error: { code: 'APPOINTMENT_NOT_FOUND', message: 'No eligible consultation found for this doctor.' } });
     }
 
     // 2. Ownership verification
@@ -156,10 +176,10 @@ export const submitReview = async (req, res) => {
     // 6. Authoritative creation (isVerifiedConsultation is computed on server)
     const review = await DoctorReview.create({
       appointmentId: appointment._id,
-      patientId: new mongoose.Types.ObjectId(patientId),
+      patientId: appointment.patientId || patientId,
       patientName,
       patientAvatarUrl,
-      therapistId: new mongoose.Types.ObjectId(resolvedTherapistId),
+      therapistId: resolvedTherapistId,
       doctorName,
       rating: Number(rating),
       communicationRating: Math.min(5, Math.max(1, Number(communicationRating))),

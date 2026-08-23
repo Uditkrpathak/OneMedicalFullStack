@@ -8,9 +8,9 @@ const DoctorReviewSchema = new mongoose.Schema(
       required: true,
     },
     patientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
+      index: true,
     },
     patientName: {
       type: String,
@@ -22,8 +22,7 @@ const DoctorReviewSchema = new mongoose.Schema(
       default: null,
     },
     therapistId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      type: mongoose.Schema.Types.Mixed,
       required: true,
       index: true,
     },

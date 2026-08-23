@@ -180,9 +180,14 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
     setSubmitting(true);
     try {
       const selectedLabels = selectedTags.map((tId) => TAG_OPTIONS.find((t) => t.id === tId)?.label.replace(/^.\s*/, '') || tId);
+      const rawApptId = booking?._id || booking?.id || route.params?.appointmentId;
+      const cleanApptId = (rawApptId && typeof rawApptId === 'string' && !rawApptId.startsWith('#')) ? rawApptId : undefined;
+      const targetDoctorId = doctor?.userId || doctor?._id || doctor?.id;
+
       const res = await appointmentApi.submitReview({
-        appointmentId: booking?._id || booking?.id || route.params?.appointmentId,
-        therapistId: doctor?.userId || doctor?._id || doctor?.id,
+        appointmentId: cleanApptId,
+        therapistId: targetDoctorId,
+        doctorId: targetDoctorId,
         rating: overallRating,
         communicationRating,
         explanationRating,
