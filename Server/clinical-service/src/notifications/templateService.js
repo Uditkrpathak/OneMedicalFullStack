@@ -45,10 +45,12 @@ export const renderNotificationContent = ({
 
     case 'appointment.rescheduled':
       return {
-        title: 'Appointment Rescheduled 🔄',
-        message: `Session moved to ${data.newDate || data.appointmentDate} at ${data.newTime || data.appointmentTime}.`,
+        title: isTherapist ? 'Schedule Updated: Session Rescheduled 🔄' : 'Appointment Rescheduled 🔄',
+        message: isTherapist
+          ? `Consultation with ${data.patientName || 'Patient'} has been rescheduled to ${data.newDate || data.appointmentDate} at ${data.newTime || data.appointmentTime}.`
+          : `Your session with ${data.therapistName || 'Specialist'} has been rescheduled to ${data.newDate || data.appointmentDate} at ${data.newTime || data.appointmentTime}.`,
         email: appointmentRescheduledTemplate({ ...data, isTherapist }),
-        sms: `OneMedical: Your appointment has been rescheduled to ${data.newDate || data.appointmentDate} at ${data.newTime || data.appointmentTime}.`,
+        sms: `OneMedical: Your consultation with ${isTherapist ? data.patientName : data.therapistName} has been rescheduled to ${data.newDate || data.appointmentDate} at ${data.newTime || data.appointmentTime}. Ref: #${data.appointmentId}`,
       };
 
     case 'appointment.cancelled':

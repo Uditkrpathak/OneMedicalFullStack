@@ -80,6 +80,18 @@ const router = express.Router();
 router.get('/services',                               listServices);
 router.get('/api/v1/services',                        listServices);
 
+// ─── SESSION LOGS & WORKOUT TELEMETRY ─────────────────────────────────────────
+router.get('/sessions',                               getSessionHistory);
+router.get('/clinical/sessions',                      getSessionHistory);
+router.get('/api/v1/sessions',                        getSessionHistory);
+router.get('/api/v1/clinical/sessions',               getSessionHistory);
+router.post('/sessions',                              logSession);
+router.post('/clinical/sessions',                     logSession);
+router.post('/api/v1/clinical/sessions',              logSession);
+router.get('/sessions/pain-trend',                    getPainTrend);
+router.get('/clinical/sessions/pain-trend',           getPainTrend);
+router.get('/api/v1/clinical/sessions/pain-trend',    getPainTrend);
+
 // ─── DOCTOR REVIEWS & RATINGS ────────────────────────────────────────────────
 router.post('/reviews',                               submitReview);
 router.post('/clinical/reviews',                      submitReview);

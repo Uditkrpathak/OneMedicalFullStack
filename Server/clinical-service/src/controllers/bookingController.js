@@ -377,11 +377,49 @@ export const confirmAppointment = async (req, res) => {
       }
     }
 
-    // Idempotent: already confirmed → return 200
+    // Check payment capture flags
+    const isPaid = Boolean(paymentId || transactionId || req.body.paymentStatus === 'PAID');
+
+    // If already confirmed: check if we are settling payment
     if (appointment.status === 'CONFIRMED') {
+      if (isPaid && appointment.paymentStatus !== 'PAID') {
+        appointment.paymentStatus = 'PAID';
+        appointment.paymentOrderId = paymentOrderId || appointment.paymentOrderId;
+        appointment.paymentId = paymentId || appointment.paymentId;
+        appointment.transactionId = transactionId || appointment.transactionId;
+        appointment.holdExpiresAt = null;
+        await appointment.save();
+
+        const appointmentDate = appointment.startTime
+          ? new Date(appointment.startTime).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+          : '';
+        const appointmentTime = appointment.startTime
+          ? new Date(appointment.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+          : '';
+
+        await publishEvent('appointment.confirmed', {
+          eventId: `APPT_CONFIRMED:${appointment._id}`,
+          type: 'appointment.confirmed',
+          appointmentId: appointment._id,
+          transactionId: transactionId || appointment.transactionId,
+          patientId: appointment.patientId,
+          therapistId: appointment.therapistId,
+          patientName: appointment.patientName,
+          therapistName: appointment.therapistName,
+          serviceName: appointment.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation',
+          startTime: appointment.startTime,
+          appointmentPlace: appointment.appointmentPlace || 'CLINIC',
+          appointmentDate,
+          appointmentTime,
+        });
+
+        return res.json({ success: true, message: 'Payment settled on confirmed appointment.', data: { appointment } });
+      }
+
       await appointment.save();
       return res.json({ success: true, data: { appointment }, idempotent: true });
     }
+
     if (appointment.status === 'EXPIRED') {
       return res.status(400).json({ success: false, error: { code: 'HOLD_EXPIRED', message: 'This appointment hold has expired.' } });
     }
@@ -392,7 +430,6 @@ export const confirmAppointment = async (req, res) => {
       return res.status(400).json({ success: false, error: { code: 'INVALID_STATE', message: `Cannot confirm appointment in status: ${appointment.status}` } });
     }
 
-    const isPaid = Boolean(paymentId || transactionId || req.body.paymentStatus === 'PAID');
     appointment.status         = 'CONFIRMED';
     appointment.paymentStatus  = isPaid ? 'PAID' : (appointment.paymentStatus || 'PENDING');
     appointment.paymentOrderId = paymentOrderId || appointment.paymentOrderId;
@@ -980,13 +1017,31 @@ export const rescheduleAppointment = async (req, res) => {
       console.warn('[rescheduleAppointment] Audit log warning:', auditErr.message);
     }
 
-    // Step 5: Publish domain event
+    const appointmentDate = appt.startTime
+      ? new Date(appt.startTime).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+      : '';
+    const appointmentTime = appt.startTime
+      ? new Date(appt.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })
+      : '';
+
+    // Step 5: Publish domain event with complete clinical context for multi-channel notifications
     await publishEvent('appointment.rescheduled', {
-      appointmentId: appt._id,
-      patientId:     appt.patientId,
-      therapistId:   appt.therapistId,
+      appointmentId:   appt._id,
+      patientId:       appt.patientId,
+      therapistId:     appt.therapistId,
+      patientName:     appt.patientName,
+      therapistName:   appt.therapistName,
+      serviceName:     appt.serviceType?.replace(/_/g, ' ') || 'Physiotherapy Consultation',
+      serviceType:     appt.serviceType,
       oldStartTime,
-      newStartTime:  appt.startTime,
+      newStartTime:    appt.startTime,
+      startTime:       appt.startTime,
+      endTime:         appt.endTime,
+      appointmentDate,
+      appointmentTime,
+      newDate:         appointmentDate,
+      newTime:         appointmentTime,
+      rescheduledBy:   userRole,
     });
 
     res.json({ success: true, data: { appointment: appt } });

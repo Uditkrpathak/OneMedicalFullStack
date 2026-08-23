@@ -588,8 +588,8 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ACTION BUTTONS: PAY NOW (IF PENDING) & DOWNLOAD */}
-        {isPending ? (
+        {/* ACTION BUTTONS: PAY NOW (ONLY VISIBLE TO PATIENT) & DOWNLOAD */}
+        {isPending && user?.role === 'patient' ? (
           <TouchableOpacity
             style={[styles.primaryActionBtn, { backgroundColor: '#003D9B', marginBottom: 12 }]}
             activeOpacity={0.88}
@@ -618,12 +618,22 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
         ) : null}
 
         <TouchableOpacity
-          style={[styles.primaryActionBtn, isRefunded && { backgroundColor: '#7e22ce' }, isPending && { backgroundColor: '#f1f5f9' }]}
+          style={[
+            styles.primaryActionBtn,
+            isRefunded && { backgroundColor: '#7e22ce' },
+            isPending && user?.role === 'patient' && { backgroundColor: '#f1f5f9' },
+            (!isPending || user?.role !== 'patient') && !isRefunded && { backgroundColor: '#003D9B' }
+          ]}
           activeOpacity={0.88}
           onPress={handleDownloadPdf}
         >
-          <Ionicons name="download-outline" size={18} color={isPending ? '#0f172a' : '#ffffff'} style={{ marginRight: 8 }} />
-          <Text style={[styles.primaryActionBtnText, isPending && { color: '#0f172a' }]}>
+          <Ionicons
+            name="download-outline"
+            size={18}
+            color={(isPending && user?.role === 'patient') ? '#0f172a' : '#ffffff'}
+            style={{ marginRight: 8 }}
+          />
+          <Text style={[styles.primaryActionBtnText, (isPending && user?.role === 'patient') && { color: '#0f172a' }]}>
             {isRefunded ? 'Download PDF Credit Note' : (isPending ? 'Download Proforma Invoice' : 'Download PDF Tax Invoice')}
           </Text>
         </TouchableOpacity>

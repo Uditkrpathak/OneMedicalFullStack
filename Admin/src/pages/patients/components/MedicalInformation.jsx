@@ -1,19 +1,46 @@
 import { Heart, Activity, AlertCircle, Pill, Shield, Plus, Stethoscope } from 'lucide-react';
 
 export default function MedicalInformation({ medicalInfo, patient }) {
-  const vitals = medicalInfo?.vitalMetrics || {
-    bloodType: patient?.profile?.bloodGroup || 'O+',
-    height: patient?.profile?.height ? `${patient.profile.height} cm` : '—',
-    weight: patient?.profile?.weight ? `${patient.profile.weight} kg` : '—',
-    bmi: 'Normal',
+  const prof = patient?.profile || {};
+  const rawHeight = prof.height || medicalInfo?.vitalMetrics?.height || medicalInfo?.height;
+  const rawWeight = prof.weight || medicalInfo?.vitalMetrics?.weight || medicalInfo?.weight;
+  const rawBlood = prof.bloodGroup || medicalInfo?.vitalMetrics?.bloodType || medicalInfo?.bloodGroup || 'O+';
+
+  let computedBmi = 'Normal';
+  if (rawHeight && rawWeight && Number(rawHeight) > 0 && Number(rawWeight) > 0) {
+    const heightInMeters = Number(rawHeight) / 100;
+    const bmiVal = (Number(rawWeight) / (heightInMeters * heightInMeters)).toFixed(1);
+    if (bmiVal < 18.5) computedBmi = `${bmiVal} (Underweight)`;
+    else if (bmiVal <= 24.9) computedBmi = `${bmiVal} (Normal)`;
+    else if (bmiVal <= 29.9) computedBmi = `${bmiVal} (Overweight)`;
+    else computedBmi = `${bmiVal} (Obese)`;
+  }
+
+  const vitals = {
+    bloodType: rawBlood || 'O+',
+    height: rawHeight ? `${rawHeight} cm` : '—',
+    weight: rawWeight ? `${rawWeight} kg` : '—',
+    bmi: computedBmi,
   };
 
-  const allergies = medicalInfo?.allergies || patient?.profile?.allergies || [];
-  const medications = medicalInfo?.medications || patient?.profile?.medications || [];
-  const diagnoses = medicalInfo?.primaryDiagnoses || [
-    { title: patient?.condition || 'Primary Rehabilitation', date: 'Active Concern', status: 'CURRENT' },
-  ];
-  const surgicalHistory = medicalInfo?.surgicalHistory || [];
+  const allergies = (medicalInfo?.allergies && medicalInfo.allergies.length > 0)
+    ? medicalInfo.allergies
+    : (prof.allergies && prof.allergies.length > 0)
+      ? prof.allergies
+      : [];
+
+  const rawConcern = prof.primaryConcern || patient?.condition || 'Physical Rehabilitation Assessment';
+  const formattedConcern = rawConcern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+  const diagnoses = (medicalInfo?.primaryDiagnoses && medicalInfo.primaryDiagnoses.length > 0)
+    ? medicalInfo.primaryDiagnoses
+    : (medicalInfo?.medicalConditions && medicalInfo.medicalConditions.length > 0)
+      ? medicalInfo.medicalConditions.map(c => ({ title: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), desc: 'Documented medical condition', status: 'ACTIVE' }))
+      : (prof.medicalConditions && prof.medicalConditions.length > 0)
+        ? prof.medicalConditions.map(c => ({ title: c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), desc: 'Documented condition', status: 'ACTIVE' }))
+        : [
+            { title: formattedConcern, desc: 'Active primary rehabilitation focus', status: 'CURRENT' },
+          ];
 
   return (
     <div className="space-y-6">

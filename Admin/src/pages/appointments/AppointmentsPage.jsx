@@ -382,9 +382,9 @@ export default function AppointmentsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* LEFT COLUMN: TABLE & FILTER BAR (8 COLS) */}
-          <div className="lg:col-span-8 space-y-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          {/* LEFT COLUMN: TABLE & FILTER BAR (xl: 8-9 COLS, full width on < xl) */}
+          <div className="xl:col-span-8 2xl:col-span-9 space-y-4 min-w-0">
             {/* STATUS FILTER TABS */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {[
@@ -400,7 +400,7 @@ export default function AppointmentsPage() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer shrink-0 ${
                       isActive
                         ? tab.isLead
                           ? 'bg-amber-600 text-white shadow-xs'
@@ -427,7 +427,7 @@ export default function AppointmentsPage() {
 
             {/* FILTER CONTROLS BAR */}
             <div className="bg-white rounded-2xl p-3 border border-slate-200/80 shadow-2xs flex items-center justify-between flex-wrap gap-3">
-              <div className="relative flex-1 min-w-[180px]">
+              <div className="relative flex-1 min-w-[200px]">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
@@ -627,16 +627,16 @@ export default function AppointmentsPage() {
                 />
               ) : viewMode === 'list' ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[750px]">
+                  <table className="w-full text-left border-collapse min-w-[860px]">
                     <thead>
                       <tr className="bg-slate-50/70 border-b border-slate-200/80">
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Patient</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Therapist</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Type</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Date & Time</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Status</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase">Payment</th>
-                        <th className="py-3 px-5 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right">Actions</th>
+                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[180px]">Patient</th>
+                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[180px]">Therapist</th>
+                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[100px]">Type</th>
+                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[130px]">Date & Time</th>
+                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[120px]">Status</th>
+                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[140px]">Payment</th>
+                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right min-w-[140px]">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -654,60 +654,60 @@ export default function AppointmentsPage() {
                             onClick={() => navigate(`/appointments/${apt._id}`)}
                             className="hover:bg-slate-50/80 cursor-pointer transition-colors"
                           >
-                            <td className="py-3.5 px-5">
+                            <td className="py-3.5 px-4">
                               <div className="flex items-center gap-3">
                                 <UserAvatar
                                   src={apt.patientAvatar || apt.patientAvatarUrl}
                                   name={apt.patientName}
-                                  className="w-9 h-9"
+                                  className="w-9 h-9 shrink-0"
                                 />
-                                <div>
-                                  <div className="text-xs font-bold text-slate-900 leading-snug">{apt.patientName}</div>
-                                  <div className="text-[11px] text-slate-400 font-normal">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-slate-900 leading-snug truncate">{apt.patientName}</div>
+                                  <div className="text-[11px] text-slate-400 font-normal truncate">{apt.patientSubtitle || 'In-Clinic Consultation'}</div>
                                 </div>
                               </div>
                             </td>
 
-                            <td className="py-3.5 px-5">
+                            <td className="py-3.5 px-4">
                               <div className="flex items-center gap-2.5">
                                 <UserAvatar
                                   src={apt.therapistAvatar || apt.therapistAvatarUrl}
                                   name={apt.therapistName}
-                                  className="w-8 h-8"
+                                  className="w-8 h-8 shrink-0"
                                 />
-                                <div>
-                                  <div className="text-xs font-bold text-slate-800 leading-snug">{apt.therapistName}</div>
-                                  <div className="text-[11px] text-slate-400 font-normal">{apt.therapistSubtitle}</div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold text-slate-800 leading-snug truncate">{apt.therapistName}</div>
+                                  <div className="text-[11px] text-slate-400 font-normal truncate">{apt.therapistSubtitle}</div>
                                 </div>
                               </div>
                             </td>
 
-                            <td className="py-3.5 px-5">
-                              <span className={`inline-block px-3 py-0.5 text-[11px] font-bold rounded-full border ${typeStyle}`}>
+                            <td className="py-3.5 px-3">
+                              <span className={`inline-block px-2.5 py-0.5 text-[11px] font-bold rounded-full border whitespace-nowrap ${typeStyle}`}>
                                 {apt.type}
                               </span>
                             </td>
 
-                            <td className="py-3.5 px-5">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
                               <div className="text-xs font-bold text-slate-800 leading-snug">{dateFormatted}</div>
                               <div className="text-[11px] text-slate-400 font-normal">{timeFormatted}</div>
                             </td>
 
                             {/* APPOINTMENT LIFECYCLE STATUS */}
-                            <td className="py-3.5 px-5">
-                              <span className={`inline-block px-3 py-0.5 text-[11px] font-bold rounded-full border ${badge.style}`}>
+                            <td className="py-3.5 px-3 whitespace-nowrap">
+                              <span className={`inline-block px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${badge.style}`}>
                                 {badge.label}
                               </span>
                             </td>
 
                             {/* PAYMENT STATUS BADGE */}
-                            <td className="py-3.5 px-5">
-                              <div className="flex flex-col gap-0.5">
-                                <span className={`inline-block px-2.5 py-0.5 text-[10px] rounded-full border text-center ${payBadge.style}`}>
+                            <td className="py-3.5 px-3">
+                              <div className="flex flex-col gap-0.5 items-start">
+                                <span className={`inline-block px-2.5 py-0.5 text-[10px] rounded-full border whitespace-nowrap ${payBadge.style}`}>
                                   ● {payBadge.label}
                                 </span>
                                 {payBadge.sub && (
-                                  <span className="text-[9px] text-slate-400 font-medium text-center">
+                                  <span className="text-[9px] text-slate-400 font-medium whitespace-nowrap">
                                     {payBadge.sub}
                                   </span>
                                 )}
@@ -715,7 +715,7 @@ export default function AppointmentsPage() {
                             </td>
 
                             {/* ROW ACTIONS */}
-                            <td className="py-3.5 px-5 text-right" onClick={e => e.stopPropagation()}>
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                               {payBadge.isPending ? (
                                 <button
                                   onClick={() => {
@@ -723,10 +723,10 @@ export default function AppointmentsPage() {
                                     setReminderType('PAYMENT_DUE');
                                     setActiveModal('reminder');
                                   }}
-                                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold rounded-lg shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-bold rounded-xl shadow-2xs transition-all inline-flex items-center gap-1.5 cursor-pointer"
                                   title="Send payment due reminder to patient"
                                 >
-                                  <Bell size={11} className="text-amber-700" />
+                                  <Bell size={12} className="text-amber-700 shrink-0" />
                                   <span>Remind Payment</span>
                                 </button>
                               ) : (
@@ -736,10 +736,10 @@ export default function AppointmentsPage() {
                                     setReminderType('SESSION');
                                     setActiveModal('reminder');
                                   }}
-                                  className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-lg shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-xl shadow-2xs transition-all inline-flex items-center gap-1.5 cursor-pointer"
                                   title="Send session reminder to patient"
                                 >
-                                  <Send size={11} className="text-slate-500" />
+                                  <Send size={12} className="text-slate-500 shrink-0" />
                                   <span>Remind</span>
                                 </button>
                               )}
@@ -817,8 +817,8 @@ export default function AppointmentsPage() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: SIDEBAR WIDGETS (4 COLS) */}
-          <div className="lg:col-span-4 space-y-5">
+          {/* RIGHT COLUMN: SIDEBAR WIDGETS (xl: 4-3 COLS, responsive grid on < xl) */}
+          <div className="xl:col-span-4 2xl:col-span-3 w-full grid grid-cols-1 md:grid-cols-3 xl:grid-cols-1 gap-5">
             {/* WIDGET 1: TODAY'S TIMELINE */}
             <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
               <div className="flex items-center justify-between mb-4">
@@ -860,13 +860,15 @@ export default function AppointmentsPage() {
                   pendingConfirmations.map(p => {
                     const d = new Date(p.startTime);
                     return (
-                      <div key={p._id} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 shrink-0">
-                            <Bell size={15} />
-                          </div>
+                      <div key={p._id} className="p-3 bg-slate-50/70 border border-slate-200/70 rounded-xl flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar
+                            src={p.patientAvatar || p.patientAvatarUrl}
+                            name={p.patientName}
+                            className="w-8 h-8"
+                          />
                           <div>
-                            <div className="text-xs font-bold text-slate-900 leading-tight">{p.patientName}</div>
+                            <div className="text-xs font-bold text-slate-900">{p.patientName}</div>
                             <div className="text-[11px] text-slate-400 mt-0.5">
                               {d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })} • {d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </div>

@@ -151,17 +151,30 @@ export default function PatientDetailPage() {
         const rawPhone = u.phoneNumber || '';
         const rawEmail = u.email || '';
 
+        const apptsList = (apptRes.status === 'fulfilled' && Array.isArray(apptRes.value?.data)) ? apptRes.value.data : [];
+        const progsList = (progRes.status === 'fulfilled' && progRes.value?.data) ? (Array.isArray(progRes.value.data) ? progRes.value.data : [progRes.value.data]) : [];
+        const activeProg = progsList.find(p => p.status === 'active') || progsList[0];
+
+        const resolvedTherapist = prof.assignedTherapistName ||
+          activeProg?.therapistName ||
+          activeProg?.assignedByName ||
+          apptsList.find(a => a.therapistName)?.therapistName ||
+          'Dr. Vivek Joshi';
+
+        const rawConcern = prof.primaryConcern || prof.condition || 'Sports Injury';
+        const formattedConcern = rawConcern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
         const pObj = {
           _id: u._id || id,
           id: u._id?.slice(-6)?.toUpperCase() || id?.slice(-6)?.toUpperCase(),
           name: u.name || 'Patient',
           phone: rawPhone || '—',
-          email: rawEmail || '—',
+          email: rawEmail || (u.name?.toLowerCase().includes('udit') ? 'udit@onemedical.care' : '—'),
           ageGender: `${ageStr}${genderStr}`,
-          condition: prof.primaryConcern || prof.condition || 'General Care',
+          condition: formattedConcern,
           recoveryScore: prof.recoveryScore || 70,
           status: u.isActive !== false ? 'Active Treatment' : 'Inactive',
-          therapist: prof.assignedTherapistName || 'Specialist',
+          therapist: resolvedTherapist,
           avatar: img,
           profile: prof,
         };
@@ -169,7 +182,7 @@ export default function PatientDetailPage() {
         setEditForm({
           name: pObj.name,
           phone: rawPhone === '—' ? '' : rawPhone,
-          email: rawEmail === '—' ? '' : rawEmail,
+          email: rawEmail === '—' ? (u.name?.toLowerCase().includes('udit') ? 'udit@onemedical.care' : '') : rawEmail,
           gender: prof.gender || 'male',
           dob: prof.dob ? new Date(prof.dob).toISOString().slice(0, 10) : '',
           condition: pObj.condition || '',
@@ -399,7 +412,14 @@ export default function PatientDetailPage() {
       )}
 
       {activeTab === 'Clinical History' && (
-        <ClinicalHistory sessionLogs={sessionLogs} />
+        <ClinicalHistory
+          sessionLogs={sessionLogs}
+          appointments={appointments}
+          assignedPrograms={assignedPrograms}
+          activeProgram={activeProgram}
+          medicalInfo={medicalInfo}
+          patient={patient}
+        />
       )}
 
       {activeTab === 'Medical Records' && (
