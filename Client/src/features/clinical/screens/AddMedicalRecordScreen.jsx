@@ -222,12 +222,12 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
               <ActivityIndicator size="small" color="#003D9B" style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
             ) : patientsList.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
-                {patientsList.map((p) => {
-                  const pId = p._id || p.id;
+                {patientsList.map((p, idx) => {
+                  const pId = p._id || p.id || p.patientId || p.userId || `patient-${idx}`;
                   const isSelected = selectedPatientId === pId;
                   return (
                     <TouchableOpacity
-                      key={pId}
+                      key={`patient-selector-${pId}-${idx}`}
                       style={[styles.catCard, isSelected && styles.catCardSelected, { minWidth: 100 }]}
                       onPress={() => setSelectedPatientId(pId)}
                     >
@@ -263,11 +263,11 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>RECORD CATEGORY</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
-            {CATEGORIES.map((cat) => {
+            {CATEGORIES.map((cat, catIdx) => {
               const isSelected = category === cat.id;
               return (
                 <TouchableOpacity
-                  key={cat.id}
+                  key={`category-pill-${cat.id || catIdx}`}
                   style={[styles.catCard, isSelected && styles.catCardSelected]}
                   onPress={() => setCategory(cat.id)}
                 >

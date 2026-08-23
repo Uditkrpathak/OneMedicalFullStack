@@ -130,8 +130,8 @@ export default function MedicalRecordsScreen({ navigation, route }) {
           onButtonPress={() => navigation.navigate('AddMedicalRecord', patientId ? { patientId } : {})}
         />
       ) : (
-        records.map((rec) => {
-          const recId = rec._id || rec.id;
+        records.map((rec, idx) => {
+          const recId = rec._id || rec.id || `rec-${idx}`;
           const recType = rec.type || rec.category || 'scan';
           const recTitle = rec.title || rec.name || 'Medical Document';
           const recDate = rec.recordDate || rec.createdAt
@@ -140,7 +140,7 @@ export default function MedicalRecordsScreen({ navigation, route }) {
 
           return (
             <TouchableOpacity
-              key={recId}
+              key={`med-rec-${recId}-${idx}`}
               style={styles.recordCard}
               activeOpacity={0.8}
               onPress={() => navigation.navigate('MedicalRecordViewer', { recordId: recId, record: rec })}

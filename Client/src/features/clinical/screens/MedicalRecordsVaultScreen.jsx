@@ -205,7 +205,7 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
           </View>
         ) : (
           <View style={{ gap: 12 }}>
-            {filteredRecords.map((rec) => {
+            {filteredRecords.map((rec, idx) => {
               const badge = getCategoryBadgeColor(rec.category || rec.recordType);
               const dateStr = rec.recordDate
                 ? new Date(rec.recordDate).toLocaleDateString('en-IN', {
@@ -217,7 +217,7 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
 
               return (
                 <TouchableOpacity
-                  key={rec.id || rec._id}
+                  key={`vault-rec-${rec.id || rec._id || idx}`}
                   style={styles.recordCard}
                   activeOpacity={0.85}
                   onPress={() =>
