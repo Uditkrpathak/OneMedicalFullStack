@@ -46,7 +46,6 @@ import TherapistDashboardScreen from '../../features/clinical/screens/TherapistD
 import PatientDetailScreen from '../../features/clinical/screens/PatientDetailScreen';
 import PrescribeProgramScreen from '../../features/clinical/screens/PrescribeProgramScreen';
 import MedicalRecordsScreen from '../../features/clinical/screens/MedicalRecordsScreen';
-import PaymentMockScreen from '../../features/payments/screens/PaymentMockScreen';
 import InvoicesScreen from '../../features/payments/screens/InvoicesScreen';
 import ChatScreen from '../../features/chat/screens/ChatScreen';
 import ConversationsListScreen from '../../features/chat/screens/ConversationsListScreen';
@@ -287,7 +286,6 @@ export default function AppNavigator() {
           <Stack.Screen name="PatientDetail" component={PatientDetailScreen} />
           <Stack.Screen name="PrescribeProgram" component={PrescribeProgramScreen} />
           <Stack.Screen name="MedicalRecords" component={MedicalRecordsScreen} />
-          <Stack.Screen name="PaymentMock" component={PaymentMockScreen} />
           <Stack.Screen name="Invoices" component={InvoicesScreen} />
           <Stack.Screen name="ConversationsList" component={ConversationsListScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} />
