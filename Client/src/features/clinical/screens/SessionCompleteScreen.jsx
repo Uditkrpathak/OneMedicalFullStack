@@ -14,7 +14,8 @@ import { useSelector } from 'react-redux';
 import clinicalApi from '../api';
 
 export default function SessionCompleteScreen({ route, navigation }) {
-  const { token } = useSelector((state) => state.auth);
+  const { token, accessToken, user } = useSelector((state) => state.auth);
+  const effectiveToken = token || accessToken;
   const {
     patientProgramId,
     idempotencyKey,
@@ -71,7 +72,7 @@ export default function SessionCompleteScreen({ route, navigation }) {
         completedAt: completedAt || new Date().toISOString(),
       };
 
-      const res = await clinicalApi.logSession(payload, token);
+      const res = await clinicalApi.logSession(payload, effectiveToken);
       if (res.success) {
         setSubmitted(true);
         const prog = res.data?.program || res.data?.patientProgram || {};

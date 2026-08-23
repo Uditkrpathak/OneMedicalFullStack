@@ -57,7 +57,10 @@ export const authenticate = (req, res, next) => {
       }
     }
     req.user = decoded; // { userId, role }
-    req.headers['x-user-id'] = decoded.userId;
+    if (decoded && decoded.id && !decoded.userId) decoded.userId = decoded.id;
+    if (decoded && decoded._id && !decoded.userId) decoded.userId = decoded._id;
+    req.headers['x-user-id'] = decoded.userId || decoded.id || decoded._id;
+    req.headers['x-user-role'] = decoded.role;
     req.headers['x-user-role'] = decoded.role;
     next();
   } catch (err) {

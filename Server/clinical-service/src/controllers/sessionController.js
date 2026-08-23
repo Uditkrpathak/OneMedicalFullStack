@@ -10,14 +10,14 @@ import { logAudit } from '../utils/auditLogger.js';
 // ─── LOG WORKOUT SESSION (IDEMPOTENT & RACE-SAFE) ─────────────────────────────
 export const logSession = async (req, res) => {
   try {
-    const requesterId = req.user?.userId;
-    const requesterRole = req.user?.role;
+    const requesterId = req.user?.userId || req.user?.id || req.user?._id || req.headers['x-user-id'];
+    const requesterRole = req.user?.role || req.headers['x-user-role'];
 
     if (!requesterId) {
       return res.status(401).json({ success: false, error: { code: 'UNAUTHORIZED', message: 'Authentication required.' } });
     }
 
-    let targetPatientId = requesterId;
+    let targetPatientId = requesterId.toString();
 
     if (requesterRole === 'therapist') {
       const paramPatientId = req.body.patientId || req.body.userId;
