@@ -816,12 +816,31 @@ export const adminDeletePatient = async (req, res) => {
 
     const { id } = req.params;
     await Promise.all([
-      User.findByIdAndUpdate(id, { isDeleted: true, isActive: false, status: 'deactivated' }),
-      PatientProfile.findOneAndUpdate({ userId: id }, { isDeleted: true }),
+      User.findByIdAndUpdate(id, { isDeleted: true, isActive: false, status: 'deactivated', deletedAt: new Date() }),
+      PatientProfile.findOneAndUpdate({ userId: id }, { isDeleted: true, deletedAt: new Date() }),
       RefreshToken.deleteMany({ userId: id })
     ]);
 
-    res.json({ success: true, message: 'Patient deactivated successfully.' });
+    res.json({ success: true, message: 'Patient deactivated successfully (soft delete).' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
+  }
+};
+
+export const adminRestorePatient = async (req, res) => {
+  try {
+    const adminRole = req.user?.role || req.headers['x-user-role'];
+    if (!isAdminRole(adminRole)) {
+      return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'Admin access required.' } });
+    }
+
+    const { id } = req.params;
+    await Promise.all([
+      User.findByIdAndUpdate(id, { isDeleted: false, isActive: true, status: 'active', deletedAt: null }),
+      PatientProfile.findOneAndUpdate({ userId: id }, { isDeleted: false, deletedAt: null }),
+    ]);
+
+    res.json({ success: true, message: 'Patient restored successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });
   }

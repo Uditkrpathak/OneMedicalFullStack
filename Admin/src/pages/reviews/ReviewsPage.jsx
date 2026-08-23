@@ -226,15 +226,15 @@ export default function ReviewsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse min-w-[920px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3.5 px-5">Patient</th>
-                  <th className="py-3.5 px-5">Doctor / Specialist</th>
-                  <th className="py-3.5 px-5">Rating & Metrics</th>
-                  <th className="py-3.5 px-5">Consultation Feedback</th>
-                  <th className="py-3.5 px-5">Status</th>
-                  <th className="py-3.5 px-5 text-right">Moderation</th>
+                  <th className="py-3.5 px-5 w-[22%]">Patient</th>
+                  <th className="py-3.5 px-5 w-[18%]">Doctor / Specialist</th>
+                  <th className="py-3.5 px-5 w-[16%]">Rating & Metrics</th>
+                  <th className="py-3.5 px-5 w-[28%]">Consultation Feedback</th>
+                  <th className="py-3.5 px-5 w-[10%]">Status</th>
+                  <th className="py-3.5 px-5 w-[6%] text-right">Moderation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
@@ -243,14 +243,14 @@ export default function ReviewsPage() {
                   const dateFormatted = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 
                   return (
-                    <tr key={r._id} className="hover:bg-slate-50/75 transition-colors">
+                    <tr key={r._id} className="hover:bg-slate-50/75 transition-colors group">
                       {/* PATIENT */}
                       <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
                           <UserAvatar
                             src={r.patientAvatarUrl}
                             name={r.patientName}
-                            className="w-9 h-9"
+                            className="w-10 h-10 ring-2 ring-slate-100"
                           />
                           <div>
                             <div className="font-bold text-slate-900 flex items-center gap-1.5">
@@ -261,8 +261,8 @@ export default function ReviewsPage() {
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <ShieldCheck size={12} className="text-emerald-600" />
+                            <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 mt-0.5">
+                              <ShieldCheck size={13} className="text-emerald-600 shrink-0" />
                               <span>Verified Consultation</span>
                             </div>
                           </div>
@@ -272,7 +272,7 @@ export default function ReviewsPage() {
                       {/* DOCTOR */}
                       <td className="py-4 px-5">
                         <div className="font-bold text-slate-900 leading-snug">{r.doctorName}</div>
-                        <div className="text-[11px] text-slate-400">Date: {dateFormatted}</div>
+                        <div className="text-[11px] text-slate-400 font-medium mt-0.5">Date: {dateFormatted}</div>
                       </td>
 
                       {/* RATING */}
@@ -281,37 +281,41 @@ export default function ReviewsPage() {
                           {[1, 2, 3, 4, 5].map((s) => (
                             <Star
                               key={s}
-                              size={13}
+                              size={14}
                               className={s <= r.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-200'}
                             />
                           ))}
-                          <span className="font-extrabold text-slate-900 ml-1">{r.rating}.0</span>
+                          <span className="font-black text-slate-900 ml-1.5 text-xs">{r.rating}.0</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 space-y-0.5">
-                          <div>Comm: {r.communicationRating || 5}/5 • Expl: {r.explanationRating || 5}/5</div>
-                          <div>Wait: {r.waitTimeRating || '< 15 mins'}</div>
+                        <div className="text-[10px] text-slate-500 space-y-0.5 font-medium">
+                          <div>Comm: <span className="font-bold text-slate-700">{r.communicationRating || 5}/5</span> • Expl: <span className="font-bold text-slate-700">{r.explanationRating || 5}/5</span></div>
+                          <div>Wait: <span className="font-bold text-slate-700">{r.waitTimeRating || '< 15 mins'}</span></div>
                         </div>
                       </td>
 
                       {/* FEEDBACK COMMENT & TAGS */}
-                      <td className="py-4 px-5 max-w-md">
-                        <p className="text-slate-800 text-xs line-clamp-2 leading-relaxed">
+                      <td className="py-4 px-5">
+                        <p className="text-slate-800 text-xs font-semibold leading-relaxed">
                           "{r.reviewText || r.comment}"
                         </p>
                         {r.tags && r.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {r.tags.map((t, idx) => (
-                              <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold">
-                                ✓ {t}
-                              </span>
-                            ))}
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {r.tags.map((t, idx) => {
+                              const cleanTag = String(t).replace(/\uFFFD/g, '').replace(/^[^\w\s&'-]+/g, '').trim() || t;
+                              return (
+                                <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50/90 text-blue-700 border border-blue-200/70 rounded-md text-[10px] font-bold">
+                                  <Check size={10} className="text-blue-600 stroke-[3]" />
+                                  <span>{cleanTag}</span>
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
-                        <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-2">
+                        <div className="text-[10px] text-slate-400 mt-2 flex items-center gap-2 font-medium">
                           <span className="flex items-center gap-1">
                             <ThumbsUp size={11} className="text-slate-400" /> {r.helpfulCount || 0} helpful votes
                           </span>
-                          {r.npsScore && <span>• NPS: {r.npsScore}/10</span>}
+                          {r.npsScore && <span>• NPS: <span className="font-bold text-slate-700">{r.npsScore}/10</span></span>}
                         </div>
                       </td>
 
@@ -335,7 +339,7 @@ export default function ReviewsPage() {
                             setModStatus(r.status);
                             setModReason(r.moderationReason || '');
                           }}
-                          className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer"
+                          className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
                         >
                           <Flag size={12} className="text-slate-500" />
                           <span>Moderate</span>

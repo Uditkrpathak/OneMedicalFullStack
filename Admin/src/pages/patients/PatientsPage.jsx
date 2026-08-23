@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Filter, Download, MoreVertical, Eye, ArrowUpDown, ChevronLeft, ChevronRight,
   LayoutGrid, Table as TableIcon, FileText, UserPlus, TrendingUp, CheckCircle, Activity,
-  AlertCircle, RefreshCw
+  AlertCircle, RefreshCw, Trash2, RotateCcw, CheckCircle2, ShieldAlert
 } from 'lucide-react';
 import { api } from '../../api/api.js';
 import { PageHeader, Spinner, EmptyState } from '../../components/ui.jsx';
@@ -23,6 +23,9 @@ export default function PatientsPage() {
   const [sortBy, setSortBy]             = useState('Recently Updated');
   const [page, setPage]                 = useState(1);
   const [total, setTotal]               = useState(0);
+  const [patientToDelete, setPatientToDelete] = useState(null);
+  const [isDeleting, setIsDeleting]     = useState(false);
+  const [toastMsg, setToastMsg]         = useState(null);
   const limit = 20;
 
   const load = useCallback(async () => {
@@ -59,6 +62,26 @@ export default function PatientsPage() {
     load();
   }, [load]);
 
+  const handleConfirmSoftDelete = async () => {
+    if (!patientToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await api.deletePatient(token, patientToDelete._id);
+      if (res?.success) {
+        setToastMsg(`Patient ${patientToDelete.name} has been deactivated & archived successfully.`);
+        setTimeout(() => setToastMsg(null), 4000);
+        setPatientToDelete(null);
+        load();
+      } else {
+        alert(res?.error?.message || 'Failed to deactivate patient.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error deactivating patient.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Working Filters & Search Logic
   const filteredPatients = patients.filter(p => {
     const q = searchQuery.toLowerCase();
@@ -76,73 +99,76 @@ export default function PatientsPage() {
 
   return (
     <div className="space-y-6 animate-fade-up">
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold border border-slate-700 animate-fade-in">
+          <CheckCircle2 size={18} className="text-emerald-400" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Patients</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Manage real patient records, treatment plans, and recovery scores.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          <button className="btn btn-primary text-xs" onClick={() => navigate('/patients/add')}>
-            <UserPlus size={15} /> Add Patient
+        <PageHeader
+          title="Patient Registry"
+          subtitle="Manage active rehabilitation patients, clinical profiles, and care regimens."
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/patients/add')} className="btn btn-primary text-xs flex items-center gap-1.5 shadow-xs">
+            <UserPlus size={14} /> Add Patient
           </button>
         </div>
       </div>
 
-      {/* FILTER & SEARCH CARD */}
+      {/* Filter / Search Bar */}
       <div className="card p-4 space-y-3">
-        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div className="relative w-full md:w-80">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Search patients by name, ID or condition..."
-              className="input pl-9 text-xs py-2.5 w-full bg-slate-50 border-slate-200"
+              placeholder="Search by name, ID, or condition..."
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
+              className="inp pl-9 text-xs w-full"
             />
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'table' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-              }`}
+          <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            <select
+              value={conditionFilter}
+              onChange={e => setCondition(e.target.value)}
+              className="inp text-xs py-1.5 px-3 bg-white"
             >
-              <TableIcon size={14} /> Table
-            </button>
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <LayoutGrid size={14} /> Cards
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between border-t border-slate-100 pt-3 text-xs gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <select className="select text-xs py-1.5 bg-slate-50 flex-1 sm:w-40 min-w-[130px]" value={conditionFilter} onChange={e => setCondition(e.target.value)}>
-              {uniqueConditions.map(c => <option key={c} value={c}>{c === 'All' ? 'All Conditions' : c}</option>)}
+              {uniqueConditions.map(c => (
+                <option key={c} value={c}>{c === 'All' ? 'All Clinical Conditions' : c}</option>
+              ))}
             </select>
 
-            <select className="select text-xs py-1.5 bg-slate-50 flex-1 sm:w-36 min-w-[120px]" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-              <option value="All">Status: All</option>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="inp text-xs py-1.5 px-3 bg-white"
+            >
+              <option value="All">All Statuses</option>
               <option value="Active Treatment">Active Treatment</option>
               <option value="Inactive">Inactive</option>
             </select>
-          </div>
 
-          <div className="flex items-center gap-2 text-slate-500 font-medium">
-            <span className="shrink-0">SORT BY:</span>
-            <select className="select text-xs py-1.5 bg-slate-50 w-full sm:w-36 font-bold text-slate-800" value={sortBy} onChange={e => setSortBy(e.target.value)}>
-              <option value="Recently Updated">Recently Updated</option>
-              <option value="Recovery Score">Recovery Score</option>
-              <option value="Name A-Z">Name A-Z</option>
-            </select>
+            <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-50">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-md ${viewMode === 'table' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-400'}`}
+              >
+                <TableIcon size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`p-1.5 rounded-md ${viewMode === 'cards' ? 'bg-white shadow-xs text-blue-600' : 'text-slate-400'}`}
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -183,7 +209,7 @@ export default function PatientsPage() {
               </thead>
               <tbody>
                 {filteredPatients.map(p => (
-                  <tr key={p._id} className="cursor-pointer" onClick={() => navigate(`/patients/${p._id}`)}>
+                  <tr key={p._id} className="cursor-pointer group" onClick={() => navigate(`/patients/${p._id}`)}>
                     <td>
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden border border-blue-200">
@@ -219,9 +245,22 @@ export default function PatientsPage() {
                       </span>
                     </td>
                     <td className="text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => navigate(`/patients/${p._id}`)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600">
-                        <Eye size={16} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => navigate(`/patients/${p._id}`)}
+                          title="View Patient Record"
+                          className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                        >
+                          <Eye size={16} />
+                        </button>
+                        <button
+                          onClick={() => setPatientToDelete(p)}
+                          title="Soft-Delete / Deactivate Patient"
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -255,14 +294,25 @@ export default function PatientsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredPatients.map(p => (
-            <div key={p._id} className="card p-5 space-y-3 cursor-pointer card-hover" onClick={() => navigate(`/patients/${p._id}`)}>
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden border-2 border-blue-200">
-                  {p.avatar ? <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" /> : (p.name[0] || 'P')}
+            <div key={p._id} className="card p-5 space-y-3 cursor-pointer card-hover group" onClick={() => navigate(`/patients/${p._id}`)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden border-2 border-blue-200">
+                    {p.avatar ? <img src={p.avatar} alt={p.name} className="w-full h-full object-cover" /> : (p.name[0] || 'P')}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">{p.name}</h3>
+                    <p className="text-xs text-slate-400">{p.phoneNumber} • #{p.id}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900">{p.name}</h3>
-                  <p className="text-xs text-slate-400">{p.phoneNumber} • #{p.id}</p>
+                <div onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => setPatientToDelete(p)}
+                    title="Soft-Delete / Deactivate Patient"
+                    className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-xl transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -313,6 +363,56 @@ export default function PatientsPage() {
           </div>
         </div>
       </div>
+
+      {/* ─── SOFT DELETE CONFIRMATION MODAL ─── */}
+      {patientToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 space-y-5 animate-scale-in">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-11 h-11 rounded-2xl bg-red-50 flex items-center justify-center shrink-0 border border-red-200">
+                <ShieldAlert size={22} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Deactivate & Archive Patient</h3>
+                <p className="text-xs text-slate-500">Soft-delete patient account</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs">
+              <div className="font-bold text-slate-800 flex items-center gap-2">
+                <span>{patientToDelete.name}</span>
+                <span className="font-mono text-blue-600">#{patientToDelete.id}</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                Deactivating this patient will immediately disable their login access.
+              </p>
+              <div className="p-2.5 bg-blue-50/70 border border-blue-200/60 rounded-xl text-[11px] text-blue-800 font-medium">
+                💡 <strong>HIPAA Retention Safe</strong>: All consultation history, prescriptions, uploaded documents, and billing tax invoices remain securely archived.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setPatientToDelete(null)}
+                className="btn btn-secondary text-xs px-4 py-2.5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmSoftDelete}
+                className="btn btn-primary text-xs px-4 py-2.5 bg-red-600 hover:bg-red-700 border-red-600 text-white flex items-center gap-2 shadow-xs"
+              >
+                {isDeleting ? <Spinner size="sm" /> : <Trash2 size={14} />}
+                <span>{isDeleting ? 'Deactivating...' : 'Confirm Soft Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

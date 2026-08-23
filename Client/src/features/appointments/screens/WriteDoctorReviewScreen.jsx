@@ -20,14 +20,14 @@ import { colors } from '../../../theme/colors';
 import { getDoctorAvatarSource, getDoctorImageUri } from '../../../utils/doctorImages';
 
 const TAG_OPTIONS = [
-  { id: 'punctual', label: '⏱️ Punctual & On-Time' },
-  { id: 'empathetic', label: '❤️ Empathetic Listener' },
-  { id: 'explanation', label: '💡 Clear Diagnosis Explanation' },
-  { id: 'effective', label: '💪 Effective Treatment' },
-  { id: 'friendly_staff', label: '🤝 Friendly Clinic Staff' },
-  { id: 'clean_clinic', label: '✨ Clean & Safe Clinic' },
-  { id: 'gentle', label: '🌱 Gentle & Careful' },
-  { id: 'easy_followup', label: '📱 Easy Follow-up' },
+  { id: 'punctual', label: 'Punctual & On-Time', icon: '⏱️' },
+  { id: 'empathetic', label: 'Empathetic Listener', icon: '❤️' },
+  { id: 'explanation', label: 'Clear Diagnosis Explanation', icon: '💡' },
+  { id: 'effective', label: 'Effective Treatment', icon: '💪' },
+  { id: 'friendly_staff', label: 'Friendly Clinic Staff', icon: '🤝' },
+  { id: 'clean_clinic', label: 'Clean & Safe Clinic', icon: '✨' },
+  { id: 'gentle', label: 'Gentle & Careful', icon: '🌱' },
+  { id: 'easy_followup', label: 'Easy Follow-up', icon: '📱' },
 ];
 
 const INITIAL_REVIEWS = [
@@ -179,7 +179,7 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
 
     setSubmitting(true);
     try {
-      const selectedLabels = selectedTags.map((tId) => TAG_OPTIONS.find((t) => t.id === tId)?.label.replace(/^.\s*/, '') || tId);
+      const selectedLabels = selectedTags.map((tId) => TAG_OPTIONS.find((t) => t.id === tId)?.label || tId);
       const rawApptId = booking?._id || booking?.id || route.params?.appointmentId;
       const cleanApptId = (rawApptId && typeof rawApptId === 'string' && !rawApptId.startsWith('#')) ? rawApptId : undefined;
       const targetDoctorId = doctor?.userId || doctor?._id || doctor?.id;
@@ -432,7 +432,7 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.tagChipText, isSelected && styles.tagChipTextActive]}>
-                      {tag.label}
+                      {tag.icon ? `${tag.icon} ` : ''}{tag.label}
                     </Text>
                   </TouchableOpacity>
                 );

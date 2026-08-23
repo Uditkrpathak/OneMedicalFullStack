@@ -18,6 +18,7 @@ import {
   adminCreatePatient,
   adminUpdatePatient,
   adminDeletePatient,
+  adminRestorePatient,
   adminCreateTherapist,
   adminUpdateTherapist,
   adminDeleteTherapist,
@@ -60,6 +61,7 @@ router.get('/patients/:id', adminGetUserById);
 router.patch('/patients/:id', adminUpdatePatient);
 router.put('/patients/:id', adminUpdatePatient);
 router.delete('/patients/:id', adminDeletePatient);
+router.post('/patients/:id/restore', adminRestorePatient);
 
 // Internal — called by other services via API key
 router.get('/internal/therapists/:id', getTherapistById);

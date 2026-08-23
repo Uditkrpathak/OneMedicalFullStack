@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, User, Activity, Edit, Plus, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, User, Activity, Edit, Plus, AlertTriangle, Trash2 } from 'lucide-react';
 
 export default function PatientHeader({
   patient,
@@ -7,6 +7,7 @@ export default function PatientHeader({
   onAddNote,
   onAssignProgram,
   onFlagPatient,
+  onDeletePatient,
 }) {
   const navigate = useNavigate();
 
@@ -37,8 +38,14 @@ export default function PatientHeader({
           <button onClick={onAssignProgram} className="btn btn-secondary text-xs">
             Assign Program
           </button>
-          <button onClick={onEditProfile} className="btn btn-primary text-xs">
+          <button onClick={onEditProfile} className="btn btn-secondary text-xs">
             <Edit size={13} /> Edit Profile
+          </button>
+          <button
+            onClick={onDeletePatient}
+            className="btn btn-secondary text-xs text-red-600 bg-red-50 hover:bg-red-100 border-red-200 flex items-center gap-1.5"
+          >
+            <Trash2 size={13} /> Deactivate
           </button>
         </div>
       </div>

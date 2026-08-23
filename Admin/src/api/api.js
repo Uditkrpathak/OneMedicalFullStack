@@ -40,6 +40,7 @@ export const api = {
   createPatient:          (token, body)        => request('/patients', { method: 'POST', body: JSON.stringify(body) }, token),
   updatePatient:          (token, id, body)    => request(`/patients/${id}`, { method: 'PATCH', body: JSON.stringify(body) }, token),
   deletePatient:          (token, id)          => request(`/patients/${id}`, { method: 'DELETE' }, token),
+  restorePatient:         (token, id)          => request(`/patients/${id}/restore`, { method: 'POST' }, token),
   getPatientMedicalInfo:  (token, patientId)   => request(`/patients/${patientId}/medical-info`, {}, token),
   updatePatientMedicalInfo:(token, patientId, body) => request(`/patients/${patientId}/medical-info`, { method: 'PUT', body: JSON.stringify(body) }, token),
 

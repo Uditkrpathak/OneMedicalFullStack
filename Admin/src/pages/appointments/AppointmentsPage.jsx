@@ -382,9 +382,9 @@ export default function AppointmentsPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-          {/* LEFT COLUMN: TABLE & FILTER BAR (xl: 8-9 COLS, full width on < xl) */}
-          <div className="xl:col-span-8 2xl:col-span-9 space-y-4 min-w-0">
+        <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6 items-start">
+          {/* LEFT COLUMN: TABLE & FILTER BAR (2xl: 8-9 COLS, full 100% width on laptops < 2xl) */}
+          <div className="2xl:col-span-8 min-[1700px]:col-span-9 space-y-4 min-w-0">
             {/* STATUS FILTER TABS */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {[
@@ -626,17 +626,17 @@ export default function AppointmentsPage() {
                   onAction={() => navigate('/appointments/create')}
                 />
               ) : viewMode === 'list' ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[860px]">
+                <div className="overflow-x-auto w-full scrollbar-thin">
+                  <table className="w-full text-left border-collapse min-w-[940px]">
                     <thead>
                       <tr className="bg-slate-50/70 border-b border-slate-200/80">
-                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[180px]">Patient</th>
-                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[180px]">Therapist</th>
-                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[100px]">Type</th>
-                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[130px]">Date & Time</th>
-                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[120px]">Status</th>
-                        <th className="py-3 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase min-w-[140px]">Payment</th>
-                        <th className="py-3 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right min-w-[140px]">Actions</th>
+                        <th className="py-3.5 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[22%]">Patient</th>
+                        <th className="py-3.5 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[18%]">Therapist</th>
+                        <th className="py-3.5 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[11%]">Type</th>
+                        <th className="py-3.5 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[15%]">Date & Time</th>
+                        <th className="py-3.5 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[12%]">Status</th>
+                        <th className="py-3.5 px-3 text-[11px] font-bold tracking-wider text-slate-400 uppercase w-[12%]">Payment</th>
+                        <th className="py-3.5 px-4 text-[11px] font-bold tracking-wider text-slate-400 uppercase text-right w-[10%] whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -817,8 +817,8 @@ export default function AppointmentsPage() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN: SIDEBAR WIDGETS (xl: 4-3 COLS, responsive grid on < xl) */}
-          <div className="xl:col-span-4 2xl:col-span-3 w-full grid grid-cols-1 md:grid-cols-3 xl:grid-cols-1 gap-5">
+          {/* RIGHT COLUMN: SIDEBAR WIDGETS (2xl: 4-3 COLS, responsive grid on < 2xl) */}
+          <div className="2xl:col-span-4 min-[1700px]:col-span-3 w-full grid grid-cols-1 md:grid-cols-3 2xl:grid-cols-1 gap-5">
             {/* WIDGET 1: TODAY'S TIMELINE */}
             <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs">
               <div className="flex items-center justify-between mb-4">

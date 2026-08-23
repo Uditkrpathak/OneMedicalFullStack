@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   Activity, FileText, Calendar, TrendingUp, CreditCard, Heart,
-  AlertCircle, ShieldCheck, History, RefreshCw, X, CheckCircle2
+  AlertCircle, ShieldCheck, History, RefreshCw, X, CheckCircle2,
+  Trash2, ShieldAlert
 } from 'lucide-react';
 import { api } from '../../api/api.js';
 import { Spinner } from '../../components/ui.jsx';
@@ -55,6 +56,8 @@ export default function PatientDetailPage() {
   const [activeTab, setActiveTab] = useState('Overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Real Data State
   const [patient, setPatient] = useState(null);
@@ -73,6 +76,9 @@ export default function PatientDetailPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showFlagModal, setShowFlagModal] = useState(false);
+  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+  const [noteCategory, setNoteCategory] = useState('Clinical Observation');
+  const [noteContent, setNoteContent] = useState('');
   const [allPrograms, setAllPrograms] = useState([]);
   const [selectedProgramId, setSelectedProgramId] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -288,13 +294,18 @@ export default function PatientDetailPage() {
   };
 
   // Handle Add Clinical Note
-  const handleAddClinicalNote = async noteText => {
+  const handleAddClinicalNote = async (noteText, category = 'Clinical Observation') => {
+    if (!noteText || !noteText.trim()) return;
     setSubmitting(true);
     try {
+      const fullNoteText = category && category !== 'General' ? `[${category}] ${noteText.trim()}` : noteText.trim();
       await api.updatePatientMedicalInfo(token, id, {
-        notes: noteText,
+        notes: fullNoteText,
       });
       showToastMsg('Clinical note saved successfully!');
+      setShowAddNoteModal(false);
+      setNoteContent('');
+      setActiveTab('Notes');
       loadData();
     } catch (err) {
       alert(err.message || 'Failed to save note.');
@@ -359,9 +370,10 @@ export default function PatientDetailPage() {
       <PatientHeader
         patient={patient}
         onEditProfile={() => setShowEditModal(true)}
-        onAddNote={() => setActiveTab('Notes')}
+        onAddNote={() => setShowAddNoteModal(true)}
         onAssignProgram={openAssignModal}
         onFlagPatient={() => setShowFlagModal(true)}
+        onDeletePatient={() => setShowDeleteModal(true)}
       />
 
       {/* ── TABS NAVIGATION ── */}
@@ -686,6 +698,149 @@ export default function PatientDetailPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SOFT DELETE CONFIRMATION MODAL ── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 space-y-5 animate-scale-in">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-11 h-11 rounded-2xl bg-red-50 flex items-center justify-center shrink-0 border border-red-200">
+                <ShieldAlert size={22} className="text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Deactivate & Archive Patient</h3>
+                <p className="text-xs text-slate-500">Soft-delete patient record</p>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs">
+              <div className="font-bold text-slate-800 flex items-center gap-2">
+                <span>{patient?.name}</span>
+                <span className="font-mono text-blue-600">#{patient?.id}</span>
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                Deactivating this patient will immediately revoke their mobile app login and disable active session bookings.
+              </p>
+              <div className="p-2.5 bg-blue-50/70 border border-blue-200/60 rounded-xl text-[11px] text-blue-800 font-medium">
+                💡 <strong>HIPAA Retention Safe</strong>: All consultation summaries, clinical milestones, uploaded documents, and GST tax invoices will remain preserved.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="btn btn-secondary text-xs px-4 py-2.5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={async () => {
+                  setIsDeleting(true);
+                  try {
+                    const res = await api.deletePatient(token, id);
+                    if (res?.success) {
+                      showToastMsg(`Patient ${patient?.name} has been deactivated & archived successfully.`);
+                      setTimeout(() => {
+                        navigate('/patients');
+                      }, 1200);
+                    } else {
+                      alert(res?.error?.message || 'Failed to deactivate patient.');
+                    }
+                  } catch (err) {
+                    alert(err.message || 'Error deactivating patient.');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="btn btn-primary text-xs px-4 py-2.5 bg-red-600 hover:bg-red-700 border-red-600 text-white flex items-center gap-2 shadow-xs"
+              >
+                {isDeleting ? <Spinner size="sm" /> : <Trash2 size={14} />}
+                <span>{isDeleting ? 'Deactivating...' : 'Confirm Soft Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD CLINICAL NOTE MODAL ── */}
+      {showAddNoteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-slate-100 space-y-5 animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Add Clinical Note</h3>
+                  <p className="text-xs text-slate-500">Record clinical observation or treatment update for {patient?.name}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAddNoteModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={e => { e.preventDefault(); handleAddClinicalNote(noteContent, noteCategory); }} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Observation Category</label>
+                <select
+                  value={noteCategory}
+                  onChange={e => setNoteCategory(e.target.value)}
+                  className="inp w-full text-xs font-semibold"
+                >
+                  <option value="Clinical Observation">Clinical Observation</option>
+                  <option value="Subjective Evaluation">Subjective Evaluation (Patient Feedback & Pain)</option>
+                  <option value="Range of Motion (ROM)">Range of Motion (ROM & Mobility Assessment)</option>
+                  <option value="Treatment Protocol Adjustment">Treatment Protocol Adjustment</option>
+                  <option value="Post-Consultation Summary">Post-Consultation Summary</option>
+                  <option value="General Clinical Note">General Clinical Note</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Clinical Observations & Findings</label>
+                <textarea
+                  required
+                  rows={4}
+                  value={noteContent}
+                  onChange={e => setNoteContent(e.target.value)}
+                  placeholder="Detail objective clinical findings, palpation results, range-of-motion improvements, exercise adherence, or home protocol instructions..."
+                  className="inp w-full text-xs resize-none h-28 leading-relaxed font-normal"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center justify-between text-[11px] text-slate-500">
+                <span className="font-semibold text-slate-700">Author: Clinic Administrator</span>
+                <span>Date: {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setShowAddNoteModal(false)}
+                  className="btn btn-secondary text-xs px-4 py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !noteContent.trim()}
+                  className="btn btn-primary text-xs px-5 py-2 flex items-center gap-2"
+                >
+                  {submitting ? <Spinner size="sm" /> : <FileText size={14} />}
+                  <span>{submitting ? 'Saving Note...' : 'Save Clinical Note'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
