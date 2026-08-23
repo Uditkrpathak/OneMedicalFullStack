@@ -327,8 +327,7 @@ export const getAppointmentClinicalContext = async (req, res) => {
 
     const rawAmt = appointment.amount || appointment.amountPaise || (appointment.fee ? appointment.fee * 100 : 80000);
     const amountPaise = rawAmt < 5000 ? rawAmt * 100 : rawAmt;
-    const painScore = appointment.painScore ?? latestPain?.painScore ?? 3;
-    const recoveryGoalProgress = activeProgram?.progressPercentage ?? activeProgram?.adherencePercentage ?? 40;
+    const patientAvatarUrl = appointment.patientAvatarUrl || patientUser?.profileImageUrl || patientUser?.avatarUrl || patientUser?.avatar || null;
 
     const patientSnapshot = {
       appointmentId: appointment._id,
@@ -337,6 +336,7 @@ export const getAppointmentClinicalContext = async (req, res) => {
       paymentStatus: (appointment.paymentStatus || 'PAID').toUpperCase(),
       amount: amountPaise,
       patientId: appointment.patientId,
+      patientAvatarUrl,
       therapistId: appointment.therapistId,
       therapistName: appointment.therapistName,
       patientName,

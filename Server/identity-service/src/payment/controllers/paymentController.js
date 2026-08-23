@@ -797,13 +797,37 @@ export const getInvoiceById = async (req, res) => {
 
     // Ownership & Privacy Authorization Check
     const targetPatientId = String(invoice?.patientId || txn?.patientId || appt?.patientId || '');
-    if (!isAdmin && userId && targetPatientId && String(userId) !== targetPatientId) {
+    const targetTherapistId = String(invoice?.therapistId || txn?.therapistId || appt?.therapistId || '');
+    
+    let isAttendingTherapist = false;
+    if (userRole === 'therapist' && userId) {
+      if (String(userId) === targetTherapistId) {
+        isAttendingTherapist = true;
+      } else if (targetTherapistId) {
+        const tProf = await TherapistProfile.findOne({
+          $or: [
+            { userId: userId, _id: targetTherapistId },
+            { _id: userId, userId: targetTherapistId },
+            { userId: userId },
+            { _id: userId }
+          ]
+        }).lean();
+        if (tProf) {
+          const profId = tProf._id?.toString();
+          const pUserId = tProf.userId?.toString() || (typeof tProf.userId === 'object' ? tProf.userId._id?.toString() : null);
+          if (profId === targetTherapistId || pUserId === targetTherapistId) {
+            isAttendingTherapist = true;
+          }
+        }
+      }
+    }
+
+    if (!isAdmin && !isAttendingTherapist && userId && targetPatientId && String(userId) !== targetPatientId) {
       return res.status(403).json({ success: false, error: { code: 'FORBIDDEN', message: 'You are not authorized to view this invoice.' } });
     }
 
     // Resolve therapist name
     let therapistName = appt?.therapistName || 'Attending Specialist';
-    const targetTherapistId = invoice?.therapistId || txn?.therapistId || appt?.therapistId;
     if (targetTherapistId) {
       const t = await TherapistProfile.findOne({
         $or: [{ userId: targetTherapistId }, { _id: targetTherapistId }]

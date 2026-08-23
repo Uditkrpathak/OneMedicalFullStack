@@ -61,33 +61,42 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
 
   const sDate = apptDoc.startTime ? new Date(apptDoc.startTime) : null;
   const isValidSDate = Boolean(sDate && !isNaN(sDate.getTime()));
-  const durationMins = apptDoc.durationMin || apptDoc.durationMinutes || ctxSnapshot.durationMins || 45;
-  const eDate = apptDoc.endTime ? new Date(apptDoc.endTime) : (isValidSDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
+  const rawEDate = apptDoc.endTime ? new Date(apptDoc.endTime) : null;
+  const isValidRawEDate = Boolean(rawEDate && !isNaN(rawEDate.getTime()));
+
+  const computedDuration = (isValidSDate && isValidRawEDate && rawEDate > sDate)
+    ? Math.round((rawEDate.getTime() - sDate.getTime()) / 60000)
+    : null;
+
+  const durationMins = apptDoc.durationMin || apptDoc.durationMinutes || ctxSnapshot.durationMins || computedDuration || 30;
+  const eDate = isValidRawEDate ? rawEDate : (isValidSDate ? new Date(sDate.getTime() + durationMins * 60000) : null);
   const isValidEDate = Boolean(eDate && !isNaN(eDate.getTime()));
 
-  // Resolve Real Scheduled Date (e.g. "Today, Aug 22, 2026" or "Saturday, Aug 22, 2026")
-  let resolvedDate = apptDoc.date || ctxSnapshot.appointmentDate || apptDoc.dateString || new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+  // Resolve Real Scheduled Date (e.g. "Sunday, 23 Aug, 2026")
+  let resolvedDate = ctxSnapshot.appointmentDate || apptDoc.date || apptDoc.dateString;
   if (isValidSDate) {
     try {
-      resolvedDate = sDate.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+      resolvedDate = sDate.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
     } catch (e) {
       resolvedDate = sDate.toDateString();
     }
+  } else if (!resolvedDate) {
+    resolvedDate = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' });
   }
 
-  // Resolve Real Scheduled Consultation Time
-  let resolvedTime = apptDoc.time || apptDoc.timeString || apptDoc.timeSlot || ctxSnapshot.appointmentTime || '10:00 AM';
+  // Resolve Real Scheduled Consultation Time (e.g. "01:00 PM (30 mins)")
+  let resolvedTime = ctxSnapshot.appointmentTime || apptDoc.timeFormatted || apptDoc.time || apptDoc.timeString || apptDoc.timeSlot;
   if (isValidSDate && isValidEDate) {
     try {
-      resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} (${durationMins} mins)`;
+      resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} - ${eDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} (${durationMins} mins)`;
     } catch (e) {
       resolvedTime = `${sDate.toTimeString().slice(0, 5)} (${durationMins} mins)`;
     }
   } else if (isValidSDate) {
     try {
-      resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} (${durationMins} mins)`;
+      resolvedTime = `${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })} (${durationMins} mins)`;
     } catch (e) {
-      resolvedTime = `${resolvedTime} (${durationMins} mins)`;
+      resolvedTime = `${resolvedTime || ''} (${durationMins} mins)`;
     }
   } else if (resolvedTime && !resolvedTime.includes('mins')) {
     resolvedTime = `${resolvedTime} (${durationMins} mins)`;
@@ -275,9 +284,16 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
         {/* Patient Hero Profile Card */}
         <View style={styles.patientHeroCard}>
           <View style={styles.heroAvatarContainer}>
-            <View style={styles.avatarLargeCircle}>
-              <Text style={styles.avatarLargeText}>{String(snapshot.patientName || 'P').charAt(0).toUpperCase()}</Text>
-            </View>
+            {(apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl || (user?.role === 'patient' ? (user?.profileImageUrl || user?.avatarUrl || user?.avatar) : null)) ? (
+              <Image
+                source={{ uri: apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl || (user?.role === 'patient' ? (user?.profileImageUrl || user?.avatarUrl || user?.avatar) : null) }}
+                style={styles.avatarLargeImage}
+              />
+            ) : (
+              <View style={styles.avatarLargeCircle}>
+                <Text style={styles.avatarLargeText}>{String(snapshot.patientName || 'P').charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.heroInfoCenter}>
@@ -711,6 +727,7 @@ const styles = StyleSheet.create({
   },
   avatarLargeCircle: { alignItems: 'center', justifyContent: 'center' },
   avatarLargeText: { fontSize: 30, fontWeight: '900', color: '#003D9B' },
+  avatarLargeImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   heroInfoCenter: { alignItems: 'center', gap: 6, width: '100%' },
   heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heroPatientName: { fontSize: 18, fontWeight: '900', color: '#0f172a' },

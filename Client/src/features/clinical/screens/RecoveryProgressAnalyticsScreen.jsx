@@ -75,6 +75,20 @@ export default function RecoveryProgressAnalyticsScreen({ navigation, route }) {
           <ActivityIndicator size="large" color="#003D9B" />
           <Text style={{ marginTop: 10, color: '#64748b', fontSize: 13 }}>Calculating clinical progress...</Text>
         </View>
+      ) : !analytics ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <Ionicons name="analytics-outline" size={54} color="#94a3b8" style={{ marginBottom: 12 }} />
+          <Text style={{ fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 6 }}>Clinical Analytics Unavailable</Text>
+          <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 20, lineHeight: 18 }}>
+            Recovery metrics and progress trends require an active rehabilitation program prescribed by your attending specialist.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#003D9B', paddingHorizontal: 22, paddingVertical: 12, borderRadius: 12 }}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13 }}>Return to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollInner} showsVerticalScrollIndicator={false}>
           {/* COMPOSITE RECOVERY SCORE HERO CARD */}

@@ -216,7 +216,13 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           <Text style={styles.errorSub}>{errorMsg || 'No invoice document found for this consultation.'}</Text>
           <TouchableOpacity
             style={styles.backHomeBtn}
-            onPress={() => navigation.navigate('MyBookings')}
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('PatientHome', { screen: 'Appointments' });
+              }
+            }}
           >
             <Text style={styles.backHomeBtnText}>View My Appointments</Text>
           </TouchableOpacity>

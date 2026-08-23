@@ -167,11 +167,18 @@ export default function TherapistDashboardScreen({ navigation }) {
           {nextAppt ? (
             <View style={styles.nextPatientCard}>
               <View style={styles.patientInfoRow}>
-                <View style={styles.patientAvatarPlaceholder}>
-                  <Text style={styles.patientAvatarInitials}>
-                    {nextAppt?.patientName ? nextAppt.patientName.charAt(0).toUpperCase() : 'P'}
-                  </Text>
-                </View>
+                {(nextAppt.patientAvatarUrl || nextAppt.patient?.profileImageUrl || nextAppt.patient?.avatarUrl || nextAppt.patient?.avatar) ? (
+                  <Image
+                    source={{ uri: nextAppt.patientAvatarUrl || nextAppt.patient?.profileImageUrl || nextAppt.patient?.avatarUrl || nextAppt.patient?.avatar }}
+                    style={styles.patientAvatarImage}
+                  />
+                ) : (
+                  <View style={styles.patientAvatarPlaceholder}>
+                    <Text style={styles.patientAvatarInitials}>
+                      {nextAppt?.patientName ? nextAppt.patientName.charAt(0).toUpperCase() : 'P'}
+                    </Text>
+                  </View>
+                )}
 
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={styles.patientNameRow}>
@@ -251,6 +258,7 @@ export default function TherapistDashboardScreen({ navigation }) {
                   onPress={() =>
                     navigation.navigate('AppointmentDetails', {
                       appointmentId: nextAppt.id,
+                      appointment: nextAppt,
                       patientName: nextAppt.patientName,
                     })
                   }
@@ -579,6 +587,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0f2fe',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  patientAvatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#e0f2fe',
+    resizeMode: 'cover',
   },
   patientAvatarInitials: { fontSize: 18, fontWeight: '800', color: '#0284c7' },
   patientNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

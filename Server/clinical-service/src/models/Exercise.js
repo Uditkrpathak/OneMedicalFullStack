@@ -4,9 +4,16 @@ const ExerciseSchema = new mongoose.Schema({
   name:               { type: String, required: true, trim: true },
   title:              { type: String }, // alias for name
   description:        { type: String },
-  bodyPart:           { type: String }, // e.g. "Lower Back", "Knee"
-  bodyRegion:         { type: String, enum: ['spine', 'knee', 'shoulder', 'hip', 'ankle', 'neck', 'general'], default: 'general' },
-  category:           { type: String, enum: ['mobility', 'strengthening', 'stretching', 'stability', 'aerobic'], default: 'mobility' },
+  bodyPart:           { type: String, default: 'General' },
+  bodyRegion:         { type: String, default: 'general' },
+  category:           {
+    type: String,
+    enum: [
+      'mobility', 'strengthening', 'stretching', 'stability', 'aerobic', 'strength', 'flexibility', 'cardio', 'balance', 'endurance', 'general',
+      'Strength', 'Mobility', 'Flexibility', 'Strengthening', 'Stretching', 'Stability', 'Aerobic', 'Cardio', 'Balance', 'Endurance', 'General',
+    ],
+    default: 'mobility'
+  },
   difficulty:         { type: String, enum: ['beginner', 'intermediate', 'advanced'], default: 'beginner' },
   targetMuscles:      [{ type: String }],
   mediaUrl:           { type: String }, // S3 image/video URL
