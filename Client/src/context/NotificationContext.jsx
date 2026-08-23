@@ -46,7 +46,7 @@ export const NotificationProvider = ({ children, navigationRef }) => {
           patientName: data.patientName || notif.title,
         });
       } else {
-        navigationRef.navigate('AppointmentDetails', {
+        navigationRef.navigate('AppointmentDetail', {
           appointmentId: data.appointmentId || notif.id,
         });
       }

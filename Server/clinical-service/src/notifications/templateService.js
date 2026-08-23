@@ -247,10 +247,12 @@ export const renderNotificationContent = ({
 
     case 'medical_record.uploaded':
       return {
-        title: 'New Medical Document Uploaded 📁',
-        message: `Patient ${data.patientName || 'Patient'} uploaded a new ${data.category || 'medical record'} for clinical review.`,
+        title: isTherapist ? 'New Medical Document Uploaded 📁' : 'New Medical Report Available 📁',
+        message: isTherapist
+          ? `Patient ${data.patientName || 'Patient'} uploaded a new ${data.category || 'medical record'} for clinical review.`
+          : `${data.doctorName || 'Your Specialist'} uploaded a new ${data.category?.replace(/_/g, ' ') || 'medical report'} (${data.title || 'Report'}) to your Health Vault.`,
         email: null,
-        sms: null,
+        sms: isTherapist ? null : `OneMedical: A new medical document (${data.title || 'Report'}) has been added to your Health Vault by ${data.doctorName || 'your specialist'}.`,
       };
 
     case 'medical_record.verified':

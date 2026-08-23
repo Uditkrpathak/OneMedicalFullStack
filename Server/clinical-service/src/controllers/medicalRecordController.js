@@ -3,6 +3,7 @@ import { hasActiveCareRelationship } from '../utils/careRelationship.js';
 import storageProvider from '../utils/storage/storageProvider.js';
 import clinicalProcessor from '../notifications/clinicalProcessor.js';
 import { logAudit } from '../utils/audit.js';
+import { publishEvent } from '../utils/rabbitmq.js';
 
 // ─── 1. GET PRESIGNED UPLOAD URL ──────────────────────────────────────────────
 export const getPresignedUploadUrl = async (req, res) => {
@@ -143,6 +144,21 @@ export const createMedicalRecord = async (req, res) => {
       visibleToPatient: true,
       isDeleted: false
     });
+
+    try {
+      await publishEvent('medical_record.uploaded', {
+        eventId: `MR_UPLOAD:${record._id}_${Date.now()}`,
+        type: 'medical_record.uploaded',
+        patientId: targetPatientId.toString(),
+        title: record.title,
+        category: record.category,
+        doctorName: record.doctorName || 'Your Specialist',
+        recordId: record._id.toString(),
+        route: 'MedicalRecordsVault',
+      });
+    } catch (evtErr) {
+      console.warn('[MedicalRecord] Notification publish error:', evtErr.message);
+    }
 
     res.status(201).json({
       success: true,

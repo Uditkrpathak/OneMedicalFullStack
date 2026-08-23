@@ -17,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { API_URL } from '../../../shared/config';
 import paymentApi from '../../payments/api';
 import { useNotification } from '../../../context/NotificationContext';
+import { getDoctorAvatarSource } from '../../../utils/doctorImages';
 
 const { width } = Dimensions.get('window');
 
@@ -281,56 +282,106 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* Patient Hero Profile Card */}
-        <View style={styles.patientHeroCard}>
-          <View style={styles.heroAvatarContainer}>
-            {(apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl || (user?.role === 'patient' ? (user?.profileImageUrl || user?.avatarUrl || user?.avatar) : null)) ? (
+        {/* Role-Aware Hero Profile Card */}
+        {user?.role === 'therapist' ? (
+          /* THERAPIST VIEW: Patient clinical card & vitals */
+          <View style={styles.patientHeroCard}>
+            <View style={styles.heroAvatarContainer}>
+              {(apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl) ? (
+                <Image
+                  source={{ uri: apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl }}
+                  style={styles.avatarLargeImage}
+                />
+              ) : (
+                <View style={styles.avatarLargeCircle}>
+                  <Text style={styles.avatarLargeText}>{String(snapshot.patientName || 'P').charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.heroInfoCenter}>
+              <View style={styles.heroNameRow}>
+                <Text style={styles.heroPatientName}>{snapshot.patientName}</Text>
+                <View style={[styles.confirmedBadge, { backgroundColor: statusBadge.bg }]}>
+                  <Text style={[styles.confirmedBadgeText, { color: statusBadge.text }]}>{statusBadge.label}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.heroSubText}>
+                {snapshot.age ? `${snapshot.age}y, ` : ''}{snapshot.gender} • ID: {snapshot.patientIdFormatted}
+              </Text>
+
+              <View style={styles.heroChipsRow}>
+                <View style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>{snapshot.serviceCategory || 'Physiotherapy'}</Text>
+                </View>
+                <View style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>{snapshot.lastVisitDate === 'Initial Session' ? 'Initial Evaluation' : 'Follow-up'}</Text>
+                </View>
+              </View>
+
+              {/* Vitals Meters */}
+              <View style={styles.heroMetersRow}>
+                <View style={styles.meterBox}>
+                  <Text style={styles.meterLab}>PAIN SCORE</Text>
+                  <Text style={styles.meterVal}>{snapshot.painScore}/10</Text>
+                </View>
+
+                <View style={styles.meterBox}>
+                  <Text style={styles.meterLab}>PROGRESS</Text>
+                  <Text style={styles.meterVal}>{snapshot.recoveryGoalProgress}%</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : (
+          /* PATIENT VIEW: Attending Doctor / Specialist Card */
+          <View style={styles.patientHeroCard}>
+            <View style={styles.heroAvatarContainer}>
               <Image
-                source={{ uri: apptDoc.patientAvatarUrl || ctxSnapshot.patientAvatarUrl || (user?.role === 'patient' ? (user?.profileImageUrl || user?.avatarUrl || user?.avatar) : null) }}
+                source={getDoctorAvatarSource(snapshot.therapistAvatarUrl || apptDoc.therapistAvatarUrl || snapshot.therapistName)}
                 style={styles.avatarLargeImage}
               />
-            ) : (
-              <View style={styles.avatarLargeCircle}>
-                <Text style={styles.avatarLargeText}>{String(snapshot.patientName || 'P').charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.heroInfoCenter}>
-            <View style={styles.heroNameRow}>
-              <Text style={styles.heroPatientName}>{snapshot.patientName}</Text>
-              <View style={[styles.confirmedBadge, { backgroundColor: statusBadge.bg }]}>
-                <Text style={[styles.confirmedBadgeText, { color: statusBadge.text }]}>{statusBadge.label}</Text>
-              </View>
             </View>
 
-            <Text style={styles.heroSubText}>
-              {snapshot.age ? `${snapshot.age}y, ` : ''}{snapshot.gender} • ID: {snapshot.patientIdFormatted}
-            </Text>
-
-            <View style={styles.heroChipsRow}>
-              <View style={styles.heroChip}>
-                <Text style={styles.heroChipText}>{snapshot.serviceCategory || 'Physiotherapy'}</Text>
-              </View>
-              <View style={styles.heroChip}>
-                <Text style={styles.heroChipText}>{snapshot.lastVisitDate === 'Initial Session' ? 'Initial Evaluation' : 'Follow-up'}</Text>
-              </View>
-            </View>
-
-            {/* Vitals Meters */}
-            <View style={styles.heroMetersRow}>
-              <View style={styles.meterBox}>
-                <Text style={styles.meterLab}>PAIN SCORE</Text>
-                <Text style={styles.meterVal}>{snapshot.painScore}/10</Text>
+            <View style={styles.heroInfoCenter}>
+              <View style={styles.heroNameRow}>
+                <Text style={styles.heroPatientName}>{snapshot.therapistName || 'Specialist Physiotherapist'}</Text>
+                <View style={[styles.confirmedBadge, { backgroundColor: statusBadge.bg }]}>
+                  <Text style={[styles.confirmedBadgeText, { color: statusBadge.text }]}>{statusBadge.label}</Text>
+                </View>
               </View>
 
-              <View style={styles.meterBox}>
-                <Text style={styles.meterLab}>PROGRESS</Text>
-                <Text style={styles.meterVal}>{snapshot.recoveryGoalProgress}%</Text>
+              <Text style={styles.heroSubText}>
+                Attending Specialist • {snapshot.serviceCategory || 'Physiotherapy'}
+              </Text>
+
+              <View style={styles.heroChipsRow}>
+                <View style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>Verified Specialist</Text>
+                </View>
+                <View style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>Ref: {snapshot.patientIdFormatted}</Text>
+                </View>
+              </View>
+
+              {/* Patient Booking Summary Meters */}
+              <View style={styles.heroMetersRow}>
+                <View style={styles.meterBox}>
+                  <Text style={styles.meterLab}>CONSULTATION FEE</Text>
+                  <Text style={styles.meterVal}>₹{snapshot.amount}</Text>
+                </View>
+
+                <View style={styles.meterBox}>
+                  <Text style={styles.meterLab}>PAYMENT STATUS</Text>
+                  <Text style={[styles.meterVal, { color: snapshot.paymentStatus === 'PAID' ? '#16a34a' : '#d97706', fontSize: 13 }]}>
+                    {snapshot.paymentStatus === 'PAID' ? 'PAID' : 'DUE'}
+                  </Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Schedule & Mode Cards */}
         <View style={styles.scheduleInfoCard}>
@@ -480,34 +531,19 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             <TouchableOpacity
               style={styles.quickAccessCard}
               onPress={() => {
-                if (snapshot.paymentStatus === 'PAID') {
-                  navigation.navigate('InvoiceDetails', {
-                    transactionId: snapshot.transactionId || snapshot.appointmentId || appointmentId,
-                    appointmentId,
-                  });
-                } else {
-                  if (user?.role === 'therapist') {
-                    handleOpenClinicDynamicQr();
-                  } else {
-                    Alert.alert(
-                      'Payment Pending (Pay at Clinic)',
-                      `The official GST Tax Invoice & receipt will be generated automatically once your payment of ₹${snapshot.amount} is collected at the clinic reception or settled via UPI QR.`,
-                      [
-                        { text: 'Pay Online Now', onPress: () => navigation.navigate('ChoosePayment', { appointmentId }) },
-                        { text: 'OK', style: 'cancel' }
-                      ]
-                    );
-                  }
-                }
+                navigation.navigate('InvoiceDetails', {
+                  transactionId: snapshot.transactionId || snapshot.appointmentId || appointmentId,
+                  appointmentId,
+                });
               }}
             >
               <Ionicons
-                name={snapshot.paymentStatus === 'PAID' ? "receipt-outline" : "wallet-outline"}
+                name={snapshot.paymentStatus === 'PAID' ? "receipt-outline" : "document-text-outline"}
                 size={22}
                 color={snapshot.paymentStatus === 'PAID' ? "#003D9B" : "#d97706"}
               />
               <Text style={styles.quickAccessText}>
-                {snapshot.paymentStatus === 'PAID' ? 'Tax Invoice' : 'Collect at Clinic'}
+                {snapshot.paymentStatus === 'PAID' ? 'Tax Invoice' : 'Proforma Invoice'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -563,21 +599,90 @@ export default function AppointmentDetailsScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         ) : (
-          <View>
-            {/* Start Consultation CTA */}
-            <TouchableOpacity
-              style={styles.startConsultationBtn}
-              activeOpacity={0.85}
-              onPress={() =>
-                navigation.navigate('ClinicalConsultation', {
-                  appointmentId,
-                  patientName: snapshot.patientName,
-                })
-              }
-            >
-              <Ionicons name="play" size={16} color="#ffffff" />
-              <Text style={styles.startConsultationText}>Start Consultation</Text>
-            </TouchableOpacity>
+          <View style={{ marginTop: 16 }}>
+            {/* THERAPIST ROLE: Start Clinical Consultation CTA */}
+            {user?.role === 'therapist' ? (
+              <TouchableOpacity
+                style={styles.startConsultationBtn}
+                activeOpacity={0.85}
+                onPress={() =>
+                  navigation.navigate('ClinicalConsultation', {
+                    appointmentId,
+                    patientName: snapshot.patientName,
+                  })
+                }
+              >
+                <Ionicons name="play" size={16} color="#ffffff" />
+                <Text style={styles.startConsultationText}>Start Clinical Consultation</Text>
+              </TouchableOpacity>
+            ) : (
+              /* PATIENT ROLE: Dynamic Visit Guidance & Payment Actions */
+              (() => {
+                const place = (snapshot.appointmentPlace || 'CLINIC').toUpperCase();
+                const isVideo = place === 'VIDEO';
+                const isHome = place === 'HOME';
+                const isPaid = snapshot.paymentStatus === 'PAID';
+                const amountDue = snapshot.amount ? (snapshot.amount > 5000 ? Math.round(snapshot.amount / 100) : snapshot.amount) : 500;
+
+                if (isVideo) {
+                  return (
+                    <TouchableOpacity
+                      style={[styles.startConsultationBtn, { backgroundColor: '#0284c7' }]}
+                      activeOpacity={0.85}
+                      onPress={() =>
+                        navigation.navigate('TelehealthRoom', {
+                          appointmentId,
+                          appointment: snapshot,
+                        })
+                      }
+                    >
+                      <Ionicons name="videocam" size={18} color="#ffffff" />
+                      <Text style={styles.startConsultationText}>Join Video Consultation</Text>
+                    </TouchableOpacity>
+                  );
+                }
+
+                if (!isPaid) {
+                  return (
+                    <View style={{ marginBottom: 8 }}>
+                      <View style={{ backgroundColor: '#fefce8', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#fef08a', marginBottom: 12 }}>
+                        <Text style={{ fontSize: 12, color: '#854d0e', fontWeight: '600', lineHeight: 17 }}>
+                          {isHome
+                            ? `🏠 Payment Due (₹${amountDue}): Settle online or with your visiting therapist.`
+                            : `📍 Payment Due (₹${amountDue}): Settle online or at the clinic reception.`}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.startConsultationBtn}
+                        activeOpacity={0.85}
+                        onPress={() =>
+                          navigation.navigate('ChoosePayment', {
+                            appointmentId,
+                            amount: amountDue,
+                          })
+                        }
+                      >
+                        <Ionicons name="card-outline" size={18} color="#ffffff" />
+                        <Text style={styles.startConsultationText}>Pay Now Online (₹{amountDue})</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
+
+                return (
+                  <View style={{ backgroundColor: '#f0fdf4', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: '#166534', fontWeight: '700', marginBottom: 2 }}>
+                      {isHome ? '🏠 Home Visit Confirmed' : '📍 In-Person Clinic Visit Confirmed'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#15803d', lineHeight: 16 }}>
+                      {isHome
+                        ? 'Your specialist will arrive at your destination address at the scheduled time.'
+                        : 'Please arrive at ONE MEDICAL Center 10 minutes prior to your scheduled time.'}
+                    </Text>
+                  </View>
+                );
+              })()
+            )}
 
             {/* Reschedule & Cancel Row */}
             <View style={styles.bottomSecondaryRow}>
