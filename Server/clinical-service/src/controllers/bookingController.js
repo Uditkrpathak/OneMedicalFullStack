@@ -189,14 +189,31 @@ export const createHold = async (req, res) => {
       const addrLine2 = typeof rawAddr === 'object' ? String(rawAddr.addressLine2 || '').trim() : '';
       const landmark = typeof rawAddr === 'object' ? String(rawAddr.landmark || '').trim() : '';
       const city = typeof rawAddr === 'object' ? String(rawAddr.city || '').trim() : '';
-      const state = typeof rawAddr === 'object' ? String(rawAddr.state || '').trim() : '';
+      const rawState = typeof rawAddr === 'object' ? String(rawAddr.state || '').trim() : '';
       const postalCode = typeof rawAddr === 'object' ? String(rawAddr.postalCode || rawAddr.pincode || '').trim() : '';
       const country = typeof rawAddr === 'object' ? String(rawAddr.country || 'India').trim() : 'India';
 
-      if (!addrLine1 || !city || !state || !postalCode) {
+      const inferState = (c = '', p = '', currentState = '') => {
+        const cityClean = String(c).trim().toLowerCase();
+        const pinClean = String(p).trim();
+        if (cityClean.includes('delhi') || pinClean.startsWith('11')) return 'Delhi';
+        if (cityClean.includes('bengaluru') || cityClean.includes('bangalore') || pinClean.startsWith('56')) return 'Karnataka';
+        if (cityClean.includes('mumbai') || cityClean.includes('pune') || pinClean.startsWith('40') || pinClean.startsWith('41')) return 'Maharashtra';
+        if (cityClean.includes('noida') || cityClean.includes('lucknow') || cityClean.includes('ghaziabad') || pinClean.startsWith('20')) return 'Uttar Pradesh';
+        if (cityClean.includes('gurgaon') || cityClean.includes('gurugram') || pinClean.startsWith('12')) return 'Haryana';
+        if (cityClean.includes('hyderabad') || pinClean.startsWith('50')) return 'Telangana';
+        if (cityClean.includes('chennai') || pinClean.startsWith('60')) return 'Tamil Nadu';
+        if (cityClean.includes('kolkata') || pinClean.startsWith('70')) return 'West Bengal';
+        if (cityClean.includes('jaipur') || pinClean.startsWith('30')) return 'Rajasthan';
+        return currentState || (cityClean ? cityClean.charAt(0).toUpperCase() + cityClean.slice(1) : '');
+      };
+
+      const state = rawState || inferState(city, postalCode, '');
+
+      if (!addrLine1 || !city || !postalCode) {
         return res.status(400).json({
           success: false,
-          error: { code: 'ADDRESS_INCOMPLETE', message: 'Complete address (Street, City, State, Pincode) is required for Home Visit consultations.' }
+          error: { code: 'ADDRESS_INCOMPLETE', message: 'Complete address (Street, City, Pincode) is required for Home Visit consultations.' }
         });
       }
 
@@ -228,7 +245,7 @@ export const createHold = async (req, res) => {
         addressLine2: addrLine2 || undefined,
         landmark: landmark || undefined,
         city,
-        state,
+        state: state || city,
         postalCode,
         country,
         location: hasValidCoords ? {
@@ -247,9 +264,9 @@ export const createHold = async (req, res) => {
             addressLine1: addrLine1,
             addressLine2: addrLine2,
             landmark,
-            city: city || 'Bengaluru',
-            state: state || 'Karnataka',
-            postalCode: postalCode || '560038',
+            city: city,
+            state: state || city,
+            postalCode: postalCode,
             country: country || 'India',
           };
           const eventId = `evt_addr_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;

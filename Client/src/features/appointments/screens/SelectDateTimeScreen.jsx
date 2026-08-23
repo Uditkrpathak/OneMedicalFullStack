@@ -92,14 +92,33 @@ export default function SelectDateTimeScreen({ route, navigation }) {
 
   const isHomeVisit = (route.params?.appointmentPlace || '').toUpperCase() === 'HOME' || route.params?.consultMode === 'home';
 
+  const inferState = (c = '', p = '', currentState = '') => {
+    const cityClean = String(c).trim().toLowerCase();
+    const pinClean = String(p).trim();
+    if (cityClean.includes('delhi') || pinClean.startsWith('11')) return 'Delhi';
+    if (cityClean.includes('bengaluru') || cityClean.includes('bangalore') || pinClean.startsWith('56')) return 'Karnataka';
+    if (cityClean.includes('mumbai') || cityClean.includes('pune') || pinClean.startsWith('40') || pinClean.startsWith('41')) return 'Maharashtra';
+    if (cityClean.includes('noida') || cityClean.includes('lucknow') || cityClean.includes('ghaziabad') || pinClean.startsWith('20')) return 'Uttar Pradesh';
+    if (cityClean.includes('gurgaon') || cityClean.includes('gurugram') || pinClean.startsWith('12')) return 'Haryana';
+    if (cityClean.includes('hyderabad') || pinClean.startsWith('50')) return 'Telangana';
+    if (cityClean.includes('chennai') || pinClean.startsWith('60')) return 'Tamil Nadu';
+    if (cityClean.includes('kolkata') || pinClean.startsWith('70')) return 'West Bengal';
+    if (cityClean.includes('jaipur') || pinClean.startsWith('30')) return 'Rajasthan';
+    return currentState || (cityClean ? cityClean.charAt(0).toUpperCase() + cityClean.slice(1) : '');
+  };
+
+  const rawSavedCity = user?.profile?.address?.city || user?.address?.city || '';
+  const rawSavedState = user?.profile?.address?.state || user?.address?.state || '';
+  const rawSavedPin = user?.profile?.address?.postalCode || user?.address?.postalCode || '';
+
   // Home Visit Address State
   const initialAddress = {
     addressLine1: user?.profile?.address?.addressLine1 || user?.address?.addressLine1 || '',
     addressLine2: user?.profile?.address?.addressLine2 || user?.address?.addressLine2 || '',
     landmark: user?.profile?.address?.landmark || user?.address?.landmark || '',
-    city: user?.profile?.address?.city || user?.address?.city || 'Bengaluru',
-    state: user?.profile?.address?.state || user?.address?.state || 'Karnataka',
-    postalCode: user?.profile?.address?.postalCode || user?.address?.postalCode || '',
+    city: rawSavedCity,
+    state: rawSavedState || inferState(rawSavedCity, rawSavedPin, ''),
+    postalCode: rawSavedPin,
     country: 'India',
   };
 
@@ -172,7 +191,13 @@ export default function SelectDateTimeScreen({ route, navigation }) {
       Alert.alert('Address Required', 'Please enter Flat/House No. and building details.');
       return;
     }
-    setHomeAddress({ ...tempAddress });
+    const autoState = inferState(tempAddress.city, tempAddress.postalCode, tempAddress.state);
+    const resolvedState = tempAddress.state?.trim() || autoState || tempAddress.city?.trim() || 'India';
+    const updated = {
+      ...tempAddress,
+      state: resolvedState,
+    };
+    setHomeAddress(updated);
     setIsAddressConfirmed(true);
     setShowAddressModal(false);
   };
@@ -357,14 +382,17 @@ export default function SelectDateTimeScreen({ route, navigation }) {
             {homeAddress.addressLine1 ? (
               <View style={styles.addressDisplayBox}>
                 <Text style={styles.addressDisplayText}>
-                  {[
-                    homeAddress.addressLine1,
-                    homeAddress.addressLine2,
-                    homeAddress.landmark ? `(Near ${homeAddress.landmark})` : null,
-                    homeAddress.city,
-                    homeAddress.state,
-                    homeAddress.postalCode ? `- ${homeAddress.postalCode}` : null,
-                  ].filter(Boolean).join(', ')}
+                  {(() => {
+                    const isSameCityState = (homeAddress.city || '').trim().toLowerCase() === (homeAddress.state || '').trim().toLowerCase();
+                    return [
+                      homeAddress.addressLine1,
+                      homeAddress.addressLine2,
+                      homeAddress.landmark ? `(Near ${homeAddress.landmark})` : null,
+                      homeAddress.city,
+                      !isSameCityState ? homeAddress.state : null,
+                      homeAddress.postalCode ? `- ${homeAddress.postalCode}` : null,
+                    ].filter(Boolean).join(', ');
+                  })()}
                 </Text>
               </View>
             ) : (
@@ -744,28 +772,47 @@ export default function SelectDateTimeScreen({ route, navigation }) {
 
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>City</Text>
+                  <Text style={styles.inputLabel}>City *</Text>
                   <TextInput
                     style={styles.textInput}
-                    placeholder="Bengaluru"
+                    placeholder="e.g. Delhi / Bengaluru"
                     placeholderTextColor="#94a3b8"
                     value={tempAddress.city}
-                    onChangeText={(val) => setTempAddress((prev) => ({ ...prev, city: val }))}
+                    onChangeText={(val) => {
+                      setTempAddress((prev) => {
+                        const autoState = inferState(val, prev.postalCode, prev.state);
+                        return { ...prev, city: val, state: autoState || prev.state };
+                      });
+                    }}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Pincode</Text>
+                  <Text style={styles.inputLabel}>State</Text>
                   <TextInput
                     style={styles.textInput}
-                    placeholder="560103"
+                    placeholder="e.g. Delhi"
                     placeholderTextColor="#94a3b8"
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    value={tempAddress.postalCode}
-                    onChangeText={(val) => setTempAddress((prev) => ({ ...prev, postalCode: val }))}
+                    value={tempAddress.state}
+                    onChangeText={(val) => setTempAddress((prev) => ({ ...prev, state: val }))}
                   />
                 </View>
               </View>
+
+              <Text style={styles.inputLabel}>Pincode *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. 110035"
+                placeholderTextColor="#94a3b8"
+                keyboardType="number-pad"
+                maxLength={6}
+                value={tempAddress.postalCode}
+                onChangeText={(val) => {
+                  setTempAddress((prev) => {
+                    const autoState = inferState(prev.city, val, prev.state);
+                    return { ...prev, postalCode: val, state: autoState || prev.state };
+                  });
+                }}
+              />
 
               <TouchableOpacity
                 style={styles.saveAddressModalBtn}
