@@ -288,13 +288,11 @@ export const assignProgram = async (req, res) => {
       });
     }
 
-    // Only pause previous active programs if explicitly requested
-    if (req.body.replaceExisting === true) {
-      await PatientProgram.updateMany(
-        { patientId: patientId.toString(), status: 'active' },
-        { $set: { status: 'paused' } }
-      );
-    }
+    // Automatically supersede previous active programs so the newly prescribed routine is active
+    await PatientProgram.updateMany(
+      { patientId: patientId.toString(), status: 'active' },
+      { $set: { status: 'completed' } }
+    );
 
     const assignment = await PatientProgram.create({
       patientId: patientId.toString(),
@@ -492,15 +490,25 @@ export const getTodaysExercises = async (req, res) => {
         thumbnailUrl: pe.thumbnailUrl || 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=600',
         instructions: pe.instructions ? [pe.instructions] : ['Execute with steady controlled form.'],
       }));
+    } else if (assignment.exerciseOverrides && assignment.exerciseOverrides.length > 0) {
+      // 2. Direct therapist prescribed exercise overrides
+      rawExercises = assignment.exerciseOverrides.map((eo) => ({
+        exerciseId: eo.exerciseId,
+        sets: eo.sets || 3,
+        reps: eo.reps || 10,
+        holdSeconds: eo.holdSeconds || 5,
+        restSeconds: eo.restSeconds || 30,
+        notes: eo.notes || '',
+      }));
     } else if (program.phases && program.phases.length > 0) {
-      // 2. Check if program has phased weekly exercises
+      // 3. Check if program has phased weekly exercises
       const currentPhase = program.phases.find(p => p.week === currentWeek) || program.phases[0];
       rawExercises = currentPhase?.exercises || [];
     } else if (program.exercises && program.exercises.length > 0) {
-      // 3. Fallback to general program exercises if phases empty
+      // 4. Fallback to general program exercises if phases empty
       rawExercises = program.exercises;
     } else {
-      // 4. Fallback to all active exercises if template exercises not explicitly linked
+      // 5. Fallback to active exercises if template exercises not explicitly linked
       const defaultExList = await Exercise.find({ isDeleted: { $ne: true } }).limit(4).lean();
       rawExercises = defaultExList.map(e => ({ exerciseId: e, sets: 3, reps: 10, holdSeconds: 5, restSeconds: 30 }));
     }
