@@ -133,33 +133,65 @@ export default function TherapistPatientListScreen({ navigation }) {
             </Text>
           )}
 
-          {/* Compliance & Progress Bar */}
+          {/* Recovery & Compliance Stats Row */}
           <View style={styles.complianceRow}>
-            <Text style={styles.complianceLabel}>Compliance</Text>
-            <View style={styles.progressBarTrack}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  {
-                    width: `${Math.min(item.complianceRate || 75, 100)}%`,
-                    backgroundColor:
-                      (item.complianceRate || 75) > 80
-                        ? '#16a34a'
-                        : (item.complianceRate || 75) > 50
-                        ? '#f59e0b'
-                        : '#dc2626',
-                  },
-                ]}
-              />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.complianceLabel}>Recovery Progress</Text>
+              <View style={styles.progressBarTrack}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: `${Math.min(item.recoveryScore || item.complianceRate || 36, 100)}%`,
+                      backgroundColor:
+                        (item.recoveryScore || item.complianceRate || 36) > 70
+                          ? '#16a34a'
+                          : (item.recoveryScore || item.complianceRate || 36) > 40
+                          ? '#003D9B'
+                          : '#f59e0b',
+                    },
+                  ]}
+                />
+              </View>
             </View>
-            <Text style={styles.complianceValue}>{item.complianceRate || 75}%</Text>
+            <Text style={styles.complianceValue}>{item.recoveryScore || item.complianceRate || 36}%</Text>
           </View>
         </View>
 
         {/* Action Buttons Footer */}
         <View style={styles.cardActionsRow}>
           <TouchableOpacity
-            style={styles.actionBtnPrimary}
+            style={styles.actionBtnRecovery}
+            activeOpacity={0.8}
+            onPress={() =>
+              navigation.navigate('RecoveryAnalytics', {
+                patientId: item.userId || item.patientId || item._id,
+                patientName: item.name,
+                programId: item.activeProgramId,
+              })
+            }
+          >
+            <Ionicons name="pulse" size={15} color="#ffffff" style={{ marginRight: 5 }} />
+            <Text style={styles.actionBtnRecoveryText}>Recovery Trends</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtnPrescribe}
+            activeOpacity={0.8}
+            onPress={() =>
+              navigation.navigate('PrescribeProgram', {
+                patient: item,
+                patientId: item.userId || item.patientId || item._id,
+                patientName: item.name,
+              })
+            }
+          >
+            <Ionicons name="add-circle-outline" size={15} color="#003D9B" style={{ marginRight: 4 }} />
+            <Text style={styles.actionBtnPrescribeText}>Prescribe</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtnSecondary}
             activeOpacity={0.8}
             onPress={() =>
               navigation.navigate('PatientDetail', {
@@ -168,8 +200,7 @@ export default function TherapistPatientListScreen({ navigation }) {
               })
             }
           >
-            <Ionicons name="document-text-outline" size={15} color="#ffffff" style={{ marginRight: 5 }} />
-            <Text style={styles.actionBtnPrimaryText}>Clinical Chart</Text>
+            <Ionicons name="document-text-outline" size={16} color="#003D9B" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -185,20 +216,6 @@ export default function TherapistPatientListScreen({ navigation }) {
           >
             <Ionicons name="chatbubbles-outline" size={16} color="#003D9B" />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtnSecondary}
-            activeOpacity={0.8}
-            onPress={() =>
-              navigation.navigate('VideoCall', {
-                recipientId: item.userId || item.patientId || item._id,
-                recipientName: item.name,
-                isCaller: true,
-              })
-            }
-          >
-            <Ionicons name="videocam-outline" size={16} color="#003D9B" />
-          </TouchableOpacity>
         </View>
       </View>
     );
@@ -208,14 +225,16 @@ export default function TherapistPatientListScreen({ navigation }) {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Top Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={22} color="#0f172a" />
-        </TouchableOpacity>
+        {navigation.canGoBack() && (
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={22} color="#0f172a" />
+          </TouchableOpacity>
+        )}
 
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Assigned Patients</Text>
+          <Text style={styles.headerTitle}>Patient Recovery & Roster</Text>
           <Text style={styles.headerSubtitle}>
-            {filteredPatients.length} active patient roster records
+            Track rehabilitation progression, compliance & pain trends
           </Text>
         </View>
 
@@ -502,8 +521,8 @@ const styles = StyleSheet.create({
     marginTop: 14,
     gap: 8,
   },
-  actionBtnPrimary: {
-    flex: 1,
+  actionBtnRecovery: {
+    flex: 1.2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -511,10 +530,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
   },
-  actionBtnPrimaryText: {
-    fontSize: 13,
+  actionBtnRecoveryText: {
+    fontSize: 12,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  actionBtnPrescribe: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eff6ff',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  actionBtnPrescribeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#003D9B',
   },
   actionBtnSecondary: {
     width: 40,

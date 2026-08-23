@@ -172,7 +172,9 @@ function TherapistTabs() {
           let iconName;
 
           if (route.name === 'Dashboard') {
-            iconName = focused ? 'people' : 'people-outline';
+            iconName = focused ? 'speedometer' : 'speedometer-outline';
+          } else if (route.name === 'Recovery') {
+            iconName = focused ? 'pulse' : 'pulse-outline';
           } else if (route.name === 'Appointments') {
             iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === 'Consultations' || route.name === 'Chat') {
@@ -185,7 +187,8 @@ function TherapistTabs() {
         },
       })}
     >
-      <Tab.Screen name="Dashboard" component={TherapistDashboardScreen} options={{ tabBarLabel: 'Patients' }} />
+      <Tab.Screen name="Dashboard" component={TherapistDashboardScreen} options={{ tabBarLabel: 'Overview' }} />
+      <Tab.Screen name="Recovery" component={TherapistPatientListScreen} options={{ tabBarLabel: 'Recovery' }} />
       <Tab.Screen name="Appointments" component={TherapistScheduleScreen} options={{ tabBarLabel: 'Schedule' }} />
       <Tab.Screen name="Consultations" component={ConversationsListScreen} options={{ tabBarLabel: 'Messages' }} />
       <Tab.Screen name="Profile" component={ProfileSettingsScreen} options={{ tabBarLabel: 'Settings' }} />
@@ -264,10 +267,11 @@ export default function AppNavigator() {
           <Stack.Screen name="TodaysSession" component={TodaysSessionScreen} />
           <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
           <Stack.Screen name="ExerciseTimerActive" component={ExerciseTimerActiveScreen} />
-          <Stack.Screen name="ExerciseProgress" component={ExerciseProgressScreen} />
           <Stack.Screen name="SessionComplete" component={SessionCompleteScreen} />
-          <Stack.Screen name="RecoveryProgressAnalytics" component={RecoveryProgressAnalyticsScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="RecoveryProgressAnalytics" component={RecoveryProgressAnalyticsScreen} />
+          <Stack.Screen name="RecoveryAnalytics" component={RecoveryProgressAnalyticsScreen} />
+          <Stack.Screen name="RecoveryProgress" component={RecoveryProgressAnalyticsScreen} />
           <Stack.Screen name="TherapistDetail" component={TherapistDetailScreen} />
           <Stack.Screen name="SelectDateTime" component={SelectDateTimeScreen} />
           <Stack.Screen name="ChoosePayment" component={ChoosePaymentScreen} />

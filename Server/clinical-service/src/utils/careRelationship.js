@@ -10,12 +10,19 @@ export const hasActiveCareRelationship = async (therapistId, patientId) => {
   if (!therapistId || !patientId) return false;
 
   const therapistIds = await resolveTherapistIds(therapistId);
+  const pIdStr = patientId.toString();
 
-  // 1. Check if the therapist has any booked/confirmed/completed appointment with this patient
+  // 1. Check if the therapist has any booked/confirmed/completed/documented appointment with this patient
   const appointment = await Appointment.findOne({
     therapistId: { $in: therapistIds },
-    patientId: patientId.toString(),
-    status: { $in: ['CONFIRMED', 'HELD', 'COMPLETED', 'SCHEDULED', 'IN_PROGRESS', 'confirmed', 'completed', 'scheduled', 'in_progress', 'rescheduled', 'hold'] },
+    patientId: pIdStr,
+    status: {
+      $in: [
+        'CONFIRMED', 'HELD', 'COMPLETED', 'SCHEDULED', 'IN_PROGRESS',
+        'confirmed', 'completed', 'scheduled', 'in_progress', 'rescheduled',
+        'hold', 'DOCUMENTED', 'documented', 'CHECKED_IN', 'checked_in'
+      ]
+    },
     isDeleted: false
   });
 
@@ -25,9 +32,11 @@ export const hasActiveCareRelationship = async (therapistId, patientId) => {
   const patientProgram = await PatientProgram.findOne({
     $or: [
       { therapistId: { $in: therapistIds } },
-      { assignedBy: { $in: therapistIds } }
+      { assignedBy: { $in: therapistIds } },
+      { therapistId: 'system' },
+      { assignedBy: 'system' }
     ],
-    patientId: patientId.toString(),
+    patientId: pIdStr,
     isDeleted: false
   });
 
