@@ -856,14 +856,19 @@ export const getInvoiceById = async (req, res) => {
 
     const isRefunded = txn?.status === 'refunded' || txn?.status === 'REFUNDED' || appt?.paymentStatus === 'REFUNDED' || invoice?.status === 'REFUNDED';
     const isRefundPending = txn?.status === 'refund_pending' || txn?.status === 'REFUND_PENDING' || appt?.paymentStatus === 'REFUND_PENDING' || invoice?.status === 'REFUND_PENDING';
-    const isPaid = (txn?.status === 'captured' || txn?.status === 'CAPTURED' || txn?.status === 'paid' || txn?.status === 'PAID' || appt?.paymentStatus === 'PAID' || invoice?.status === 'PAID');
+    const isPaid = (txn?.status === 'captured' || txn?.status === 'CAPTURED' || txn?.status === 'paid' || txn?.status === 'PAID' || appt?.paymentStatus === 'PAID' || (invoice && invoice.status === 'PAID' && txn));
+
+    // Self-healing: If payment is captured or invoice is paid, but clinical appointment is still pending, heal clinical appointment immediately
+    if (isPaid && appt && appt.paymentStatus !== 'PAID' && targetApptId) {
+      confirmAppointmentInternal(targetApptId, txn?.gatewayOrderId || txn?.razorpayOrderId, txn?.gatewayPaymentId || txn?.razorpayPaymentId, txn?._id || invoice?.transactionId).catch(() => null);
+    }
 
     let resolvedStatus = 'PENDING';
     if (isRefunded) resolvedStatus = 'REFUNDED';
     else if (isRefundPending) resolvedStatus = 'REFUND_PENDING';
     else if (isPaid) resolvedStatus = 'PAID';
 
-    const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`;
+    const invNumber = invoice?.invoiceNumber || txn?.invoiceNumber || (resolvedStatus === 'PAID' ? `INV-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}` : `PRO-${new Date().getFullYear()}-${String(id).slice(-5).toUpperCase()}`);
     const genDate = invoice?.generatedAt || txn?.capturedAt || txn?.createdAt || appt?.createdAt || new Date();
     const apptPlace = (appt?.appointmentPlace || invoice?.appointmentPlace || 'CLINIC').toUpperCase();
     const serviceName = appt?.serviceName || appt?.serviceType?.replace(/_/g, ' ') || invoice?.serviceName || 'Physiotherapy Consultation';
@@ -961,6 +966,7 @@ export const getPaymentStatus = async (req, res) => {
         appointmentId: txn.appointmentId,
         transactionId: txn._id,
         status: isPaid ? 'PAID' : (txn.status?.toUpperCase() || 'PENDING'),
+        paymentStatus: isPaid ? 'PAID' : (txn.status?.toUpperCase() || 'PENDING'),
         isPaid,
         gatewayOrderId: txn.gatewayOrderId || txn.razorpayOrderId,
         gatewayPaymentId: txn.gatewayPaymentId || txn.razorpayPaymentId,

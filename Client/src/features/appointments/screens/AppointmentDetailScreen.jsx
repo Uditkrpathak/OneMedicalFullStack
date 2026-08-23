@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,9 +13,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector } from 'react-redux';
 import appointmentApi from '../api';
+import paymentApi from '../../payments/api';
 import { getDoctorAvatarSource, getDoctorImageUri } from '../../../utils/doctorImages';
 
 const { width } = Dimensions.get('window');
@@ -40,7 +42,7 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     address: initialBooking.address || 'ONE MEDICAL Center, Indiranagar, Bangalore',
     receiptId: initialBooking.receiptId || (appointmentId ? `#RC-${String(appointmentId).slice(-8).toUpperCase()}` : '—'),
     amount: initialBooking.amount || 0,
-    paymentStatus: initialBooking.paymentStatus || 'PAID',
+    paymentStatus: initialBooking.paymentStatus || 'PENDING',
     therapistPhone: initialBooking.therapistPhone || '+91 80 4965 2100',
     ratingAvg: initialBooking.ratingAvg || 4.9,
     avatar: getDoctorImageUri(initialBooking.avatar || initialBooking.doctorName),
@@ -92,124 +94,137 @@ export default function AppointmentDetailScreen({ route, navigation }) {
     return `Starts in ${calendarDayDiff} days`;
   };
 
-  useEffect(() => {
+  const fetchAppt = useCallback(async () => {
     if (!appointmentId) return;
-    const fetchAppt = async () => {
-      try {
-        const res = await appointmentApi.getAppointmentById(appointmentId, token);
-        if (res.success && res.data) {
-          const a = res.data.appointment || res.data;
-          const sDate = a.startTime ? new Date(a.startTime) : null;
-          let dateStr = a.dateString || a.date || 'Scheduled Consultation';
-          if (sDate && !isNaN(sDate.getTime())) {
-            try {
-              dateStr = `${sDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
-            } catch (e) {
-              dateStr = `${sDate.toDateString()} • ${sDate.toTimeString().slice(0, 5)}`;
-            }
+    try {
+      const res = await appointmentApi.getAppointmentById(appointmentId, token);
+      if (res.success && res.data) {
+        const a = res.data.appointment || res.data;
+        const sDate = a.startTime ? new Date(a.startTime) : null;
+        let dateStr = a.dateString || a.date || 'Scheduled Consultation';
+        if (sDate && !isNaN(sDate.getTime())) {
+          try {
+            dateStr = `${sDate.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })} • ${sDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+          } catch (e) {
+            dateStr = `${sDate.toDateString()} • ${sDate.toTimeString().slice(0, 5)}`;
           }
-
-          const serviceClean = (a.serviceName || a.serviceType || 'Physiotherapy Consultation')
-            .replace(/_/g, ' ')
-            .toLowerCase()
-            .replace(/\b\w/g, c => c.toUpperCase());
-
-          const clinicClean = a.appointmentPlace === 'HOME'
-            ? 'Home Visit Consultation'
-            : (a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth')
-            ? 'Virtual Telehealth Consultation'
-            : 'In-Clinic Rehabilitation';
-
-          let therapistData = null;
-          if (a.therapistId) {
-            try {
-              const therRes = await appointmentApi.getTherapistById(a.therapistId, token);
-              if (therRes.success && therRes.data) {
-                therapistData = therRes.data;
-                setTherapistInfo(therapistData);
-              }
-            } catch (err) {
-              console.warn('[AppointmentDetail] therapist fetch err:', err.message);
-            }
-          }
-
-          const resolveLocationString = (loc) => {
-            if (!loc) return '';
-            if (typeof loc === 'string') return loc;
-            if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
-            return String(loc);
-          };
-
-          const resolvedDoctorName = typeof (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName) === 'string'
-            ? (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName)
-            : 'Dr. Attending Specialist';
-          const resolvedPhone = typeof (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone) === 'string'
-            ? (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone)
-            : '+91 80 4965 2100';
-          const resolvedRating = therapistData?.ratingAvg && therapistData.ratingAvg > 0 ? therapistData.ratingAvg : (a.ratingAvg || 4.9);
-          const resolvedClinicLocation = resolveLocationString(therapistData?.clinicLocation)
-            || resolveLocationString(a.clinicLocation)
-            || (typeof a.clinicName === 'string' ? a.clinicName : '')
-            || 'ONE MEDICAL Center, Indiranagar, Bangalore';
-
-          const isVideo = a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth';
-          const isHome = a.appointmentPlace === 'HOME';
-
-          let dynamicChecklist = [];
-          if (isVideo) {
-            dynamicChecklist = [
-              { id: 1, text: 'Ensure high-speed internet connection and quiet, well-lit room', checked: false },
-              { id: 2, text: 'Position camera at full-body height for posture & movement examination', checked: false },
-              { id: 3, text: 'Keep exercise mat or resistance band nearby if recommended', checked: false },
-            ];
-          } else if (isHome) {
-            dynamicChecklist = [
-              { id: 1, text: 'Prepare an open 6x6 ft floor area for therapist evaluation drills', checked: false },
-              { id: 2, text: 'Wear comfortable athletic attire allowing full joint extension', checked: false },
-              { id: 3, text: 'Keep past surgery summaries and doctor prescriptions ready', checked: false },
-            ];
-          } else {
-            dynamicChecklist = [
-              { id: 1, text: 'Arrive 10 mins prior for range-of-motion & vitals assessment', checked: false },
-              { id: 2, text: 'Wear comfortable, loose athletic clothing for physical evaluation', checked: false },
-              { id: 3, text: 'Bring recent MRI, X-ray scans or prescription records', checked: false },
-            ];
-          }
-          setChecklist(dynamicChecklist);
-
-          const rawAmount = a.amount || 0;
-          const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
-
-          setBooking(prev => ({
-            ...prev,
-            ...a,
-            _id: a._id,
-            id: `#APT-${String(a._id).slice(-8).toUpperCase()}`,
-            doctorName: resolvedDoctorName,
-            status: (a.status || 'CONFIRMED').toUpperCase(),
-            startTime: a.startTime,
-            date: dateStr,
-            service: resolveLocationString(serviceClean) || 'Physiotherapy Consultation',
-            duration: `${a.durationMin || 30} mins`,
-            clinic: resolveLocationString(clinicClean) || resolveLocationString(a.clinicName) || 'ONE MEDICAL Central Clinic',
-            address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (resolveLocationString(user?.address) || 'Patient Registered Residence') : resolvedClinicLocation),
-            receiptId: a.paymentId ? `#RC-${String(a.paymentId).slice(-8).toUpperCase()}` : `#RC-${String(a._id).slice(-8).toUpperCase()}`,
-            amount: cleanAmount,
-            therapistPhone: resolvedPhone,
-            ratingAvg: resolvedRating,
-            avatar: a.therapistAvatarUrl || a.avatarUrl || getDoctorImageUri(therapistData || resolvedDoctorName),
-            avatarUrl: a.therapistAvatarUrl || a.avatarUrl,
-            therapistAvatarUrl: a.therapistAvatarUrl,
-          }));
         }
-      } catch (e) {
-        console.warn('Error fetching appointment:', e.message);
-      } finally {
-        setLoading(false);
+
+        const serviceClean = (a.serviceName || a.serviceType || 'Physiotherapy Consultation')
+          .replace(/_/g, ' ')
+          .toLowerCase()
+          .replace(/\b\w/g, c => c.toUpperCase());
+
+        const clinicClean = a.appointmentPlace === 'HOME'
+          ? 'Home Visit Consultation'
+          : (a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth')
+          ? 'Virtual Telehealth Consultation'
+          : 'In-Clinic Rehabilitation';
+
+        let therapistData = null;
+        if (a.therapistId) {
+          try {
+            const therRes = await appointmentApi.getTherapistById(a.therapistId, token);
+            if (therRes.success && therRes.data) {
+              therapistData = therRes.data;
+              setTherapistInfo(therapistData);
+            }
+          } catch (err) {
+            console.warn('[AppointmentDetail] therapist fetch err:', err.message);
+          }
+        }
+
+        const resolveLocationString = (loc) => {
+          if (!loc) return '';
+          if (typeof loc === 'string') return loc;
+          if (typeof loc === 'object') return loc.address || loc.clinicName || loc.name || '';
+          return String(loc);
+        };
+
+        const resolvedDoctorName = typeof (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName) === 'string'
+          ? (therapistData?.user?.name || therapistData?.name || a.therapistName || booking.doctorName)
+          : 'Dr. Attending Specialist';
+        const resolvedPhone = typeof (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone) === 'string'
+          ? (therapistData?.phoneNumber || therapistData?.user?.phoneNumber || a.therapistPhone)
+          : '+91 80 4965 2100';
+        const resolvedRating = therapistData?.ratingAvg && therapistData.ratingAvg > 0 ? therapistData.ratingAvg : (a.ratingAvg || 4.9);
+        const resolvedClinicLocation = resolveLocationString(therapistData?.clinicLocation)
+          || resolveLocationString(a.clinicLocation)
+          || (typeof a.clinicName === 'string' ? a.clinicName : '')
+          || 'ONE MEDICAL Center, Indiranagar, Bangalore';
+
+        const isVideo = a.appointmentPlace === 'VIDEO' || a.appointmentType === 'telehealth';
+        const isHome = a.appointmentPlace === 'HOME';
+
+        let dynamicChecklist = [];
+        if (isVideo) {
+          dynamicChecklist = [
+            { id: 1, text: 'Ensure high-speed internet connection and quiet, well-lit room', checked: false },
+            { id: 2, text: 'Position camera at full-body height for posture & movement examination', checked: false },
+            { id: 3, text: 'Keep exercise mat or resistance band nearby if recommended', checked: false },
+          ];
+        } else if (isHome) {
+          dynamicChecklist = [
+            { id: 1, text: 'Prepare an open 6x6 ft floor area for therapist evaluation drills', checked: false },
+            { id: 2, text: 'Wear comfortable athletic attire allowing full joint extension', checked: false },
+            { id: 3, text: 'Keep past surgery summaries and doctor prescriptions ready', checked: false },
+          ];
+        } else {
+          dynamicChecklist = [
+            { id: 1, text: 'Arrive 10 mins prior for range-of-motion & vitals assessment', checked: false },
+            { id: 2, text: 'Wear comfortable, loose athletic clothing for physical evaluation', checked: false },
+            { id: 3, text: 'Bring recent MRI, X-ray scans or prescription records', checked: false },
+          ];
+        }
+        setChecklist(dynamicChecklist);
+
+        const rawAmount = a.amount || 0;
+        const cleanAmount = rawAmount > 5000 ? Math.round(rawAmount / 100) : rawAmount;
+
+        // Verify payment status with payment gateway service to ensure sync
+        let verifiedPaymentStatus = (a.paymentStatus || 'PENDING').toUpperCase();
+        try {
+          const payStatusRes = await paymentApi.getPaymentStatus(appointmentId, token);
+          if (payStatusRes?.success && (payStatusRes.data?.paymentStatus === 'PAID' || payStatusRes.data?.status === 'PAID')) {
+            verifiedPaymentStatus = 'PAID';
+          }
+        } catch {}
+
+        setBooking(prev => ({
+          ...prev,
+          ...a,
+          _id: a._id,
+          id: `#APT-${String(a._id).slice(-8).toUpperCase()}`,
+          doctorName: resolvedDoctorName,
+          status: (a.status || 'CONFIRMED').toUpperCase(),
+          paymentStatus: verifiedPaymentStatus,
+          startTime: a.startTime,
+          date: dateStr,
+          service: resolveLocationString(serviceClean) || 'Physiotherapy Consultation',
+          duration: `${a.durationMin || 30} mins`,
+          clinic: resolveLocationString(clinicClean) || resolveLocationString(a.clinicName) || 'ONE MEDICAL Central Clinic',
+          address: isVideo ? 'Online Secure Video Consultation Room' : (isHome ? (resolveLocationString(user?.address) || 'Patient Registered Residence') : resolvedClinicLocation),
+          receiptId: a.paymentId ? `#RC-${String(a.paymentId).slice(-8).toUpperCase()}` : `#RC-${String(a._id).slice(-8).toUpperCase()}`,
+          amount: cleanAmount,
+          therapistPhone: resolvedPhone,
+          ratingAvg: resolvedRating,
+          avatar: a.therapistAvatarUrl || a.avatarUrl || getDoctorImageUri(therapistData || resolvedDoctorName),
+          avatarUrl: a.therapistAvatarUrl || a.avatarUrl,
+          therapistAvatarUrl: a.therapistAvatarUrl,
+        }));
       }
-    };
-    fetchAppt();
+    } catch (e) {
+      console.warn('Error fetching appointment:', e.message);
+    } finally {
+      setLoading(false);
+    }
   }, [appointmentId, token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAppt();
+    }, [fetchAppt])
+  );
 
   const [checklist, setChecklist] = useState([
     { id: 1, text: 'Arrive 10 mins prior for range-of-motion assessment', checked: false },

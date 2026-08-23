@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSelector } from 'react-redux';
 import paymentApi from '../api';
@@ -48,106 +49,99 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
   const [errorMsg, setErrorMsg] = useState(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
+  const fetchDetails = useCallback(async () => {
+    if (!transactionId) {
+      setErrorMsg('No invoice identifier provided.');
+      setLoading(false);
+      return;
+    }
 
-    const fetchDetails = async () => {
-      if (!transactionId) {
-        if (isMounted) {
-          setErrorMsg('No invoice identifier provided.');
-          setLoading(false);
-        }
-        return;
+    try {
+      const res = await paymentApi.getInvoiceById(transactionId, token);
+      if (res.success && res.data) {
+        const d = res.data;
+        const amtVal = d.totalAmount > 5000 ? Math.round(d.totalAmount / 100) : (d.totalAmount || 0);
+        const feeVal = d.consultationFee > 5000 ? Math.round(d.consultationFee / 100) : (d.consultationFee || amtVal);
+        const taxVal = d.taxes > 5000 ? Math.round(d.taxes / 100) : (d.taxes || 0);
+        const refVal = d.refundAmount > 5000 ? Math.round(d.refundAmount / 100) : (d.refundAmount || amtVal);
+
+        setInvoice({
+          ...d,
+          totalAmount: amtVal,
+          consultationFee: feeVal,
+          taxes: taxVal,
+          refundAmount: refVal,
+        });
+        setErrorMsg(null);
+      } else if (routeParams.amount || routeParams.doctorName) {
+        const rawAmt = routeParams.amount || 800;
+        const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+        const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
+        setInvoice({
+          _id: transactionId,
+          invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
+          transactionId: transactionId,
+          appointmentId: routeParams.appointmentId || transactionId,
+          doctorName: routeParams.doctorName || 'Dr. Specialist',
+          patientName: user?.name || 'Patient',
+          patientPhone: user?.phoneNumber || '+91 98765 43210',
+          serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
+          appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
+          totalAmount: amtVal,
+          consultationFee: amtVal,
+          taxes: 0,
+          discount: 0,
+          issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+          issuedTime: '11:30 AM',
+          gstin: '29AABCU9603R1ZM',
+          status: paramPayStatus,
+          paymentStatus: paramPayStatus,
+          paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
+        });
+        setErrorMsg(null);
+      } else {
+        setErrorMsg(res.error?.message || 'Invoice record not found in system.');
       }
-
-      try {
-        const res = await paymentApi.getInvoiceById(transactionId, token);
-        if (isMounted) {
-          if (res.success && res.data) {
-            const d = res.data;
-            const amtVal = d.totalAmount > 5000 ? Math.round(d.totalAmount / 100) : (d.totalAmount || 0);
-            const feeVal = d.consultationFee > 5000 ? Math.round(d.consultationFee / 100) : (d.consultationFee || amtVal);
-            const taxVal = d.taxes > 5000 ? Math.round(d.taxes / 100) : (d.taxes || 0);
-            const refVal = d.refundAmount > 5000 ? Math.round(d.refundAmount / 100) : (d.refundAmount || amtVal);
-
-            setInvoice({
-              ...d,
-              totalAmount: amtVal,
-              consultationFee: feeVal,
-              taxes: taxVal,
-              refundAmount: refVal,
-            });
-            setErrorMsg(null);
-          } else if (routeParams.amount || routeParams.doctorName) {
-            const rawAmt = routeParams.amount || 800;
-            const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
-            const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
-            setInvoice({
-              _id: transactionId,
-              invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
-              transactionId: transactionId,
-              appointmentId: routeParams.appointmentId || transactionId,
-              doctorName: routeParams.doctorName || 'Dr. Specialist',
-              patientName: user?.name || 'Patient',
-              patientPhone: user?.phoneNumber || '+91 98765 43210',
-              serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
-              appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
-              totalAmount: amtVal,
-              consultationFee: amtVal,
-              taxes: 0,
-              discount: 0,
-              issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-              issuedTime: '11:30 AM',
-              gstin: '29AABCU9603R1ZM',
-              status: paramPayStatus,
-              paymentStatus: paramPayStatus,
-              paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
-            });
-            setErrorMsg(null);
-          } else {
-            setErrorMsg(res.error?.message || 'Invoice record not found in system.');
-          }
-        }
-      } catch (err) {
-        if (isMounted) {
-          if (routeParams.amount || routeParams.doctorName) {
-            const rawAmt = routeParams.amount || 800;
-            const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
-            const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
-            setInvoice({
-              _id: transactionId,
-              invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
-              transactionId: transactionId,
-              appointmentId: routeParams.appointmentId || transactionId,
-              doctorName: routeParams.doctorName || 'Dr. Specialist',
-              patientName: user?.name || 'Patient',
-              patientPhone: user?.phoneNumber || '+91 98765 43210',
-              serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
-              appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
-              totalAmount: amtVal,
-              consultationFee: amtVal,
-              taxes: 0,
-              discount: 0,
-              issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
-              issuedTime: '11:30 AM',
-              gstin: '29AABCU9603R1ZM',
-              status: paramPayStatus,
-              paymentStatus: paramPayStatus,
-              paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
-            });
-            setErrorMsg(null);
-          } else {
-            setErrorMsg(err.message || 'Failed to fetch invoice details.');
-          }
-        }
-      } finally {
-        if (isMounted) setLoading(false);
+    } catch (err) {
+      if (routeParams.amount || routeParams.doctorName) {
+        const rawAmt = routeParams.amount || 800;
+        const amtVal = rawAmt > 5000 ? Math.round(rawAmt / 100) : rawAmt;
+        const paramPayStatus = (routeParams.paymentStatus || 'PENDING').toUpperCase();
+        setInvoice({
+          _id: transactionId,
+          invoiceNumber: routeParams.receiptId || `INV-${new Date().getFullYear()}-${String(transactionId).slice(-5).toUpperCase()}`,
+          transactionId: transactionId,
+          appointmentId: routeParams.appointmentId || transactionId,
+          doctorName: routeParams.doctorName || 'Dr. Specialist',
+          patientName: user?.name || 'Patient',
+          patientPhone: user?.phoneNumber || '+91 98765 43210',
+          serviceName: routeParams.serviceName || 'Physiotherapy Consultation',
+          appointmentPlace: routeParams.appointmentPlace || 'CLINIC',
+          totalAmount: amtVal,
+          consultationFee: amtVal,
+          taxes: 0,
+          discount: 0,
+          issuedDate: routeParams.dateStr || new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+          issuedTime: '11:30 AM',
+          gstin: '29AABCU9603R1ZM',
+          status: paramPayStatus,
+          paymentStatus: paramPayStatus,
+          paymentMethod: paramPayStatus === 'PAID' ? 'UPI (ONLINE)' : 'PAYMENT_PENDING',
+        });
+        setErrorMsg(null);
+      } else {
+        setErrorMsg(err.message || 'Failed to fetch invoice details.');
       }
-    };
+    } finally {
+      setLoading(false);
+    }
+  }, [transactionId, token, routeParams.amount, routeParams.doctorName, routeParams.paymentStatus]);
 
-    fetchDetails();
-    return () => { isMounted = false; };
-  }, [transactionId, token]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchDetails();
+    }, [fetchDetails])
+  );
 
   const statusStr = (invoice?.status || invoice?.paymentStatus || routeParams.paymentStatus || '').toUpperCase();
   const isPaid = statusStr === 'PAID' || statusStr === 'CAPTURED';
@@ -588,8 +582,8 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ACTION BUTTONS: PAY NOW (ONLY VISIBLE TO PATIENT) & DOWNLOAD */}
-        {isPending && user?.role === 'patient' ? (
+        {/* ACTION BUTTONS: PAY NOW (WHEN UNPAID) & DOWNLOAD */}
+        {isPending && (!user?.role || user?.role === 'patient' || user?.role === 'user') ? (
           <TouchableOpacity
             style={[styles.primaryActionBtn, { backgroundColor: '#003D9B', marginBottom: 12 }]}
             activeOpacity={0.88}
@@ -621,8 +615,8 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           style={[
             styles.primaryActionBtn,
             isRefunded && { backgroundColor: '#7e22ce' },
-            isPending && user?.role === 'patient' && { backgroundColor: '#f1f5f9' },
-            (!isPending || user?.role !== 'patient') && !isRefunded && { backgroundColor: '#003D9B' }
+            isPending && { backgroundColor: '#f1f5f9' },
+            !isPending && !isRefunded && { backgroundColor: '#003D9B' }
           ]}
           activeOpacity={0.88}
           onPress={handleDownloadPdf}
@@ -630,10 +624,10 @@ export default function InvoiceDetailsScreen({ route, navigation }) {
           <Ionicons
             name="download-outline"
             size={18}
-            color={(isPending && user?.role === 'patient') ? '#0f172a' : '#ffffff'}
+            color={isPending ? '#0f172a' : '#ffffff'}
             style={{ marginRight: 8 }}
           />
-          <Text style={[styles.primaryActionBtnText, (isPending && user?.role === 'patient') && { color: '#0f172a' }]}>
+          <Text style={[styles.primaryActionBtnText, isPending && { color: '#0f172a' }]}>
             {isRefunded ? 'Download PDF Credit Note' : (isPending ? 'Download Proforma Invoice' : 'Download PDF Tax Invoice')}
           </Text>
         </TouchableOpacity>

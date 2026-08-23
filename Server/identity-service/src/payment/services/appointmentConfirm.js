@@ -7,7 +7,7 @@ const getClinicalBaseUrl = () => {
 
 // Called after payment verification — tells clinical service to confirm the appointment
 export const confirmAppointmentInternal = async (appointmentId, paymentOrderId, paymentId, transactionId) => {
-  const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_production_2026';
+  const internalKey = process.env.INTERNAL_API_KEY || 'onemedical_internal_key_change_in_prod';
   const base = getClinicalBaseUrl();
 
   try {
@@ -19,7 +19,7 @@ export const confirmAppointmentInternal = async (appointmentId, paymentOrderId, 
         'x-user-role': 'clinic_admin',
         'x-user-id': 'system'
       },
-      body: JSON.stringify({ paymentOrderId, paymentId, transactionId }),
+      body: JSON.stringify({ paymentOrderId, paymentId, transactionId, paymentStatus: 'PAID' }),
     });
 
     if (res.status === 404) {
@@ -31,7 +31,7 @@ export const confirmAppointmentInternal = async (appointmentId, paymentOrderId, 
           'x-user-role': 'clinic_admin',
           'x-user-id': 'system'
         },
-        body: JSON.stringify({ paymentOrderId, paymentId, transactionId }),
+        body: JSON.stringify({ paymentOrderId, paymentId, transactionId, paymentStatus: 'PAID' }),
       });
     }
 
