@@ -8,6 +8,7 @@ import EmptyState from '../../../shared/components/EmptyState';
 
 export default function MedicalRecordsScreen({ navigation, route }) {
   const { token, user } = useSelector(state => state.auth);
+  const isTherapist = user?.role === 'therapist' || user?.role === 'clinic_admin';
   const patientId = route.params?.patientId || (user?.role === 'patient' ? (user?._id || user?.userId) : null);
   const patientName = route.params?.patientName || '';
 
@@ -16,10 +17,6 @@ export default function MedicalRecordsScreen({ navigation, route }) {
 
   const fetchRecords = async () => {
     if (!token) {
-      setLoading(false);
-      return;
-    }
-    if (user?.role === 'therapist' && !patientId) {
       setLoading(false);
       return;
     }
@@ -76,25 +73,43 @@ export default function MedicalRecordsScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
-        <Text style={styles.title}>Medical Records & Scans</Text>
-        <Text style={styles.subtitle}>Protected Health Information (PHI) encrypted and stored securely</Text>
+        <Text style={styles.title}>
+          {isTherapist ? 'Clinical Records & Patient Scans' : 'Medical Records & Scans'}
+        </Text>
+        <Text style={styles.subtitle}>
+          {isTherapist
+            ? 'Review and manage diagnostic reports, scans, and clinical documents across your patients'
+            : 'Protected Health Information (PHI) encrypted and stored securely'}
+        </Text>
       </View>
 
       {/* Upload Action Card */}
       <View style={styles.uploadCard}>
-        <Text style={styles.uploadTitle}>📄 Upload New Document</Text>
-        <Text style={styles.uploadDesc}>Upload MRI scans, X-Rays, or clinical doctor notes (PDF/JPEG).</Text>
+        <Text style={styles.uploadTitle}>
+          {isTherapist ? '📄 Upload Patient Document' : '📄 Upload New Document'}
+        </Text>
+        <Text style={styles.uploadDesc}>
+          {isTherapist
+            ? 'Upload MRI scans, X-Rays, prescriptions, or clinical notes for your patients (PDF/JPEG).'
+            : 'Upload MRI scans, X-Rays, or clinical doctor notes (PDF/JPEG).'}
+        </Text>
         <TouchableOpacity
           style={styles.uploadBtn}
-          onPress={() => navigation.navigate('AddMedicalRecord')}
+          onPress={() => navigation.navigate('AddMedicalRecord', patientId ? { patientId } : {})}
         >
-          <Text style={styles.uploadBtnText}>+ Add New Medical Document</Text>
+          <Text style={styles.uploadBtnText}>
+            {isTherapist ? '+ Upload Patient Medical Document' : '+ Add New Medical Document'}
+          </Text>
         </TouchableOpacity>
       </View>
 
       {/* Records List Header */}
       <View style={styles.sectionHeaderRow}>
-        <Text style={styles.sectionHeader}>Your Vault ({records.length} files)</Text>
+        <Text style={styles.sectionHeader}>
+          {isTherapist
+            ? (patientName ? `${patientName}'s Records (${records.length} files)` : `Patient Records (${records.length} files)`)
+            : `My Health Vault (${records.length} files)`}
+        </Text>
       </View>
 
       {loading ? (
@@ -105,10 +120,14 @@ export default function MedicalRecordsScreen({ navigation, route }) {
       ) : records.length === 0 ? (
         <EmptyState
           icon="document-text-outline"
-          title="No Medical Records Found"
-          description="Your medical vault is empty. Upload your previous scans, prescriptions, or discharge summaries for your specialist."
-          buttonText="Upload First Document"
-          onButtonPress={() => navigation.navigate('AddMedicalRecord')}
+          title={isTherapist ? "No Patient Records Found" : "No Medical Records Found"}
+          description={
+            isTherapist
+              ? "No clinical documents found for this view. Use the button above to upload diagnostic scans or notes for your patient."
+              : "Your medical vault is empty. Upload your previous scans, prescriptions, or discharge summaries for your specialist."
+          }
+          buttonText={isTherapist ? "Upload Patient Document" : "Upload First Document"}
+          onButtonPress={() => navigation.navigate('AddMedicalRecord', patientId ? { patientId } : {})}
         />
       ) : (
         records.map((rec) => {

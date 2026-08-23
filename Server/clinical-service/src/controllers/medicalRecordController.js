@@ -216,13 +216,21 @@ export const listMedicalRecords = async (req, res) => {
       filter.patientId = patientId.toString();
     }
 
-    const filterCategory = category || recordType || type;
-    if (filterCategory && filterCategory !== 'ALL' && filterCategory !== 'All') {
-      filter.$or = [
-        { category: filterCategory.toUpperCase() },
-        { recordType: filterCategory.toUpperCase() },
-        { type: filterCategory.toLowerCase() }
-      ];
+    const filterCategory = (category || recordType || type || '').toUpperCase().trim();
+    if (filterCategory && filterCategory !== 'ALL') {
+      if (filterCategory === 'MRI_SCAN' || filterCategory === 'X_RAY' || filterCategory === 'IMAGING') {
+        filter.$or = [
+          { category: { $in: ['MRI_SCAN', 'X_RAY', 'IMAGING'] } },
+          { recordType: { $in: ['MRI_SCAN', 'X_RAY', 'IMAGING'] } },
+          { type: { $in: ['mri_scan', 'x_ray', 'imaging'] } }
+        ];
+      } else {
+        filter.$or = [
+          { category: filterCategory },
+          { recordType: filterCategory },
+          { type: filterCategory.toLowerCase() }
+        ];
+      }
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -248,6 +256,7 @@ export const listMedicalRecords = async (req, res) => {
         return {
           id: rec._id,
           _id: rec._id,
+          patientId: rec.patientId,
           title: rec.title,
           category: resolvedCategory,
           recordType: resolvedCategory,

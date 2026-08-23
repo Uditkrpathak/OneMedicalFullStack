@@ -18,9 +18,9 @@ import clinicalApi from '../api';
 
 const CATEGORY_TABS = [
   { id: 'ALL', label: 'All' },
+  { id: 'MRI_SCAN', label: 'MRI & X-Rays' },
   { id: 'CONSULTATION_REPORT', label: 'Consultations' },
   { id: 'TREATMENT_PLAN', label: 'Treatment Plans' },
-  { id: 'MRI_SCAN', label: 'MRI & X-Rays' },
   { id: 'PRESCRIPTION', label: 'Prescriptions' },
   { id: 'DISCHARGE_SUMMARY', label: 'Discharge' },
   { id: 'LAB_REPORT', label: 'Labs' },
@@ -39,11 +39,6 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
 
   const fetchRecords = async () => {
     if (!token) return;
-    if (user?.role === 'therapist' && !patientId) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
     try {
       const params = {
         ...(patientId ? { patientId } : {}),
@@ -83,8 +78,10 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
     if (!matchesSearch) return false;
 
     if (activeTab !== 'ALL') {
-      const category = (rec.category || rec.recordType || '').toUpperCase();
-      if (activeTab === 'MRI_SCAN') return category === 'MRI_SCAN' || category === 'X_RAY';
+      const category = (rec.category || rec.recordType || rec.type || '').toUpperCase();
+      if (activeTab === 'MRI_SCAN' || activeTab === 'X_RAY') {
+        return category === 'MRI_SCAN' || category === 'X_RAY' || category.includes('MRI') || category.includes('X_RAY') || category.includes('XRAY');
+      }
       return category === activeTab;
     }
 
@@ -115,10 +112,12 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
         <TouchableOpacity style={styles.headerBackBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={22} color="#0f172a" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Medical Vault</Text>
+        <Text style={styles.headerTitle}>
+          {user?.role === 'therapist' ? 'Clinical Records Vault' : 'Medical Vault'}
+        </Text>
         <TouchableOpacity
           style={styles.addBtnHeader}
-          onPress={() => navigation.navigate('AddMedicalRecord')}
+          onPress={() => navigation.navigate('AddMedicalRecord', patientId ? { patientId } : {})}
         >
           <Ionicons name="add" size={16} color="#003D9B" style={{ marginRight: 2 }} />
           <Text style={styles.addBtnHeaderText}>Upload</Text>
@@ -186,16 +185,22 @@ export default function MedicalRecordsVaultScreen({ navigation, route }) {
         ) : filteredRecords.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="folder-open-outline" size={48} color="#cbd5e1" style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyTitle}>No Medical Records Found</Text>
+            <Text style={styles.emptyTitle}>
+              {user?.role === 'therapist' ? 'No Patient Documents Found' : 'No Medical Records Found'}
+            </Text>
             <Text style={styles.emptySub}>
-              {searchQuery ? 'No documents match your search criteria.' : 'Upload your MRI scans, prescriptions, or lab reports to keep them securely stored.'}
+              {user?.role === 'therapist'
+                ? 'No diagnostic reports found for your patients. Use the button below to upload scans or clinical notes.'
+                : (searchQuery ? 'No documents match your search criteria.' : 'Upload your MRI scans, prescriptions, or lab reports to keep them securely stored.')}
             </Text>
             <TouchableOpacity
               style={styles.emptyUploadBtn}
-              onPress={() => navigation.navigate('AddMedicalRecord')}
+              onPress={() => navigation.navigate('AddMedicalRecord', patientId ? { patientId } : {})}
             >
               <Ionicons name="cloud-upload-outline" size={16} color="#ffffff" style={{ marginRight: 6 }} />
-              <Text style={styles.emptyUploadBtnText}>Upload New Document</Text>
+              <Text style={styles.emptyUploadBtnText}>
+                {user?.role === 'therapist' ? 'Upload Patient Document' : 'Upload New Document'}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (

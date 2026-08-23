@@ -38,11 +38,15 @@ const CATEGORY_PRESETS = {
 export default function AddMedicalRecordScreen({ route, navigation }) {
   const { token, user } = useSelector((state) => state.auth);
   const { showInAppNotification } = useNotification() || {};
-  const patientId = route?.params?.patientId || route?.params?.userId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
+  const initialPatientId = route?.params?.patientId || route?.params?.userId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
+
+  const [selectedPatientId, setSelectedPatientId] = useState(initialPatientId);
+  const [patientsList, setPatientsList] = useState([]);
+  const [loadingPatients, setLoadingPatients] = useState(user?.role === 'therapist' || user?.role === 'clinic_admin');
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('MRI_SCAN');
-  const [doctorName, setDoctorName] = useState('');
+  const [doctorName, setDoctorName] = useState(user?.role === 'therapist' ? (user?.name || 'Dr. Vivek Joshi') : '');
   const [hospitalName, setHospitalName] = useState('');
   const [recordDate, setRecordDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -50,6 +54,24 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
   const [saving, setSaving] = useState(false);
   const [uploadStep, setUploadStep] = useState('');
   const [showFileModal, setShowFileModal] = useState(false);
+
+  React.useEffect(() => {
+    if ((user?.role === 'therapist' || user?.role === 'clinic_admin') && token) {
+      clinicalApi.getAssignedPatients(token).then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setPatientsList(res.data);
+          if (!selectedPatientId) {
+            const defaultId = res.data[0]._id || res.data[0].id;
+            setSelectedPatientId(defaultId);
+          }
+        }
+      }).catch((err) => {
+        console.warn('[AddMedicalRecord] patient fetch err:', err.message);
+      }).finally(() => {
+        setLoadingPatients(false);
+      });
+    }
+  }, [token, user?.role]);
 
   const handlePickFileOption = (fileType) => {
     setShowFileModal(false);
@@ -86,6 +108,12 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
       return;
     }
 
+    const effectivePatientId = selectedPatientId || initialPatientId || (user?.role === 'patient' ? (user?.userId || user?.id || user?._id) : undefined);
+    if (!effectivePatientId && user?.role !== 'patient') {
+      Alert.alert('Patient Required', 'Please select the patient to whom this medical record belongs.');
+      return;
+    }
+
     setSaving(true);
     try {
       // Step 1: Request presigned Cloudinary / Cloud storage upload URL
@@ -93,7 +121,7 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
       const fileName = attachedFile?.fileName || 'document.pdf';
       const mimeType = attachedFile?.mimeType || 'application/pdf';
 
-      const uploadRes = await clinicalApi.getPresignedUploadUrl(fileName, mimeType, category, token, patientId);
+      const uploadRes = await clinicalApi.getPresignedUploadUrl(fileName, mimeType, category, token, effectivePatientId);
       const uploadData = uploadRes.data || {};
       const uploadUrl = uploadData.uploadUrl;
       const storageKey = uploadData.storageKey || uploadData.s3Key || uploadData.publicId;
@@ -133,7 +161,7 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
       // Step 3: Register metadata in MongoDB
       setUploadStep('Registering record metadata in vault...');
       const payload = {
-        patientId: patientId || user?.userId || user?.id,
+        patientId: effectivePatientId,
         title: title.trim(),
         category,
         doctorName: doctorName.trim() || undefined,
@@ -186,6 +214,39 @@ export default function AddMedicalRecordScreen({ route, navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollInner} showsVerticalScrollIndicator={false}>
+        {/* PATIENT SELECTOR (FOR THERAPISTS / DOCTORS) */}
+        {(user?.role === 'therapist' || user?.role === 'clinic_admin') && (
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>ASSIGN TO PATIENT *</Text>
+            {loadingPatients ? (
+              <ActivityIndicator size="small" color="#003D9B" style={{ alignSelf: 'flex-start', marginVertical: 8 }} />
+            ) : patientsList.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
+                {patientsList.map((p) => {
+                  const pId = p._id || p.id;
+                  const isSelected = selectedPatientId === pId;
+                  return (
+                    <TouchableOpacity
+                      key={pId}
+                      style={[styles.catCard, isSelected && styles.catCardSelected, { minWidth: 100 }]}
+                      onPress={() => setSelectedPatientId(pId)}
+                    >
+                      <Ionicons name="person" size={16} color={isSelected ? '#003D9B' : '#64748b'} />
+                      <Text style={[styles.catLabel, isSelected && styles.catLabelSelected]} numberOfLines={1}>
+                        {p.name || p.user?.name || 'Patient'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <View style={{ backgroundColor: '#f1f5f9', padding: 10, borderRadius: 10 }}>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Assigned patient ID: {selectedPatientId || 'Active Patient'}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* TITLE */}
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>DOCUMENT TITLE *</Text>
