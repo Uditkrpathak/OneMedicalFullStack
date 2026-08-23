@@ -188,6 +188,7 @@ export default function WriteDoctorReviewScreen({ route, navigation }) {
         appointmentId: cleanApptId,
         therapistId: targetDoctorId,
         doctorId: targetDoctorId,
+        doctorName: doctor.name,
         rating: overallRating,
         communicationRating,
         explanationRating,
