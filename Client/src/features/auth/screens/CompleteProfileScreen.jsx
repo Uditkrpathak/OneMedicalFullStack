@@ -214,6 +214,7 @@ export default function CompleteProfileScreen({ navigation }) {
       weight: weightNum,
       primaryConcern: data.primaryConcern,
       avatarUrl: profilePhoto,
+      isProfileCompleted: true,
     };
 
     try {

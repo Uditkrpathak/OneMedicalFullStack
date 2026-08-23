@@ -14,16 +14,10 @@ const hasValue = (v) => {
 
 export const calculatePatientProfileCompletion = (user, profile) => {
   if (!user || !profile) return false;
-  const hasBasicUser = hasValue(user.name) && hasValue(user.phoneNumber);
+  const hasBasicUser = hasValue(user.name) && (hasValue(user.phoneNumber) || hasValue(user.email));
   const hasDemographics = hasValue(profile.gender) && hasValue(profile.dob);
-  
-  const addr = profile.address;
-  const hasCompleteAddress = addr && (
-    (typeof addr === 'string' && addr.trim().length > 5) ||
-    (typeof addr === 'object' && hasValue(addr.addressLine1 || addr.street) && hasValue(addr.city) && hasValue(addr.state) && hasValue(addr.postalCode || addr.pincode))
-  );
 
-  return Boolean(hasBasicUser && hasDemographics && hasCompleteAddress);
+  return Boolean(hasBasicUser && hasDemographics);
 };
 
 const isAdminRole = (role) => ['super_admin', 'clinic_admin', 'admin'].includes(role);
@@ -115,7 +109,11 @@ export const updatePatientProfile = async (req, res) => {
 
     if (existingUser) {
       Object.assign(existingUser, userUpdates);
-      existingUser.isProfileCompleted = calculatePatientProfileCompletion(existingUser, updatedProfile);
+      if (req.body.isProfileCompleted !== undefined) {
+        existingUser.isProfileCompleted = Boolean(req.body.isProfileCompleted);
+      } else {
+        existingUser.isProfileCompleted = calculatePatientProfileCompletion(existingUser, updatedProfile);
+      }
       await existingUser.save();
     }
 
@@ -157,11 +155,19 @@ export const updateTherapistProfile = async (req, res) => {
       { new: true, upsert: true, runValidators: true }
     );
 
+    const userUpdateFields = { isProfileCompleted: true };
     if (req.body.name) {
-      await User.findByIdAndUpdate(requesterId, { $set: { name: req.body.name.trim() } });
+      userUpdateFields.name = req.body.name.trim();
     }
+    const updatedUser = await User.findByIdAndUpdate(requesterId, { $set: userUpdateFields }, { new: true });
 
-    res.json({ success: true, data: profile });
+    res.json({
+      success: true,
+      data: {
+        user: updatedUser ? updatedUser.toSafeObject() : null,
+        profile
+      }
+    });
   } catch (err) {
     console.error('[Update Therapist Profile Error]:', err.message);
     res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: err.message } });

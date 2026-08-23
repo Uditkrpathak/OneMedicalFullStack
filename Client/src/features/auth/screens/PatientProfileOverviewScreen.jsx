@@ -53,6 +53,7 @@ export default function PatientProfileOverviewScreen({ navigation }) {
                 height: p.height ?? u.height,
                 weight: p.weight ?? u.weight,
                 bloodGroup: p.bloodGroup ?? u.bloodGroup,
+                isProfileCompleted: true,
               }));
             }
           }

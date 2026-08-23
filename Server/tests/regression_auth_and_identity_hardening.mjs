@@ -263,9 +263,10 @@ console.log('Test 14: Account Deletion Revokes All Sessions...');
 // ── TEST 15: Deterministic Profile Completion Logic ───────────────────────────
 console.log('Test 15: Schema-Driven Deterministic Profile Completion...');
 {
-  const incompleteUser = { name: 'Rohan', phoneNumber: '+919876543210' };
-  const incompleteProfile = { gender: 'male', dob: new Date('1990-01-01'), address: null };
+  const incompleteUser = { name: '', phoneNumber: '+919876543210' };
+  const incompleteProfile = { gender: null, dob: null };
 
+  const completeUser = { name: 'Rohan', phoneNumber: '+919876543210' };
   const completeProfile = {
     gender: 'male',
     dob: new Date('1990-01-01'),
@@ -273,7 +274,7 @@ console.log('Test 15: Schema-Driven Deterministic Profile Completion...');
   };
 
   assert.strictEqual(calculatePatientProfileCompletion(incompleteUser, incompleteProfile), false);
-  assert.strictEqual(calculatePatientProfileCompletion(incompleteUser, completeProfile), true);
+  assert.strictEqual(calculatePatientProfileCompletion(completeUser, completeProfile), true);
 
   console.log('✅ Test 15 Passed: Profile completion deterministically evaluated.\n');
 }
