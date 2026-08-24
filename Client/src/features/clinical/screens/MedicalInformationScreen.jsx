@@ -325,12 +325,26 @@ export default function MedicalInformationScreen({ route, navigation }) {
             <Text style={styles.emergencyInitials}>EC</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.emergencyName}>{user?.emergencyContactName || 'Primary Emergency Contact'}</Text>
-            <Text style={styles.emergencyPhone}>{user?.emergencyContactPhone || user?.emergencyContact || '+91 98765 43210'}</Text>
+            <Text style={styles.emergencyName}>
+              {user?.emergencyContact?.name || user?.emergencyContactName || 'Primary Emergency Contact'}
+            </Text>
+            <Text style={styles.emergencyPhone}>
+              {user?.emergencyContact?.phone ||
+                user?.emergencyContactPhone ||
+                (typeof user?.emergencyContact === 'string' ? user.emergencyContact : null) ||
+                '+91 98765 43210'}
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.callCircleBtn}
-            onPress={() => Alert.alert('Emergency Call', `Calling ${user?.emergencyContactPhone || user?.emergencyContact || '+91 98765 43210'}...`)}
+            onPress={() => {
+              const phone =
+                user?.emergencyContact?.phone ||
+                user?.emergencyContactPhone ||
+                (typeof user?.emergencyContact === 'string' ? user.emergencyContact : null) ||
+                '+91 98765 43210';
+              Alert.alert('Emergency Call', `Calling ${phone}...`);
+            }}
           >
             <Ionicons name="call" size={18} color="#ffffff" />
           </TouchableOpacity>
