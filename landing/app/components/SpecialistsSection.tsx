@@ -26,26 +26,68 @@ interface SpecialistsSectionProps {
   onOpenBooking: (doctorId?: string, doctorName?: string) => void;
 }
 
+const getApiBaseUrls = (): string[] => {
+  const urls: string[] = [];
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    urls.push(process.env.NEXT_PUBLIC_API_URL);
+  }
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      urls.push('http://localhost:5000/api/v1');
+      urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+    } else {
+      urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+      urls.push('http://localhost:5000/api/v1');
+    }
+  } else {
+    urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+    urls.push('http://localhost:5000/api/v1');
+  }
+  return Array.from(new Set(urls));
+};
+
 const DEFAULT_SPECIALISTS: SpecialistItem[] = [
   {
-    id: 'doc_ananya_sharma',
-    name: 'Dr. Ananya Sharma',
-    title: 'Senior Musculoskeletal Specialist',
+    id: 'doc_1',
+    name: 'Dr. Rajesh Sharma',
+    title: 'Senior Musculoskeletal & Sports Specialist',
     rating: '4.9',
     exp: '10 years experience',
     languages: 'English, Hindi & Kannada',
     availability: 'Next Available: Today',
     topBadge: 'Lead Specialist',
     image:
+      'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
+  },
+  {
+    id: 'doc_2',
+    name: 'Dr. Priya Nair',
+    title: 'Neuro-Rehabilitation & Mobility Specialist',
+    rating: '4.8',
+    exp: '8 years experience',
+    languages: 'English, Hindi & Malayalam',
+    availability: 'Next Available: Tomorrow',
+    image:
       'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
+  },
+  {
+    id: 'doc_3',
+    name: 'Dr. Amitav Sen',
+    title: 'Orthopedic & Post-Surgical Recovery Consultant',
+    rating: '4.9',
+    exp: '12 years experience',
+    languages: 'English, Hindi & Bengali',
+    availability: 'Next Available: Today',
+    image:
+      'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
   },
 ];
 
 const DEFAULT_DOCTOR_IMAGES = [
   'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=500',
-  'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
   'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=500',
   'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=500',
+  'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&q=80&w=500',
 ];
 
 export default function SpecialistsSection({ onOpenBooking }: SpecialistsSectionProps) {
@@ -55,30 +97,33 @@ export default function SpecialistsSection({ onOpenBooking }: SpecialistsSection
   useEffect(() => {
     let isMounted = true;
     const fetchTherapists = async () => {
-      try {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
-        const res = await fetch(`${backendUrl}/therapists`);
-        if (!res.ok) return;
-        const data = await res.json();
+      const urls = getApiBaseUrls();
+      for (const base of urls) {
+        try {
+          const res = await fetch(`${base}/therapists`);
+          if (!res.ok) continue;
+          const data = await res.json();
 
-        if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
-          const mapped: SpecialistItem[] = data.data.map((t: any, idx: number) => ({
-            id: t._id || t.userId || `doc_${idx}`,
-            name: t.name || t.user?.name || 'Dr. Specialist',
-            title: t.specializations?.length
-              ? t.specializations.join(', ')
-              : t.bio || 'Physiotherapy Specialist',
-            rating: Number(t.ratingAvg || (4.8 + (idx % 3) * 0.1)).toFixed(1),
-            exp: `${t.experienceYears || (8 + (idx * 2))} years experience`,
-            languages: t.languages?.length ? t.languages.join(' & ') : 'English & Hindi',
-            availability: 'Next Available: Today',
-            topBadge: idx === 0 ? 'Top Specialist' : undefined,
-            image: t.profileImageUrl || t.avatarUrl || DEFAULT_DOCTOR_IMAGES[idx % DEFAULT_DOCTOR_IMAGES.length],
-          }));
-          setSpecialists(mapped);
+          if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
+            const mapped: SpecialistItem[] = data.data.map((t: any, idx: number) => ({
+              id: t._id || t.id || t.userId || `doc_${idx}`,
+              name: t.name || t.user?.name || 'Dr. Specialist',
+              title: t.specializations?.length
+                ? (Array.isArray(t.specializations) ? t.specializations.join(', ') : t.specializations)
+                : t.bio || 'Physiotherapy Specialist',
+              rating: Number(t.ratingAvg || (4.8 + (idx % 3) * 0.1)).toFixed(1),
+              exp: `${t.experienceYears || (8 + (idx * 2))} years experience`,
+              languages: t.languages?.length ? t.languages.join(' & ') : 'English & Hindi',
+              availability: 'Next Available: Today',
+              topBadge: idx === 0 ? 'Top Specialist' : undefined,
+              image: t.profileImageUrl || t.avatarUrl || DEFAULT_DOCTOR_IMAGES[idx % DEFAULT_DOCTOR_IMAGES.length],
+            }));
+            setSpecialists(mapped);
+            break; // Found and loaded
+          }
+        } catch {
+          // Try next fallback URL
         }
-      } catch {
-        // Keep pristine fallback specialists
       }
     };
 

@@ -19,8 +19,28 @@ interface BookingModalProps {
 }
 
 const DEFAULT_THERAPISTS: TherapistOption[] = [
-  { id: 'doc_ananya_sharma', name: 'Dr. Ananya Sharma', specialization: 'Senior Musculoskeletal & Sports Specialist • 10 yrs exp' },
+  { id: 'any', name: 'First Available Specialist', specialization: 'Certified Clinical Physiotherapist • Auto-assigned' },
 ];
+
+const getApiBaseUrls = (): string[] => {
+  const urls: string[] = [];
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    urls.push(process.env.NEXT_PUBLIC_API_URL);
+  }
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      urls.push('http://localhost:5000/api/v1');
+      urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+    } else {
+      urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+      urls.push('http://localhost:5000/api/v1');
+    }
+  } else {
+    urls.push('https://onemedical-v2-gateway.onrender.com/api/v1');
+    urls.push('http://localhost:5000/api/v1');
+  }
+  return Array.from(new Set(urls));
+};
 
 export default function BookingModal({
   isOpen,
@@ -56,55 +76,63 @@ export default function BookingModal({
       setErrorMessage(null);
       setFormData((prev) => ({
         ...prev,
-        therapistId: initialDoctorId || prev.therapistId || DEFAULT_THERAPISTS[0].id,
-        preferredDoctor: initialDoctor || prev.preferredDoctor || DEFAULT_THERAPISTS[0].name,
+        therapistId: initialDoctorId || (prev.therapistId && prev.therapistId !== 'doc_ananya_sharma' ? prev.therapistId : 'any'),
+        preferredDoctor: initialDoctor || (prev.preferredDoctor && prev.preferredDoctor !== 'Dr. Ananya Sharma' ? prev.preferredDoctor : 'First Available Specialist'),
         notes: initialPlan ? `Selected Plan: ${initialPlan}` : prev.notes,
         date: todayStr,
       }));
     }
   }, [isOpen, initialDoctorId, initialDoctor, initialPlan, todayStr]);
 
-  // Fetch active verified therapists from backend API
+  // Fetch active verified therapists from backend API with multi-endpoint fallback
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
     const fetchTherapists = async () => {
-      try {
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
-        const res = await fetch(`${backendUrl}/therapists`);
-        if (!res.ok) return;
-        const data = await res.json();
+      const urls = getApiBaseUrls();
+      for (const baseUrl of urls) {
+        try {
+          const res = await fetch(`${baseUrl}/therapists`);
+          if (!res.ok) continue;
+          const data = await res.json();
 
-        if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
-          const list: TherapistOption[] = data.data.map((t: any) => ({
-            id: t._id || t.userId,
-            name: t.name || t.user?.name || 'Dr. Specialist',
-            specialization: t.specializations?.length
-              ? `${t.specializations.join(', ')} • ${t.experienceYears || 5} yrs exp`
-              : `${t.experienceYears || 5} years experience`,
-          }));
-          setTherapists(list);
+          if (isMounted && data.success && Array.isArray(data.data) && data.data.length > 0) {
+            const list: TherapistOption[] = [
+              { id: 'any', name: 'First Available Specialist', specialization: 'Certified Clinical Physiotherapist • Auto-assigned' },
+              ...data.data.map((t: any) => ({
+                id: t._id || t.id || t.userId,
+                name: t.name || t.user?.name || 'Dr. Specialist',
+                specialization: t.specializations?.length
+                  ? `${Array.isArray(t.specializations) ? t.specializations.join(', ') : t.specializations} • ${t.experienceYears || 5} yrs exp`
+                  : `${t.experienceYears || 5} years experience`,
+              })),
+            ];
+            setTherapists(list);
 
-          // If current therapistId is not set or default, align with first fetched doctor
-          setFormData((prev) => {
-            if (initialDoctorId) {
-              const matched = list.find((item) => item.id === initialDoctorId);
-              if (matched) return { ...prev, therapistId: matched.id, preferredDoctor: matched.name };
-            }
-            if (initialDoctor) {
-              const matched = list.find((item) => item.name.toLowerCase().includes(initialDoctor.toLowerCase()));
-              if (matched) return { ...prev, therapistId: matched.id, preferredDoctor: matched.name };
-            }
-            return {
-              ...prev,
-              therapistId: prev.therapistId || list[0].id,
-              preferredDoctor: prev.preferredDoctor || list[0].name,
-            };
-          });
+            // Align selected doctor with real fetched list
+            setFormData((prev) => {
+              if (initialDoctorId) {
+                const matched = list.find((item) => item.id === initialDoctorId);
+                if (matched) return { ...prev, therapistId: matched.id, preferredDoctor: matched.name };
+              }
+              if (initialDoctor) {
+                const matched = list.find((item) => item.name.toLowerCase().includes(initialDoctor.toLowerCase()));
+                if (matched) return { ...prev, therapistId: matched.id, preferredDoctor: matched.name };
+              }
+              const currentValid = list.find((item) => item.id === prev.therapistId);
+              if (currentValid) return prev;
+              return {
+                ...prev,
+                therapistId: list[0].id,
+                preferredDoctor: list[0].name,
+              };
+            });
+            break; // Found and successfully loaded
+          }
+        } catch {
+          // Try next base URL
         }
-      } catch {
-        // Fallback therapists already initialized
       }
     };
 
@@ -113,16 +141,6 @@ export default function BookingModal({
       isMounted = false;
     };
   }, [isOpen, initialDoctorId, initialDoctor]);
-
-  const getApiBaseUrl = () => {
-    if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-    if (typeof window !== 'undefined') {
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:5000/api/v1';
-      }
-    }
-    return 'https://onemedical-v2-gateway.onrender.com/api/v1';
-  };
 
   const handlePhoneChange = (val: string) => {
     // Strip all non-digits
@@ -152,7 +170,7 @@ export default function BookingModal({
     setFormData((prev) => ({
       ...prev,
       therapistId: selectedId,
-      preferredDoctor: found?.name || prev.preferredDoctor,
+      preferredDoctor: found?.name || (selectedId === 'any' ? 'First Available Specialist' : prev.preferredDoctor),
     }));
   };
 
@@ -173,61 +191,41 @@ export default function BookingModal({
       phone: `+91 ${rawDigits.slice(0, 5)} ${rawDigits.slice(5)}`,
       email: formData.email.trim(),
       serviceType: formData.serviceType,
-      therapistId: formData.therapistId,
+      therapistId: formData.therapistId === 'any' ? undefined : formData.therapistId,
       preferredDoctor: formData.preferredDoctor,
       date: formData.date,
       timeSlot: formData.timeSlot,
       notes: formData.notes.trim(),
     };
 
-    const primaryUrl = getApiBaseUrl();
-    const fallbackUrl = primaryUrl.includes('localhost')
-      ? 'https://onemedical-v2-gateway.onrender.com/api/v1'
-      : 'http://localhost:5000/api/v1';
+    const urls = getApiBaseUrls();
+    let isSuccess = false;
+    let lastErrorMsg = 'Unable to connect to the backend server. Please check your connection.';
 
-    let success = false;
-
-    // Try Primary URL
-    try {
-      const res = await fetch(`${primaryUrl}/appointments/public-booking`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        success = true;
-        setSubmitted(true);
-      } else {
-        setErrorMessage(
-          data?.error?.message || 'Unable to submit your consultation request. Please check your details.'
-        );
-      }
-    } catch {
-      // If primary failed with network error, try fallback endpoint
+    for (const baseUrl of urls) {
       try {
-        const res = await fetch(`${fallbackUrl}/appointments/public-booking`, {
+        const res = await fetch(`${baseUrl}/appointments/public-booking`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          success = true;
+          isSuccess = true;
           setSubmitted(true);
+          break;
         } else {
-          setErrorMessage(
-            data?.error?.message || 'Unable to submit your consultation request. Please check your details.'
-          );
+          lastErrorMsg = data?.error?.message || 'Unable to submit your consultation request. Please check your details.';
         }
       } catch {
-        setErrorMessage(
-          'Unable to connect to the backend server. Please make sure the API Gateway server is running (Port 5000).'
-        );
+        // Try fallback URL
       }
-    } finally {
-      setLoading(false);
     }
+
+    if (!isSuccess) {
+      setErrorMessage(lastErrorMsg);
+    }
+    setLoading(false);
   };
 
   const handleResetAndClose = () => {
